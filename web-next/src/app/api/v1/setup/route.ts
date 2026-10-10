@@ -7,6 +7,7 @@ export async function GET(req:NextRequest){return guarded(async()=>reply(await i
 export async function POST(req:NextRequest){return guarded(async()=>{
  const c=await context(req,true);origin(req);const data=await body(req);
  if(data.action==="finish"){try{await finishSetup(c)}catch(e){if(e instanceof ApiError&&[404,409].includes(e.status))throw new ApiError(409,"GitHub masih menyiapkan repository atau workflow belum tersedia. Tunggu beberapa detik, lalu klik Lanjutkan setup kembali.");throw e}return reply(await inspect(c));}
+ if(c.installationId)throw new ApiError(400,"Buat repo dari template di GitHub, lalu pilih repo melalui halaman Hubungkan repository.");
  if(!["create","connect"].includes(String(data.action)))throw new ApiError(400,"Aksi tidak dikenal");
  const name=typeof data.name==="string"?data.name.trim():"";
  if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,89}$/.test(name))throw new ApiError(400,"Nama repository harus 1–90 huruf, angka, titik, minus, atau underscore");

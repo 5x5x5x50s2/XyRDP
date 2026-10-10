@@ -6,7 +6,7 @@ import {createHash,timingSafeEqual} from "node:crypto";
 export const authOptions: NextAuthOptions = {
  secret: process.env.NEXTAUTH_SECRET,
  providers: [
- GitHubProvider({clientId: process.env.GITHUB_ID || "", clientSecret: process.env.GITHUB_SECRET || "", authorization: {params: {scope: "read:user repo workflow"}}}),
+ GitHubProvider({clientId: process.env.GITHUB_ID || "", clientSecret: process.env.GITHUB_SECRET || "", authorization: {params: {scope: "read:user"}}}),
  Credentials({name:"Admin",credentials:{email:{label:"Email",type:"email"},password:{label:"Password",type:"password"},turnstile:{label:"Turnstile",type:"text"}},async authorize(c,req){
   if(!c?.email||!c.password||!c.turnstile||c.password.length>256||c.turnstile.length>2048)return null;
   if(!process.env.ADMIN_PASSWORD_HASH||!process.env.ADMIN_EMAIL||!process.env.ADMIN_CREDENTIAL_VERSION||!process.env.TURNSTILE_SECRET_KEY)return null;
@@ -27,8 +27,9 @@ export const authOptions: NextAuthOptions = {
  pages: {signIn: "/login"},
  callbacks: {
   async jwt({token,account,profile,user}) {
-   if(account?.provider === "github") {token.accessToken=account.access_token;token.login=(profile as {login?:string})?.login;token.githubId=account.providerAccountId;token.authKind="github";delete token.credVersion;}
+   if(account?.provider === "github") {delete token.accessToken;token.login=(profile as {login?:string})?.login;token.githubId=account.providerAccountId;token.authKind="github";delete token.credVersion;}
    if(account?.provider === "credentials"&&user?.id==="rdpfree-admin"){token.authKind="admin";token.credVersion=process.env.ADMIN_CREDENTIAL_VERSION;token.login="Admin";delete token.accessToken;delete token.githubId;}
+   if(token.authKind==="github")delete token.accessToken;
    token.role=token.authKind==="admin"&&!!process.env.ADMIN_CREDENTIAL_VERSION&&token.credVersion===process.env.ADMIN_CREDENTIAL_VERSION?"admin":"user";
    return token;
   },

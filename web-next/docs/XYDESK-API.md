@@ -78,3 +78,9 @@ Never automatically retry POST `/runs` after an ambiguous network error. Refresh
 Browser-only `POST /setup` actions: `create` (`name`, `private`, `confirm:true`), `connect` (`name`), `finish`. `finish` is independently retryable while GitHub template generation propagates. The selected repo is persisted server-side and no longer assumes `/XyRDP`. Existing native tokens retain their originally granted repo; token issuance now requires a ready repository.
 
 Browser-only POST `/secrets` and POST/DELETE `/credentials` do not accept bearer device tokens. Native clients never receive the dashboard's stored password copy; prompt locally for RDP_PASSWORD. Website password controls support show/hide/copy and optional encrypted storage.
+
+## GitHub App migration
+
+Identity login and repository authorization are now separate. Users must complete GitHub App installation and choose a permitted personal-account repo at `/dashboard/connection` before issuing a device token. A 409 response can mean the dashboard identity is valid but repository installation/selection is incomplete; do not treat it as a lost login cookie.
+
+Previously issued non-admin device tokens carrying OAuth grants are no longer accepted. Ask the user to complete app connection and create a replacement token. New tokens remain pinned to the chosen repo and exchange server-side for short-lived, repo-restricted installation tokens on each call. Admin-issued device grants are unchanged. No API exposes GitHub OAuth tokens, app private keys or installation access tokens to XyDesk.

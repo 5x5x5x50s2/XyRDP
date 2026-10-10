@@ -8,7 +8,7 @@ export async function POST(req:NextRequest){return guarded(async()=>{
  if(!password&&!tailscale)throw new ApiError(400,"Isi minimal satu secret untuk disimpan");
  if(password&&(password.length<12||password.length>128||/[\x00-\x1f]/.test(password)||[/[a-z]/,/[A-Z]/,/[0-9]/,/[^a-zA-Z0-9]/].filter(r=>r.test(password)).length<3))throw new ApiError(400,"Password RDP minimal 12 karakter, maksimal 128, dengan minimal 3 jenis: huruf kecil, huruf besar, angka, simbol");
  if(tailscale&&(!tailscale.startsWith("tskey-auth-")||tailscale.length>512||/\s/.test(tailscale)))throw new ApiError(400,"Gunakan Tailscale auth key (tskey-auth-...), bukan API key");
- const r=await gh<{permissions?:{push?:boolean}}>(c,"");if(!r.permissions?.push)throw new ApiError(403,"Akses tulis repository diperlukan");
+ const r=await gh<{permissions?:{push?:boolean}}>(c,"");if(!c.installationId&&!r.permissions?.push)throw new ApiError(403,"Akses tulis repository diperlukan");
  const publicKey=await gh<{key:string;key_id:string}>(c,"/actions/secrets/public-key");const saved:string[]=[];
  // Store Tailscale first. Every saved value is independently retryable; blanks leave secrets unchanged.
  for(const [name,value] of [["TAILSCALE_AUTH_KEY",tailscale],["RDP_PASSWORD",password]])if(value){

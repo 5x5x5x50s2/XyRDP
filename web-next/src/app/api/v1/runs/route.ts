@@ -12,7 +12,7 @@ export async function POST(req:NextRequest){return guarded(async()=>{const c=awa
  if((await runs(c)).some(active))throw new ApiError(409,"Masih ada run aktif atau antre");
  const setup=await inspect(c);if(!setup.ready)throw new ApiError(400,"Selesaikan Setup repository, Actions, dan secrets terlebih dahulu");
  const inputs=await loadSettings(c.repo);const valid=validate(inputs);
- const repo=await gh<{default_branch:string;permissions?:{push?:boolean}}>(c,"");if(!repo.permissions?.push)throw new ApiError(403,"Akses write ke repository diperlukan");
+ const repo=await gh<{default_branch:string;permissions?:{push?:boolean}}>(c,"");if(!c.installationId&&!repo.permissions?.push)throw new ApiError(403,"Akses write ke repository diperlukan");
  const secrets=await gh<{secrets:{name:string}[]}>(c,"/actions/secrets?per_page=100");const names=secrets.secrets.map(s=>s.name);const required=["RDP_PASSWORD",...(valid.akses!=="tunnel"?["TAILSCALE_AUTH_KEY"]:[]),...(valid.tunnel_provider==="ngrok"?["NGROK_AUTHTOKEN"]:[])];const missing=required.filter(k=>!names.includes(k));if(missing.length)throw new ApiError(400,"Secret belum lengkap: "+missing.join(", "));
  await gh(c,"/actions/workflows/rdp-6h.yml/dispatches","POST",{ref:repo.default_branch,inputs:valid});return reply({ok:true,repo:c.repo,inputs:valid,message:"Workflow diterima GitHub. Status akan muncul setelah antre."},202);
  })}

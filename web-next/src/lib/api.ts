@@ -2,7 +2,7 @@ import {NextRequest} from "next/server";
 import {getToken,decode} from "next-auth/jwt";
 import {db} from "./db";
 import {createHash} from "node:crypto";
-export type Context={token:string;repo:string;subject:string;kind:"admin"|"user"|"device";deviceId?:string};
+export type Context={token:string;repo:string;subject:string;kind:"admin"|"user"|"device";deviceId?:string;installationId?:number};
 export type GitHubDiagnostic={provider:"github";status:number;endpoint:string;code:string;message:string;request_id:string|null;retry_after:string|null;rate_reset:string|null};
 export class ApiError extends Error {constructor(public status:number,message:string,public diagnostic?:GitHubDiagnostic){super(message)}}
 export const hash=(s:string)=>createHash("sha256").update(s).digest("hex");
@@ -18,12 +18,22 @@ export async function context(req:NextRequest,browserOnly=false):Promise<Context
   const row=await db().prepare("SELECT id,payload,subject,expires FROM devices WHERE token_hash=?").bind(hash(match[1])).first<{id:string;payload:string;subject:string;expires:number}>();
   if(!row||row.expires<Date.now())throw new ApiError(401,"Token perangkat kedaluwarsa atau dicabut");
   const d=await decode({token:row.payload,secret:process.env.NEXTAUTH_SECRET!});
-  if(!d||typeof d.accessToken!=="string"||typeof d.repo!=="string")throw new ApiError(401,"Sesi perangkat tidak valid");
+  if(!d||typeof d.repo!=="string")throw new ApiError(401,"Sesi perangkat tidak valid");
+  if(row.subject!=="admin"){
+   if(d.binding!=="github_app")throw new ApiError(401,"Token perangkat lama tidak lagi dipakai. Hubungkan GitHub App lalu buat token XyDesk baru.");
+   const grant=await (await import("./github-app")).installationToken(row.subject,d.repo);
+   return {...grant,repo:d.repo,subject:row.subject,kind:"device",deviceId:row.id};
+  }
+  if(typeof d.accessToken!=="string")throw new ApiError(401,"Sesi perangkat tidak valid");
   return {token:d.accessToken,repo:d.repo,subject:row.subject,kind:"device",deviceId:row.id};
  }
  const t=await getToken({req,secret:process.env.NEXTAUTH_SECRET});
  if(t?.authKind==="admin"&&process.env.ADMIN_CREDENTIAL_VERSION&&t.credVersion===process.env.ADMIN_CREDENTIAL_VERSION&&process.env.ADMIN_GITHUB_TOKEN)return {kind:"admin",subject:"admin",token:process.env.ADMIN_GITHUB_TOKEN,repo:await selected("admin",process.env.ADMIN_REPO||"xykal/XyRDP")};
- if(t?.authKind==="github"&&typeof t.accessToken==="string"&&typeof t.login==="string"&&/^[a-zA-Z0-9-]+$/.test(t.login))return {kind:"user",token:t.accessToken,repo:await selected("github:"+t.githubId,t.login+"/XyRDP"),subject:"github:"+t.githubId};
+ if(t?.authKind==="github"&&typeof t.githubId==="string"&&/^\d+$/.test(t.githubId)&&typeof t.login==="string"){
+  const subject="github:"+t.githubId;const mapping=await db().prepare("SELECT repo FROM repositories WHERE subject=?").bind(subject).first<{repo:string}>();
+  if(!mapping)throw new ApiError(409,"Login berhasil. Install GitHub App dan pilih repository terlebih dahulu.");
+  const grant=await (await import("./github-app")).installationToken(subject,mapping.repo);return {...grant,kind:"user",repo:mapping.repo,subject};
+ }
  throw new ApiError(401,"Silakan masuk kembali");
 }
 export async function github<T=Record<string,unknown>>(token:string,path:string,method="GET",data?:unknown):Promise<T>{

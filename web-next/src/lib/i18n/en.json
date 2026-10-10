@@ -328,5 +328,15 @@
   "Hubungkan repository": "Connect repository",
   "Terlalu banyak perubahan pengaturan. Tunggu satu menit.": "Too many settings changes. Wait one minute.",
   "Terlalu banyak permintaan izin. Tunggu beberapa menit.": "Too many authorization requests. Wait a few minutes.",
-  "Terlalu banyak perubahan repository. Tunggu satu menit.": "Too many repository changes. Wait one minute."
+  "Terlalu banyak perubahan repository. Tunggu satu menit.": "Too many repository changes. Wait one minute.",
+  "Total pengguna": "Total users",
+  "Online sekarang": "Online now",
+  "Bagian dari komunitas RdpFree": "Part of the RdpFree community",
+  "Statistik belum tersedia.": "Statistics are unavailable.",
+  "Akun GitHub unik yang tercatat; online = aktif di dashboard dalam 5 menit terakhir.": "Recorded unique GitHub accounts; online = active in the dashboard within the last 5 minutes.",
+  "Profil komunitas & statistik": "Community profile & statistics",
+  "Kehadiran dihitung secara agregat saat dashboard terbuka. Online berarti aktif dalam 5 menit terakhir, bukan sesi RDP.": "Presence is counted in aggregate while the dashboard is open. Online means active within the last 5 minutes, not an RDP session.",
+  "Izinkan foto dan nama GitHub saya tampil di homepage. Opsional; bisa dimatikan kapan saja.": "Allow my GitHub photo and name to appear on the homepage. Optional; turn it off at any time.",
+  "Pilihan ini tidak memengaruhi akses RDP. Profil disembunyikan secara default; perubahan dapat memerlukan hingga satu menit untuk tampil.": "This does not affect RDP access. Profiles are hidden by default; changes may take up to one minute to appear.",
+  "Pilihan profil tersimpan.": "Profile preference saved."
 }

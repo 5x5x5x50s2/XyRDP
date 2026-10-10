@@ -27,12 +27,12 @@ export const authOptions: NextAuthOptions = {
  pages: {signIn: "/login"},
  callbacks: {
   async jwt({token,account,profile,user}) {
-   if(account?.provider === "github") {delete token.accessToken;token.login=(profile as {login?:string})?.login;token.githubId=account.providerAccountId;token.authKind="github";delete token.credVersion;}
+   if(account?.provider === "github") {const avatar=(profile as {avatar_url?:string})?.avatar_url;token.picture=typeof avatar==="string"&&/^https:\/\/avatars\.githubusercontent\.com\//.test(avatar)?avatar:null;delete token.accessToken;token.login=(profile as {login?:string})?.login;token.githubId=account.providerAccountId;token.authKind="github";delete token.credVersion;}
    if(account?.provider === "credentials"&&user?.id==="rdpfree-admin"){token.authKind="admin";token.credVersion=process.env.ADMIN_CREDENTIAL_VERSION;token.login="Admin";delete token.accessToken;delete token.githubId;}
    if(token.authKind==="github")delete token.accessToken;
    token.role=token.authKind==="admin"&&!!process.env.ADMIN_CREDENTIAL_VERSION&&token.credVersion===process.env.ADMIN_CREDENTIAL_VERSION?"admin":"user";
    return token;
   },
-  async session({session,token}) {if(session.user)session.user.name=String(token.login||session.user.name||"");session.role=token.role==="admin"?"admin":"user";return session;}
+  async session({session,token}) {if(session.user)session.user.name=String(token.login||session.user.name||"");if(session.user){session.user.image=typeof token.picture==="string"&&/^https:\/\/avatars\.githubusercontent\.com\//.test(token.picture)?token.picture:null;}session.role=token.role==="admin"?"admin":"user";return session;}
  }
 };

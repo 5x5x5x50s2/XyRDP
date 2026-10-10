@@ -1,3 +1,4 @@
+import {validateJsonKeys,redactSecrets} from "./json-input";
 import {NextRequest} from "next/server";
 import {getToken,decode} from "next-auth/jwt";
 import {db} from "./db";
@@ -8,7 +9,7 @@ export class ApiError extends Error {constructor(public status:number,message:st
 export const hash=(s:string)=>createHash("sha256").update(s).digest("hex");
 export const reply=(data:unknown,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"private, no-store"}});
 export function origin(req:NextRequest){if(req.headers.get("origin")!=="https://rdpfree.projectkal.my.id")throw new ApiError(403,"Origin tidak diizinkan");}
-export async function body(req:NextRequest){const raw=await req.text();if(raw.length>16384)throw new ApiError(413,"Payload terlalu besar");try{const d=JSON.parse(raw);if(!d||typeof d!=="object"||Array.isArray(d))throw Error();return d as Record<string,unknown>;}catch{throw new ApiError(400,"JSON tidak valid")}}
+export async function body(req:NextRequest){const raw=await req.text();if(raw.length>16384)throw new ApiError(413,"Payload terlalu besar");try{const d=JSON.parse(raw);if(!d||typeof d!=="object"||Array.isArray(d))throw Error();validateJsonKeys(d);return d as Record<string,unknown>;}catch{throw new ApiError(400,"JSON tidak valid")}}
 async function selected(subject:string,fallback:string){const r=await db().prepare("SELECT repo FROM repositories WHERE subject=?").bind(subject).first<{repo:string}>();return r?.repo||fallback;}
 export async function context(req:NextRequest,browserOnly=false):Promise<Context>{
  const authorization=req.headers.get("authorization");
@@ -40,7 +41,7 @@ export async function github<T=Record<string,unknown>>(token:string,path:string,
  const r=await fetch("https://api.github.com"+path,{method,headers:{Authorization:"Bearer "+token,"User-Agent":"RdpFree","Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28",...(data?{"Content-Type":"application/json"}:{})},body:data?JSON.stringify(data):undefined,cache:"no-store",signal:AbortSignal.timeout(25000)});
  if(!r.ok){
   let message="GitHub menolak permintaan";try{const d=await r.json();if(typeof d.message==="string")message=d.message.slice(0,350)}catch{}
-  message=message.replace(/(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)/g,"[redacted]");
+  message=redactSecrets(message);
   const lower=message.toLowerCase();
   const code=/suspend|account.*(restrict|block)|account.*flagged/.test(lower)?"account_restricted":r.status===401?"github_token_invalid":r.headers.get("x-ratelimit-remaining")==="0"||/rate limit|secondary rate|abuse detection/.test(lower)?"github_rate_limit":r.status===403?"github_permission_denied":r.status===404?"github_not_found":"github_error";
   const diagnostic:GitHubDiagnostic={provider:"github",status:r.status,endpoint:path.split("?")[0],code,message,request_id:r.headers.get("x-github-request-id"),retry_after:r.headers.get("retry-after"),rate_reset:r.headers.get("x-ratelimit-reset")};
@@ -49,4 +50,4 @@ export async function github<T=Record<string,unknown>>(token:string,path:string,
  return (r.status===204?{}:await r.json()) as T;
 }
 export async function gh<T=Record<string,unknown>>(ctx:Context,path:string,method="GET",data?:unknown):Promise<T>{return github<T>(ctx.token,"/repos/"+ctx.repo+path,method,data);}
-export async function guarded(fn:()=>Promise<Response>){try{return await fn()}catch(e){return reply({error:e instanceof ApiError?e.message:"Layanan belum dapat memproses permintaan. Coba lagi.",...(e instanceof ApiError&&e.diagnostic?{diagnostic:e.diagnostic}:{})},e instanceof ApiError?e.status:503)}}
+export async function guarded(fn:()=>Promise<Response>){try{return await fn()}catch(e){return reply({error:e instanceof ApiError?redactSecrets(e.message):"Layanan belum dapat memproses permintaan. Coba lagi.",...(e instanceof ApiError&&e.diagnostic?{diagnostic:e.diagnostic}:{})},e instanceof ApiError?e.status:503)}}

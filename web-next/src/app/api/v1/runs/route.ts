@@ -1,0 +1,16 @@
+import {NextRequest} from "next/server";
+import {context,guarded,reply,origin,body,gh,ApiError} from "@/lib/api";
+import {runs,active,validate,loadSettings} from "@/lib/workflow";
+import {db,rateLimit} from "@/lib/db";
+export async function GET(req:NextRequest){return guarded(async()=>{const c=await context(req);return reply({repo:c.repo,runs:await runs(c)})})}
+export async function POST(req:NextRequest){return guarded(async()=>{const c=await context(req);if(c.kind!=="device")origin(req);
+ const data=await body(req);if(data.confirm!==true)throw new ApiError(400,"Konfirmasi memulai workflow diperlukan");
+ if(!await rateLimit("dispatch:"+c.repo,2,300))throw new ApiError(429,"Maksimum 2 percobaan run per 5 menit");
+ const now=Date.now();const lock=await db().prepare("INSERT INTO locks(key,expires) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET expires=excluded.expires WHERE locks.expires<=? RETURNING key").bind("run:"+c.repo,now+90000,now).first();if(!lock)throw new ApiError(409,"Permintaan run lain sedang diproses");
+ // Lock expires after 90 seconds even if the dispatch response is lost, to prevent double starts.
+ if((await runs(c)).some(active))throw new ApiError(409,"Masih ada run aktif atau antre");
+ const inputs=await loadSettings(c.repo);const valid=validate(inputs);
+ const repo=await gh<{default_branch:string;permissions?:{push?:boolean}}>(c,"");if(!repo.permissions?.push)throw new ApiError(403,"Akses write ke repository diperlukan");
+ const secrets=await gh<{secrets:{name:string}[]}>(c,"/actions/secrets?per_page=100");const names=secrets.secrets.map(s=>s.name);const required=["RDP_PASSWORD",...(valid.akses!=="tunnel"?["TAILSCALE_AUTH_KEY"]:[]),...(valid.tunnel_provider==="ngrok"?["NGROK_AUTHTOKEN"]:[])];const missing=required.filter(k=>!names.includes(k));if(missing.length)throw new ApiError(400,"Secret belum lengkap: "+missing.join(", "));
+ await gh(c,"/actions/workflows/rdp-6h.yml/dispatches","POST",{ref:repo.default_branch,inputs:valid});return reply({ok:true,repo:c.repo,inputs:valid,message:"Workflow diterima GitHub. Status akan muncul setelah antre."},202);
+ })}

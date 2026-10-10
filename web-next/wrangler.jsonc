@@ -17,5 +17,12 @@
     }
   ],
   "workers_dev": false,
-  "preview_urls": false
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rdpfree-state",
+      "database_id": "5c523469-8fad-46cd-a9f6-53b202749c49"
+    }
+  ]
 }

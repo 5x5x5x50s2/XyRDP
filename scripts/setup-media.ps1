@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $root='C:\ProgramData\RdpFree'
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $mic=$env:MICROPHONE -ne 'tidak'
-$wall=$env:WALLPAPER -ne 'tidak'
+$wall=$true
 $policy='Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
 Set-Reg $policy 'fDisableAudio' 0 'DWord' | Out-Null
 Set-Reg $policy 'fDisableAudioCapture' ([int](-not $mic)) 'DWord' | Out-Null
@@ -17,9 +17,7 @@ if ($mic) { Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\Cur
 $wallStatus='disabled'
 if ($wall) {
   $target=Join-Path $root 'wallpaper.jpg'
-  Copy-Item (Join-Path (Get-Workspace) 'assets\rdpfree-wallpaper.jpg') $target -Force
-  # Use the already validated custom image from setup-extras if one was requested.
-  if ($env:WALLPAPER_URL) { $custom=Get-ChildItem 'C:\XyRDP\wallpaper.*' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($custom) { $target=Join-Path $root $custom.Name;Copy-Item $custom.FullName $target -Force } }
+  Copy-Item (Join-Path (Get-Workspace) 'assets\wallpaper.jpg') $target -Force
   $apply=Join-Path $root 'Apply-Desktop.ps1'
   $script=@'
 $root='C:\ProgramData\RdpFree'
@@ -30,6 +28,7 @@ $desk='HKCU:\Control Panel\Desktop'
 Set-ItemProperty $desk -Name Wallpaper -Value $image
 Set-ItemProperty $desk -Name WallpaperStyle -Value '10'
 Set-ItemProperty $desk -Name TileWallpaper -Value '0'
+
 Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public class RdpFreeDesktop { [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] public static extern bool SystemParametersInfo(int a,int b,string c,int d); }'
 [RdpFreeDesktop]::SystemParametersInfo(20,0,$image,3) | Out-Null
 '@
@@ -39,11 +38,12 @@ Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public class Rdp
   Set-RegBoth 'Control Panel\Desktop' 'WallpaperStyle' '10' 'String' | Out-Null
   Set-RegBoth 'Control Panel\Desktop' 'TileWallpaper' '0' 'String' | Out-Null
   $active='Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Active Setup\Installed Components\{86C45F69-A012-4D8E-BC70-4A3B4A597652}'
-  Set-Reg $active 'Version' '2,0,0,0' 'String' | Out-Null
+  Set-Reg $active 'Version' '3,0,0,0' 'String' | Out-Null
   Set-Reg $active 'StubPath' "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$apply`"" 'String' | Out-Null
   Set-RegBoth 'Software\Microsoft\Windows\CurrentVersion\Run' 'RdpFreeWallpaper' "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$apply`"" 'String' | Out-Null
   Close-DefaultHive
-  $wallStatus='configured_for_user_logon'
+  if ((Get-ItemPropertyValue -Path $policy -Name 'fNoRemoteDesktopWallpaper') -ne 0) { throw 'Kebijakan Windows masih memblokir wallpaper Remote Desktop' }
+  $wallStatus='xyverse_configured_for_user_logon'
 }
 Update-Status @{media=@{wallpaper=$wallStatus;microphone=$(if ($mic) {'rdp_capture_enabled'} else {'disabled'});audio_output='rdp_playback_enabled';verification='Login ulang, aktifkan mic di XyDesk dan izinkan Android. Uji Windows Settings > Sound > Input; kebijakan aktif bukan bukti capture end-to-end.'}} | Out-Null
 Log 'Wallpaper profil dan audio capture disiapkan; pengujian suara tetap memerlukan klien tersambung.'

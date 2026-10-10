@@ -1,5 +1,5 @@
-# rdpfree-workflow-schema: 2
-# Self-hosted must be a dedicated disposable Windows machine. Never attach an untrusted public runner.
+# rdpfree-workflow-schema: 3
+# XyVerse wallpaper is automatic, using the original repository asset.
 name: RdpFree — RDP 6 Jam
 'on':
   workflow_dispatch:
@@ -108,11 +108,6 @@ name: RdpFree — RDP 6 Jam
         options:
         - software
         - tidak
-      wallpaper_url:
-        description: (OPSIONAL) URL wallpaper sendiri (jpg/png/bmp). Kosong = pakai assets/wallpaper*.jpg
-        required: false
-        default: ''
-        type: string
       runner:
         description: GitHub untuk pengujian software; games hanya di mesin Windows self-hosted khusus milikmu
         required: false
@@ -121,14 +116,6 @@ name: RdpFree — RDP 6 Jam
         options:
         - github
         - self-hosted
-      wallpaper:
-        description: Tampilkan wallpaper desktop melalui sesi pengguna
-        required: false
-        default: ya
-        type: choice
-        options:
-        - ya
-        - tidak
       microphone:
         description: Izinkan input mikrofon melalui kanal RDP (klien tetap meminta izin Android)
         required: false
@@ -180,7 +167,7 @@ jobs:
       XYDESK: ${{ inputs.xydesk }}
       EXTRAS: ${{ inputs.ekstra }}
       GRAFIS: ${{ inputs.grafis }}
-      WALLPAPER_URL: ${{ inputs.wallpaper_url }}
+      WALLPAPER_URL: ''
       RDP_USER: ${{ inputs.rdp_user || 'xyadmin' }}
       RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
       TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
@@ -194,7 +181,6 @@ jobs:
       GTA_SA_URL: ${{ inputs.gta_sa_url }}
       GTA_SA_URL_SECRET: ${{ secrets.GTA_SA_URL }}
       RDPFREE_RUNNER: ${{ inputs.runner }}
-      WALLPAPER: ${{ inputs.wallpaper }}
       MICROPHONE: ${{ inputs.microphone }}
       ROBLOX: ${{ inputs.roblox }}
       MINECRAFT_JAVA: ${{ inputs.minecraft_java }}
@@ -217,7 +203,7 @@ jobs:
         Write-Host "[RdpFree] Catatan: storage_boost=$env:STORAGE_BOOST samp=$env:SAMP samp_extra=$env:SAMP_EXTRA"
 
         '
-    - name:  Boost Storage (225GB -> lega 120GB+ free)
+    - name: Boost Storage (225GB -> lega 120GB+ free)
       if: ${{ inputs.storage_boost != 'tidak' }}
       timeout-minutes: 15
       continue-on-error: true
@@ -249,7 +235,7 @@ jobs:
       continue-on-error: true
       shell: pwsh
       run: ./scripts/setup-extras.ps1
-    - name:  Setup GTA SAMP (SA-MP + DirectX + VC++)
+    - name: Setup GTA SAMP (SA-MP + DirectX + VC++)
       if: ${{ inputs.runner == 'self-hosted' && inputs.samp == 'ya' }}
       timeout-minutes: 40
       continue-on-error: true

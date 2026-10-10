@@ -70,3 +70,11 @@ Errors are JSON `{error: "message"}` with `Cache-Control: private, no-store`.
 - 502/503 GitHub/network/service error; show message and preserve the user's screen.
 
 Never automatically retry POST `/runs` after an ambiguous network error. Refresh `/status`/`runs` first and require a new explicit user action. No wildcard browser CORS: native HTTPS clients do not need CORS.
+
+## Repository onboarding update
+
+`GET /setup` exposes selected repository readiness. When no repository/workflow exists, `/status` returns HTTP 200 with `phase: "setup_required"`, `active: false`, null run/connection, and a `setup` object. Direct the user to `https://rdpfree.projectkal.my.id/dashboard/setup`; do not start a workflow in this state.
+
+Browser-only `POST /setup` actions: `create` (`name`, `private`, `confirm:true`), `connect` (`name`), `finish`. `finish` is independently retryable while GitHub template generation propagates. The selected repo is persisted server-side and no longer assumes `/XyRDP`. Existing native tokens retain their originally granted repo; token issuance now requires a ready repository.
+
+Browser-only POST `/secrets` and POST/DELETE `/credentials` do not accept bearer device tokens. Native clients never receive the dashboard's stored password copy; prompt locally for RDP_PASSWORD. Website password controls support show/hide/copy and optional encrypted storage.

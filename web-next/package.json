@@ -12,10 +12,12 @@
     "preview": "opennextjs-cloudflare preview"
   },
   "dependencies": {
+    "blakejs": "^1.2.1",
     "next": "^15.5.27",
     "next-auth": "^4.24.15",
     "react": "19.2",
     "react-dom": "19.2",
+    "tweetnacl": "^1.0.3",
     "wrangler": "^4.149.0"
   },
   "devDependencies": {

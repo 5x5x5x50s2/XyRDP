@@ -144,7 +144,7 @@ $status = [ordered]@{
   run_number     = $env:GITHUB_RUN_NUMBER
   run_url        = "https://github.com/$($env:GITHUB_REPOSITORY)/actions/runs/$($env:GITHUB_RUN_ID)"
   mode           = 'bersih+win10'
-  akses          = @{ mode = if ($env:AKSES) { $env:AKSES } else { 'tunnel' }; tunnel = @{ status = 'pending' }; tailscale = @{ status = 'pending' } }
+  akses          = @{ mode = 'tailscale'; tailscale = @{ status = 'pending' } }
 }
 $outDir = Join-Path (Get-Workspace) 'out'
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null

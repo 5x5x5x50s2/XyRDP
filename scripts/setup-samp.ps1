@@ -513,7 +513,7 @@ if ($gtaInstalled -or $sampInstalled) {
 $freeAfter = -1
 try { $freeAfter = [math]::Round((Get-PSDrive C).Free/1GB,1); $dFree2 = ""; try { $dFree2 = " D:$([math]::Round((Get-PSDrive D).Free/1GB,1))GB" } catch {}; Log "  Free space sekarang: C:${freeAfter}GB${dFree2} (GTA ~4GB + SAMP 15MB)" } catch {}
 
-if ($gtaInstalled -and $sampInstalled) { $statusSamp.status='ok'; $statusSamp.note='GTA SA + SA-MP siap main! Buka samp.exe / shortcut GTA SAMP. Setting grafis LOW + 800x600 Windowed untuk performa terbaik di RDP (llvmpipe).' }
+if ($gtaInstalled -and $sampInstalled) { $statusSamp.status='installed_unverified'; $statusSamp.note='Berkas GTA SA dan SA-MP ditemukan. Uji launcher dan koneksi server di sesi Windows; keberhasilan gameplay belum diverifikasi.' }
 elseif ($sampInstalled -and -not $gtaInstalled) { $statusSamp.status='partial'; $statusSamp.note='SA-MP terpasang tapi GTA SA belum — upload GTA ke ' + $gameDir + ' lalu jalankan samp.exe. Lihat CARA-PASANG-GTA.txt di Desktop.' }
 elseif ($gtaInstalled -and -not $sampInstalled) { $statusSamp.status='partial'; $statusSamp.note='GTA SA ada tapi SA-MP gagal terpasang — download manual dari sa-mp.com di dalam RDP & install ke folder GTA.' }
 else { $statusSamp.status='no-gta'; $statusSamp.note='GTA & SA-MP belum terpasang (GTA_SA_URL kosong & download SAMP gagal). Ikuti panduan di CARA-PASANG-GTA.txt. Storage sudah lega.' }

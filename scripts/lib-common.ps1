@@ -1,6 +1,6 @@
 # ============================================================================
 #  lib-common.ps1 — helper bersama untuk semua script XyRDP (v2: Win10-style,
-#  tanpa Tailscale). Dipakai dengan cara di-dot-source:
+#  akses privat Tailscale). Dipakai dengan cara di-dot-source:
 #
 #      $XyTag = 'XyRDP:akses'
 #      . "$PSScriptRoot/lib-common.ps1"
@@ -431,7 +431,6 @@ function Get-GhAssetUrl([string]$Repo, [string]$NameRegex) {
 
 # fallback URL keras (kalau API tidak bisa dipakai sama sekali)
 $script:XyFallbackUrls = @{
-  'ekzhang/bore.zip'      = 'https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-x86_64-pc-windows-msvc.zip'
 }
 
 Log 'lib-common dimuat'

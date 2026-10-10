@@ -1,0 +1,6 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {defaults,choices,validate,migrateSettings} from '../src/lib/workflow';
+test('private Tailscale defaults and both Minecraft editions',()=>{assert.equal(defaults.akses,'tailscale');assert.deepEqual(choices.akses,['tailscale']);assert(!('tunnel_provider' in defaults));assert.equal(defaults.minecraft_java,'tidak');assert.equal(defaults.minecraft_bedrock,'tidak');assert.equal(validate({...defaults,microphone:'tidak'}).microphone,'tidak');});
+test('legacy settings migrate without enabling games on hosted runners',()=>{const m=migrateSettings({akses:'semua',tunnel_provider:'ngrok',samp:'ya',hostname:'old-host'});assert.equal(m.akses,'tailscale');assert.equal(m.runner,'github');assert.equal(m.samp,'tidak');assert.equal(m.hostname,'old-host');assert(!('tunnel_provider' in m));});
+test('explicit self-hosted choice survives migration, public tunnels rejected on writes',()=>{assert.equal(migrateSettings({...defaults,runner:'self-hosted',samp:'ya'}).samp,'ya');assert.throws(()=>validate({akses:'tunnel'}));assert.throws(()=>validate({tunnel_provider:'ngrok'}));});

@@ -142,7 +142,7 @@ Gate kita **tidak tergantung** script iklan eksternal untuk unlock:
 - Unlock **wajib** lewat `POST /api/ad/verify` + cookie `ad_verified` + `localStorage` — server yang validasi, bukan client. Jadi walau uBlock/APK AdGuard, user **tetap harus** 15s di modal internal kita. Tidak bisa bypass inspect-element (server tolak `POST /start` dengan `402 need_ad`).
 
 Fallback internal ad yang tampil kalau block:
-- `adPreviewText = "⚠️ AdBlock terdeteksi — tetap harus nonton 15s (internal ad)"` → tampil promo XyDesk + sponsor lokal (bisa isi dengan banner affiliate kamu). Countdown tetap jalan, reward tetap unlock. Jadi AdBlock justru bikin user lihat promo kamu, bukan kabur.
+- `adPreviewText = " AdBlock terdeteksi — tetap harus nonton 15s (internal ad)"` → tampil promo XyDesk + sponsor lokal (bisa isi dengan banner affiliate kamu). Countdown tetap jalan, reward tetap unlock. Jadi AdBlock justru bikin user lihat promo kamu, bukan kabur.
 
 ### Rekomendasi Jaringan Iklan (cuan lumayan, 2026)
 

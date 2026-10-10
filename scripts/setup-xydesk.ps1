@@ -119,7 +119,7 @@ function Add-FwRule([string]$Name, [string]$Proto, [string]$Ports) {
   try {
     Remove-NetFirewallRule -DisplayName $Name -ErrorAction SilentlyContinue | Out-Null
     New-NetFirewallRule -DisplayName $Name -Direction Inbound -Action Allow `
-      -Protocol $Proto -LocalPort $Ports -Profile Any -ErrorAction Stop | Out-Null
+      -Protocol $Proto -LocalPort $Ports -RemoteAddress '100.64.0.0/10' -Profile Any -ErrorAction Stop | Out-Null
     return $true
   } catch { Log "  firewall '$Name' gagal: $($_.Exception.Message)"; return $false }
 }
@@ -144,16 +144,8 @@ $svcTxt = if ($svcOk.Count -eq 2) { 'ok' } elseif ($svcOk.Count -eq 1) { "sebagi
 Log "  layanan: $svcTxt"
 $rdpAlive6 = Probe-Rdp 'setelah start layanan'
 
-# ---------- 6. Jalur akses yang dipakai dari HP ----------
-$st = Read-Status
-$addr = ''
-if ($st -and $st.akses -and $st.akses.tunnel) { $addr = "$($st.akses.tunnel.address)" }
-if ($addr) {
-  Log "  dari HP (XyDesk Remote -> Koneksi RDP): Host/Port = $addr, user $(if ($env:RDP_USER) { $env:RDP_USER } else { 'xyadmin' })"
-} else {
-  Log '  tunnel belum siap di step ini (setup akses jalan setelah ini) — alamat host:port menyusul di dashboard'
-}
-Log '  catatan: audio bridge QUIC (UDP 4433) hanya jalan kalau HP reach UDP langsung; lewat tunnel TCP klien otomatis fallback ke audio RDP (suara tetap ada)'
+# ---------- 6. Akses privat ----------
+Log 'Hubungkan HP dan Windows ke tailnet yang sama. RDP playback dan audio capture memakai kanal RDP; bridge UDP memerlukan host tambahan.'
 
 # ---------- 6b. Verifikasi RDP masih hidup setelah tweak ----------
 # CATATAN PENTING (validasi 2026-10-03): setelah tweak, listener 3389 di runner

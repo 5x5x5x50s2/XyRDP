@@ -51,7 +51,7 @@ git merge upstream/main
 git push origin main
 ```
 
-Setelah sync, boost tidak akan stuck lagi (sebelumnya `Get-ChildItem -Recurse` di `C:\Android` bikin hang 10 menit → sekarang FAST `3m25s` terbukti run #86). Cek di `Actions` → log `⚡ Boost Storage`.
+Setelah sync, boost tidak akan stuck lagi (sebelumnya `Get-ChildItem -Recurse` di `C:\Android` bikin hang 10 menit → sekarang FAST `3m25s` terbukti run #86). Cek di `Actions` → log ` Boost Storage`.
 
 ## 4. Wallpaper hitam & Mikrofon — FIX `1c0b668`
 
@@ -74,7 +74,7 @@ Setelah sync, boost tidak akan stuck lagi (sebelumnya `Get-ChildItem -Recurse` d
 **Cara A paling gampang — Otomatis via `GTA_SA_URL` (1 klik):**
 1. Upload ZIP GTA SA portable milikmu (isi `gta_sa.exe` + `models`/`data` ~2-4GB) ke **Google Drive** → Share → `Anyone with the link` → Copy link `https://drive.google.com/file/d/1AbC.../view` (Dropbox `?dl=1` / MediaFire juga bisa)
 2. Repo fork → `Settings` → `Secrets and variables` → `Actions` → `New secret` → Name `GTA_SA_URL` → Value paste link (script auto jadi `https://drive.google.com/uc?export=download&id=...` + handle `confirm token`)
-3. Dashboard / Actions → `RdpFree — RDP 6 Jam` → `Run workflow` → `samp: ya`, `samp_extra: ya` → Start. Log `🎮 Setup GTA SAMP` akan `Download → ekstrak ke D:\Games\GTA San Andreas → SA-MP install → shortcut GTA SAMP.lnk di Desktop`.
+3. Dashboard / Actions → `RdpFree — RDP 6 Jam` → `Run workflow` → `samp: ya`, `samp_extra: ya` → Start. Log ` Setup GTA SAMP` akan `Download → ekstrak ke D:\Games\GTA San Andreas → SA-MP install → shortcut GTA SAMP.lnk di Desktop`.
 
 **Cara B — Manual via RDP (kalau gak pakai link):**
 1. Start tanpa `GTA_SA_URL` → connect XyDesk/mstsc

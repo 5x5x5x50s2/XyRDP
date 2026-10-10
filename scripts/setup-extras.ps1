@@ -214,7 +214,7 @@ if ($cfg.translucent) {
     Set-RegBoth 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' 'EnableTransparency' 1 'DWord' | Out-Null
     try { Set-RegBoth 'Software\Microsoft\Windows\DWM' 'EnableAeroPeek' 1 'DWord' | Out-Null } catch {}
     if ($ttbDir -like 'C:\Tools*') {
-      $json = "{ \"desktop_appearance\": { \"accent\": \"$mode\", \"color\": \"#00000000\" }, \"hide_tray\": false, \"disable_saving\": false, \"dynamic\": { \"enabled\": true } }"
+      $json = @{ desktop_appearance=@{accent=$mode;color="#00000000"};hide_tray=$false;disable_saving=$false;dynamic=@{enabled=$true} } | ConvertTo-Json -Depth 4
       try { Set-Content -Path (Join-Path $ttbDir 'settings.json') -Value $json -Encoding utf8 -ErrorAction Stop; Log "  settings.json -> mode=$mode (hous translucent fix: EnableTransparency + AeroPeek)" }
       catch { Log "  settings.json gagal ditulis: $($_.Exception.Message)" }
     } else { Log "  (build MSIX/Store — mode '$mode' diatur via tray icon; translucency native tetap aktif)" }

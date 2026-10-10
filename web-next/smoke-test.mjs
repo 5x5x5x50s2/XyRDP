@@ -1,5 +1,4 @@
-import fs from 'node:fs';
-const base='https://rdpfree-next.dikanjut.workers.dev';
+const base='https://rdpfree.projectkal.my.id';
 const r=await fetch(base+'/api/auth/csrf');const {csrfToken}=await r.json();
 const cookie=r.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ');
 const s=await fetch(base+'/api/auth/signin/github',{method:'POST',headers:{cookie,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrfToken,callbackUrl:base+'/dashboard',json:'true'}),redirect:'manual'});

@@ -1,0 +1,2 @@
+import Panel from "@/app/dashboard/panel";
+export default function Admin(){return <><span className="eyebrow">Admin / Overview</span><h1>Dashboard admin.</h1><p>Akses pemilik terverifikasi. Repository dan aktivitas dapat diperiksa di bawah.</p><Panel view="home"/><section className="card"><h2>Status migrasi</h2><p>Login admin, ringkasan repository, Folder, dan Logs tersedia. Kontrol start/stop RDP, pengelolaan secret, serta pengaturan admin lengkap belum dipindahkan.</p></section><h2>Workflow terbaru</h2><Panel view="logs"/></>}

@@ -6,7 +6,20 @@ export const authOptions: NextAuthOptions = {
  session: {strategy: "jwt", maxAge: 30*24*60*60},
  pages: {signIn: "/login"},
  callbacks: {
-  async jwt({token,account,profile}) { if(account) {token.accessToken=account.access_token;token.login=(profile as {login?:string})?.login;} return token; },
-  async session({session,token}) { if(session.user) session.user.name=String(token.login || session.user.name || ""); return session; }
+  async jwt({token,account,profile}) {
+   if(account?.provider === "github") {
+    token.accessToken=account.access_token;
+    token.login=(profile as {login?:string})?.login;
+    token.githubId=account.providerAccountId;
+   }
+   const allowed=(process.env.ADMIN_GITHUB_IDS || "").split(",").map(s=>s.trim()).filter(Boolean);
+   token.role=typeof token.githubId === "string" && allowed.includes(token.githubId)?"admin":"user";
+   return token;
+  },
+  async session({session,token}) {
+   if(session.user) session.user.name=String(token.login || session.user.name || "");
+   session.role=token.role === "admin"?"admin":"user";
+   return session;
+  }
  }
 };

@@ -21,6 +21,6 @@ test('identity login cannot reuse legacy OAuth repo access; app grants are repo-
  await assert.rejects(()=>installationToken('github:7','other/Secret'),e=>e instanceof ApiError&&e.status===403);
  await assert.rejects(()=>verifyInstallation(44,'7'),e=>e instanceof ApiError&&e.status===403);
  const updated=await authOptions.callbacks!.jwt!({token:{authKind:'github',accessToken:'legacy-oauth-token'},user:{id:'7'},account:null});assert(!('accessToken' in updated));
- assert.equal(manifest().request_oauth_on_install,false);assert(!('administration' in manifest().default_permissions));assert.equal(manifest().default_permissions.contents,'read');
+ assert.equal(manifest().request_oauth_on_install,false);assert.equal(manifest().default_permissions.administration,'write');assert(!('administration' in APP_PERMISSIONS));assert.equal(manifest().default_permissions.contents,'read');
  }finally{globalThis.fetch=oldFetch;process.env.NEXTAUTH_SECRET=oldSecret;process.env.NEXTAUTH_URL=oldURL}
 });

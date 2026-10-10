@@ -92,3 +92,12 @@ Only `tailscale` is accepted for `akses`; `tunnel_provider` is removed. Persiste
 Status optionally includes `games`, `media`, `game_environment` only for the matching active, unexpired run. Connection always uses Tailscale IP + port 3389. Media reports configuration, not verified end-to-end functionality; game status reports preparation, not playability. No API for launching/stopping desktop game processes exists yet. Settings affect the next workflow run, not the active desktop.
 
 Dispatch checks workflow schema 2 and returns 409 for old source. Repository owners must update workflow, scripts and assets manually; Contents read permission is intentionally insufficient to do it silently. No password/Base64 credential artifacts or logs are produced by the new workflow.
+
+
+## Onboarding dan hapus repository (2026-10-10)
+
+Urutan pengguna: login identitas → buat repo dari template → izinkan GitHub App mengakses repo tersebut → pilih repo → isi secrets → mulai sesi. Tombol “Repo saya sudah dibuat” hanya navigasi panduan, bukan verifikasi server. Pemilihan repo memverifikasi workflow melalui GitHub.
+
+Fitur hapus tersedia di `/dashboard/connection` untuk sesi browser pemilik repository akun pribadi, bukan login admin layanan atau token XyDesk. Konfirmasi server berlaku 5 menit, terikat subject + repo + ID GitHub, sekali pakai; pengguna wajib mengetik nama lengkap dan menyetujui dampaknya. Workflow aktif/antre memblokir hapus. Repo sumber layanan dilindungi. Setelah GitHub mengonfirmasi penghapusan, mapping, settings, vault repo dan semua token XyDesk pengguna dibersihkan; login/App installation tetap ada. Tidak ada repository nyata yang dihapus selama pengujian; tes destructive API menggunakan mock.
+
+**Perubahan izin:** keterangan lama “tidak meminta Administration” berlaku untuk versi sebelum fitur hapus. Manifest baru meminta Administration write selain izin sebelumnya. Untuk App yang sudah terdaftar, owner harus menambahkan Administration: Read and write di Permissions & events, lalu pemilik instalasi menyetujui pembaruannya. GitHub tidak menyediakan izin delete-only; Administration mencakup kewenangan pengelolaan repo lain juga. Gunakan Only select repositories. Token operasi biasa tetap hanya Contents/Metadata read, Actions/Secrets write; Administration hanya diminta pada token sementara yang dibatasi ke satu repo saat operasi hapus dan dicabut sesudahnya. Contents tetap read: fitur ini tidak menambah kemampuan menulis source.

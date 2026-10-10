@@ -8,7 +8,7 @@ Windows RDP melalui **Tailscale privat**, dengan dashboard Next.js/Cloudflare da
 
 1. Login identitas GitHub di `/login` (scope `read:user`). Login tidak memberikan akses repository.
 2. Pasang GitHub App secara terpisah di `/dashboard/connection`, pilih repository yang diizinkan. Owner layanan harus mendaftarkan App dahulu di halaman admin tersembunyi `/admin/github-app`.
-3. Buat repository dari template dengan nama pilihanmu. App hanya mendapat Contents/Metadata read, Actions/Secrets write: tidak dapat menulis atau membersihkan folder source. Template manual tetap menyalin folder web.
+3. Buat repository dari template dengan nama pilihanmu. Token operasi biasa hanya mendapat Contents/Metadata read, Actions/Secrets write. Manifest baru juga meminta Administration write untuk fitur hapus repo setelah konfirmasi pemilik; token hak hapus dibuat terpisah. App tetap tidak dapat menulis atau membersihkan folder source. Template manual tetap menyalin folder web.
 4. Isi `RDP_PASSWORD` dan `TAILSCALE_AUTH_KEY` lewat Setup. Hubungkan HP ke tailnet yang sama. Jangan membagikan auth key atau password.
 5. Atur sesi di Settings, jalankan dari Home. Password tidak dicetak, di-Base64, atau dijadikan artefak workflow. Reveal/copy tetap melalui vault dashboard yang terautentikasi.
 
@@ -45,3 +45,10 @@ Workflow baru bertanda `# rdpfree-workflow-schema: 2`. Dashboard menolak dispatc
 ## Validasi
 
 Lint, TypeScript, build OpenNext, unit tests dan browser mobile smoke tersedia/diuji. Skrip PowerShell diparse dengan PowerShell 7; parser bukan pengujian instalasi Windows. Tes UI game memakai mock API tanpa menyalakan runner atau game. Instalasi App nyata memerlukan persetujuan owner. Jangan menganggap hasil-hasil ini sebagai sertifikasi kompatibilitas game atau audio end-to-end.
+
+
+## Panduan repo dan hapus lewat dashboard
+
+Alur: buat repo dari template dahulu → konfirmasi “Repo saya sudah dibuat” → izinkan akses repository melalui GitHub App (Only select repositories) → pilih repo → isi secrets → mulai sesi. Install App berarti otorisasi, bukan membuat repo atau mengunduh aplikasi HP.
+
+Hapus repo tersedia di `/dashboard/connection`, khusus login GitHub pemilik repo pribadi. Ketik nama lengkap `owner/repo` dan setujui dampak penghapusan; workflow aktif/antre harus berhenti. Repo sumber layanan dilindungi dan token XyDesk tidak dapat menghapus. App yang sudah terdaftar perlu Administration: Read and write dan persetujuan pembaruan dari pemilik instalasi. Izin Administration lebih luas daripada delete-only; GitHub tidak menyediakan scope hapus khusus untuk installation token. Token biasa tetap tanpa Administration. Pengujian destructive menggunakan mock, bukan menghapus repo pengguna.

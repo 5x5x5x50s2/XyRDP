@@ -38,3 +38,8 @@ Production Next/OpenNext builds and lint pass. Live synthetic-session checks ver
 No real workflow was dispatched/stopped during the migration tests; this avoids consuming Actions minutes. Full human Turnstile login, a complete real RDP run, and an installed Android APK end-to-end session still need acceptance testing. Full raw logs and Actions secrets management remain on GitHub. This project does not guarantee GitHub account eligibility or prevent enforcement.
 
 Credit: KallAncrit.
+
+## Browser checks (2026-10-10)
+A headless Chromium session with a synthetic, short-lived admin cookie passed navigation and F5 on `/admin`, `/dashboard`, Settings, Folder, Logs and XyDesk devices. Custom duration dropdown, actual Settings save/reload, HttpOnly/Secure cookie properties, logout and post-logout protection passed. The admin email/password fields and live Turnstile script loaded; human challenge completion is still untested.
+
+Production dependency audit (`npm audit --omit=dev`) reports zero findings after pinning PostCSS 8.5.29 via override. The full development-tool audit still reports 9 high-severity dependency findings; these have not been blindly force-upgraded because doing so changes the adapter/lint dependency graph. Build tools should process trusted source only until those are reviewed.

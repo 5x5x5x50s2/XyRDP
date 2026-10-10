@@ -1,17 +1,19 @@
-import {Context,ApiError,gh} from "./api";
+import {Context,ApiError,gh,github,type GitHubDiagnostic} from "./api";
 import {db} from "./db";
 import {loadSettings} from "./workflow";
 export const TEMPLATE="xykal/XyRDP";
 export async function inspect(c:Context){
  const mapping=await db().prepare("SELECT state FROM repositories WHERE subject=? AND repo=?").bind(c.subject,c.repo).first<{state:string}>();
- const result={repo:c.repo,template:TEMPLATE,exists:false,workflow_exists:false,workflow_state:"",actions_enabled:false,can_write:false,missing:[] as string[],ready:false,importing:mapping?.state==="initializing",password_stored:false};
+ const result={repo:c.repo,template:TEMPLATE,exists:false,workflow_exists:false,workflow_state:"",actions_enabled:false,can_write:false,missing:[] as string[],ready:false,importing:mapping?.state==="initializing",password_stored:false,blocked:false,issues:[] as (GitHubDiagnostic&{stage:string})[]};
+ const fail=(e:unknown,stage:string)=>{if(e instanceof ApiError&&e.diagnostic){result.blocked=true;result.issues.push({...e.diagnostic,stage});return result}throw e};
+ try{await github(c.token,"/user")}catch(e){return fail(e,"account")}
  let repo:{permissions?:{push?:boolean;admin?:boolean}};
- try{repo=await gh(c,"");}catch(e){if(e instanceof ApiError&&e.status===404)return result;throw e}
+ try{repo=await gh(c,"");}catch(e){if(e instanceof ApiError&&e.status===404)return result;return fail(e,"repository")}
  result.exists=true;result.can_write=!!repo.permissions?.push;
- try{const w=await gh<{state:string}>(c,"/actions/workflows/rdp-6h.yml");result.workflow_exists=true;result.workflow_state=w.state;}catch(e){if(!(e instanceof ApiError&&e.status===404))throw e;}
+ try{const w=await gh<{state:string}>(c,"/actions/workflows/rdp-6h.yml");result.workflow_exists=true;result.workflow_state=w.state;}catch(e){if(!(e instanceof ApiError&&e.status===404))return fail(e,"workflow");}
  if(!result.can_write)return result;
- const permissions=await gh<{enabled:boolean}>(c,"/actions/permissions");result.actions_enabled=permissions.enabled;
- const secrets=await gh<{secrets:{name:string}[]}>(c,"/actions/secrets?per_page=100");const names=secrets.secrets.map(s=>s.name);const inputs=await loadSettings(c.repo);
+ try{const permissions=await gh<{enabled:boolean}>(c,"/actions/permissions");result.actions_enabled=permissions.enabled;}catch(e){return fail(e,"actions_permissions")}
+ let names:string[];try{const secrets=await gh<{secrets:{name:string}[]}>(c,"/actions/secrets?per_page=100");names=secrets.secrets.map(s=>s.name);}catch(e){return fail(e,"secrets_permissions")}const inputs=await loadSettings(c.repo);
  const required=["RDP_PASSWORD",...(inputs.akses!=="tunnel"?["TAILSCALE_AUTH_KEY"]:[]),...(inputs.tunnel_provider==="ngrok"?["NGROK_AUTHTOKEN"]:[])];result.missing=required.filter(k=>!names.includes(k));
  const vault=await db().prepare("SELECT repo FROM credentials WHERE repo=?").bind(c.repo).first();result.password_stored=!!vault;
  result.ready=result.workflow_exists&&result.workflow_state==="active"&&result.actions_enabled&&!result.missing.length&&!result.importing;

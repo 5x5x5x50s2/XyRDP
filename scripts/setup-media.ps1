@@ -1,6 +1,7 @@
 # RdpFree wallpaper and real RDP audio-input redirection. Credit: KallAncrit.
 $XyTag='RdpFree:media'
 . "$PSScriptRoot/lib-common.ps1"
+$ErrorActionPreference = 'Stop'
 $root='C:\ProgramData\RdpFree'
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $mic=$env:MICROPHONE -ne 'tidak'

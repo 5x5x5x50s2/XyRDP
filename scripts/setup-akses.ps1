@@ -19,10 +19,10 @@ try {
   $exe = "$env:ProgramFiles\Tailscale\tailscale.exe"
   if (-not (Test-Path $exe)) {
     $msi=Join-Path $work 'tailscale.msi'
-    if (-not (Get-File 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' $msi 240)) { throw 'Unduhan Tailscale gagal' }
+    if (-not (Get-File 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' $msi 90)) { throw 'Unduhan Tailscale gagal' }
     $signature=Get-AuthenticodeSignature $msi
     if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Tailscale') { throw 'Signature installer Tailscale tidak valid' }
-    $install=Run-Bounded 'msiexec.exe' @('/i',"`"$msi`"",'/qn','/norestart') 420
+    $install=Run-Bounded 'msiexec.exe' @('/i',"`"$msi`"",'/qn','/norestart') 300
     if ($install.code -notin @(0,3010)) { throw "Installer Tailscale gagal, exit $($install.code)" }
   }
   if (-not (Test-Path $exe)) { throw 'Tailscale CLI tidak ditemukan' }

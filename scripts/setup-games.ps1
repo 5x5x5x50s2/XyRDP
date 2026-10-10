@@ -11,7 +11,7 @@ $dir='C:\Users\Public\Desktop\RdpFree Installers'
 New-Item -ItemType Directory -Path $dir -Force | Out-Null
 function Prepare-Installer([string]$Url,[string]$Name,[string]$Publisher) {
   $file=Join-Path $dir $Name
-  if (-not (Get-File $Url $file 240)) { return @{status='download_failed';note='Unduh ulang dari website resmi';path=''} }
+  if (-not (Get-File $Url $file 120)) { return @{status='download_failed';note='Unduh ulang dari website resmi';path=''} }
   $sig=Get-AuthenticodeSignature $file
   if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch $Publisher) { Remove-Item $file -Force -ErrorAction SilentlyContinue;return @{status='signature_failed';note='Installer tidak dijalankan karena signature tidak valid';path=''} }
   return @{status='installer_ready';path=$file;note='Buka installer di sesi Windows, login dengan akun berlisensi, lalu uji game. Belum berarti game sudah berjalan.'}
@@ -23,7 +23,7 @@ foreach ($game in @('roblox','minecraft_java','minecraft_bedrock')) {
   switch ($game) {
     'roblox' {
       $games[$game]=Prepare-Installer 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' 'RobloxPlayerInstaller.exe' 'Roblox'
-      $games[$game].compatibility=$(if ($cs.HypervisorPresent) {'VM terdeteksi. Roblox dapat menolak lingkungan ini; tidak ada bypass.'} else {'Perlu uji DirectX/GPU dan login Roblox; tidak dijamin oleh installer.'})
+      $games[$game].compatibility=$(if ($cs.HypervisorPresent) {'Hypervisor terdeteksi. Roblox dapat menolak lingkungan ini; tidak ada bypass.'} else {'Perlu uji DirectX/GPU dan login Roblox; tidak dijamin oleh installer.'})
     }
     'minecraft_java' {
       $games[$game]=Prepare-Installer 'https://launcher.mojang.com/download/MinecraftInstaller.msi' 'MinecraftInstaller.msi' 'Microsoft|Mojang'

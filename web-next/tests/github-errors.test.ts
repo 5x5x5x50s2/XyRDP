@@ -18,7 +18,7 @@ test('GitHub failure diagnosis preserves setup state and never exposes token',as
  }
  globalThis.fetch=async input=>String(input).endsWith('/user')?Response.json({login:'testuser'}):Response.json({message:'Not Found'},{status:404});
  const missing=await inspect(context);assert.equal(missing.blocked,false);assert.equal(missing.exists,false);
- globalThis.fetch=async input=>{const p=String(input);if(p.endsWith('/user'))return Response.json({login:'testuser'});if(p.endsWith('/XyRDP'))return Response.json({permissions:{push:true}});if(p.endsWith('/rdp-6h.yml'))return Response.json({state:'active'});return Response.json({message:'Must have admin rights to Repository.'},{status:403})};
+ globalThis.fetch=async input=>{const p=String(input);if(p.endsWith('/user'))return Response.json({login:'testuser'});if(p.endsWith('/XyRDP'))return Response.json({permissions:{push:true}});if(p.includes('/contents/'))return Response.json({content:Buffer.from('old workflow').toString('base64')});if(p.endsWith('/rdp-6h.yml'))return Response.json({state:'active'});return Response.json({message:'Must have admin rights to Repository.'},{status:403})};
  const partial=await inspect(context);assert.equal(partial.exists,true);assert.equal(partial.workflow_exists,true);assert.equal(partial.issues[0].stage,'actions_permissions');
  }finally{globalThis.fetch=original}
 });

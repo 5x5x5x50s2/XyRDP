@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
 import Credentials from "next-auth/providers/credentials";
+import {recordCommunityLogin} from "./community";
 import {rateLimit} from "./db";
 import {createHash,timingSafeEqual} from "node:crypto";
 export const authOptions: NextAuthOptions = {
@@ -27,7 +28,7 @@ export const authOptions: NextAuthOptions = {
  pages: {signIn: "/login"},
  callbacks: {
   async jwt({token,account,profile,user}) {
-   if(account?.provider === "github") {const avatar=(profile as {avatar_url?:string})?.avatar_url;token.picture=typeof avatar==="string"&&/^https:\/\/avatars\.githubusercontent\.com\//.test(avatar)?avatar:null;delete token.accessToken;token.login=(profile as {login?:string})?.login;token.githubId=account.providerAccountId;token.authKind="github";delete token.credVersion;}
+   if(account?.provider === "github") {const avatar=(profile as {avatar_url?:string})?.avatar_url;token.picture=typeof avatar==="string"&&/^https:\/\/avatars\.githubusercontent\.com\//.test(avatar)?avatar:null;delete token.accessToken;token.login=(profile as {login?:string})?.login;token.githubId=account.providerAccountId;token.authKind="github";delete token.credVersion;try{await recordCommunityLogin(account.providerAccountId,String(token.login||""))}catch{console.warn("Community login count unavailable; authentication continues");}}
    if(account?.provider === "credentials"&&user?.id==="rdpfree-admin"){token.authKind="admin";token.credVersion=process.env.ADMIN_CREDENTIAL_VERSION;token.login="Admin";delete token.accessToken;delete token.githubId;}
    if(token.authKind==="github")delete token.accessToken;
    token.role=token.authKind==="admin"&&!!process.env.ADMIN_CREDENTIAL_VERSION&&token.credVersion===process.env.ADMIN_CREDENTIAL_VERSION?"admin":"user";

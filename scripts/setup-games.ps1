@@ -1,9 +1,8 @@
-# Official game preparation on a dedicated self-hosted Windows desktop only.
+# Official installer preparation and honest OS/GPU compatibility reporting.
 # No VM spoofing, anti-cheat bypass, copied commercial game or license bypass.
 $XyTag='RdpFree:games'
 . "$PSScriptRoot/lib-common.ps1"
 $games=@{}
-$hosted=$env:RDPFREE_RUNNER -ne 'self-hosted'
 $os=Get-CimInstance Win32_OperatingSystem
 $server=[int]$os.ProductType -ne 1
 $cs=Get-CimInstance Win32_ComputerSystem
@@ -19,9 +18,9 @@ function Prepare-Installer([string]$Url,[string]$Name,[string]$Publisher) {
 foreach ($game in @('roblox','minecraft_java','minecraft_bedrock')) {
   $enabled=[Environment]::GetEnvironmentVariable($game.ToUpper()) -eq 'ya'
   if (-not $enabled) { $games[$game]=@{status='disabled';note='Tidak dipilih'};continue }
-  if ($hosted) { $games[$game]=@{status='requires_self_hosted';note='Persiapan gaming hanya untuk mesin Windows self-hosted khusus milikmu.'};continue }
   switch ($game) {
     'roblox' {
+      if ($server) { $games[$game]=@{status='unsupported_environment';note='Roblox mensyaratkan Windows 10/11 desktop 64-bit dan dukungan GPU. Windows Server runner bukan target yang didukung; memasang DX9 tidak mengubah ini.'};continue }
       $games[$game]=Prepare-Installer 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' 'RobloxPlayerInstaller.exe' 'Roblox'
       $games[$game].compatibility=$(if ($cs.HypervisorPresent) {'Hypervisor terdeteksi. Roblox dapat menolak lingkungan ini; tidak ada bypass.'} else {'Perlu uji DirectX/GPU dan login Roblox; tidak dijamin oleh installer.'})
     }
@@ -40,8 +39,7 @@ foreach ($game in @('roblox','minecraft_java','minecraft_bedrock')) {
   }
 }
 $st=Read-Status
-if ($env:SAMP -eq 'ya' -and $hosted) { $games.samp=@{status='requires_self_hosted';note='Pemasangan game hanya di mesin self-hosted khusus.'} }
-elseif ($st.samp) { $games.samp=@{status=$st.samp.status;note=$st.samp.note;game_dir=$st.samp.game_dir;gta_installed=$st.samp.gta_installed;samp_installed=$st.samp.samp_installed} }
+if ($st.samp) { $games.samp=@{status=$st.samp.status;note=$st.samp.note;game_dir=$st.samp.game_dir;gta_installed=$st.samp.gta_installed;samp_installed=$st.samp.samp_installed} }
 else { $games.samp=@{status='disabled';note='Tidak dipilih'} }
 Update-Status @{games=$games;game_environment=@{os=$os.Caption;windows_server=$server;hypervisor_present=[bool]$cs.HypervisorPresent;runner=$env:RDPFREE_RUNNER;play_tested=$false}} | Out-Null
 Log 'Status persiapan game ditulis. Tidak mengklaim permainan sudah berhasil dijalankan.'

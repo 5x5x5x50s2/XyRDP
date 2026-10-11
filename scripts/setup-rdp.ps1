@@ -132,7 +132,8 @@ $status = [ordered]@{
   hostname       = $hostName
   os             = $osName
   os_build       = $osBuild
-  os_style       = 'Windows 10 look'
+  os_style       = 'Native Windows'
+  hardware       = @{cpu_threads=[Environment]::ProcessorCount;ram_gb=[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB,1);disk_free_gb=[math]::Round((Get-PSDrive C).Free/1GB,1)}
   rdp_port       = 3389
   rdp_user       = $u
   rdp_listen     = $listen

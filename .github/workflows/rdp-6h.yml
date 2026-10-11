@@ -271,7 +271,6 @@ jobs:
 
         Write-Host "Mikrofon: $($st.media.microphone) | Wallpaper: $($st.media.wallpaper)"'
     - name: Publish status ke branch 'status'
-      continue-on-error: true
       timeout-minutes: 10
       shell: pwsh
       run: ./scripts/publish-status.ps1 -Active $true

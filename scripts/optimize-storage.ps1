@@ -171,7 +171,8 @@ try {
 
 # ---------- 5. Windows Update + Temp ----------
 $totalFreed += Remove-Tree 'C:\Windows\SoftwareDistribution\Download' 'Windows Update Download'
-$totalFreed += Remove-Tree 'C:\Windows\Temp' 'C:\Windows\Temp'
+# Preserve the SYSTEM temp directory and its ACL; MSI installers need it later.
+try { Get-ChildItem "$env:SystemRoot\Temp" -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue; Log '  Windows Temp dibersihkan tanpa menghapus folder/ACL' } catch {}
 try { if (Test-Path $env:TEMP) { Get-ChildItem $env:TEMP -Force -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; Log '  %TEMP% dibersihkan' } } catch {}
 try { if (Test-Path 'C:\Temp') { Remove-Tree 'C:\Temp' 'C:\Temp' | Out-Null } } catch {}
 # SKIP heavy DISM/cleanmgr (bikin stuck 5-10 menit di runner) — cukup log

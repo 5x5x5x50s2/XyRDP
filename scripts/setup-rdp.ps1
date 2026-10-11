@@ -141,6 +141,7 @@ $status = [ordered]@{
   expires_at     = $now.AddMinutes($dur).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
   duration_menit = $dur
   run_id         = $env:GITHUB_RUN_ID
+  run_attempt    = $env:GITHUB_RUN_ATTEMPT
   run_number     = $env:GITHUB_RUN_NUMBER
   run_url        = "https://github.com/$($env:GITHUB_REPOSITORY)/actions/runs/$($env:GITHUB_RUN_ID)"
   mode           = 'bersih+win10'

@@ -2,8 +2,7 @@
 #  publish-status.ps1 — publikasikan out/rdp-status.json ke branch `status`
 #  1) GitHub Contents API via Invoke-RestMethod (Bearer GITHUB_TOKEN)  <- utama
 #  2) Fallback: git push pakai header "Authorization: Bearer"          <- terbukti jalan
-#  Verifikasi via raw.githubusercontent (retry). Publish gagal TIDAK
-#  mematikan sesi (exit 0) — web dashboard masih bisa baca IP dari log run.
+#  Verifikasi API mencocokkan run, attempt, dan active. Gagal publikasi = exit 1.
 #  File TIDAK berisi password.
 # ============================================================================
 # [string] + koersi: supaya aman dipanggil baik sebagai `-Active $false` (blok pwsh)
@@ -60,7 +59,7 @@ $json | ConvertTo-Json -Depth 6 | Set-Content -Path $src -Encoding utf8
 function GH([string]$method, [string]$apiPath, $body) {
   $hdrs = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'XyRDP' }
   try {
-    $p = @{ Uri = "https://api.github.com$apiPath"; Method = $method; Headers = $hdrs }
+    $p = @{ Uri = "https://api.github.com$apiPath"; Method = $method; Headers = $hdrs; TimeoutSec = 30 }
     if ($null -ne $body) { $p.Body = ($body | ConvertTo-Json -Depth 6); $p.ContentType = 'application/json' }
     Invoke-RestMethod @p
   } catch { Log "GH $method $apiPath -> $($_.Exception.Message)"; $null }
@@ -99,16 +98,16 @@ function Verify-Published {
 
 function Verify-PublishedAPI {
   try {
-    $c = GH 'GET' "/repos/$repo/contents/rdp-status.json?ref=status" $null
+    $c = GH 'GET' "/repos/$repo/contents/rdp-status.json?ref=$statusBranch" $null
     if ($c -and $c.content) {
       $t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($c.content)) | ConvertFrom-Json
-      return "$($t.run_id)" -eq "$($env:GITHUB_RUN_ID)"
+      return ("$($t.run_id)" -eq "$($env:GITHUB_RUN_ID)" -and "$($t.run_attempt)" -eq "$($json.run_attempt)" -and [bool]$t.active -eq $isActive)
     }
   } catch {}
   return $false
 }
 
-if (-not (Verify-PublishedAPI) -and -not (Verify-Published)) {
+if (-not (Verify-PublishedAPI)) {
   Log "verifikasi belum lolos — coba fallback git push..."
   $tmp = Join-Path $env:RUNNER_TEMP ("xyrdpstatus-" + (Get-Random -Maximum 999999))
   try {
@@ -128,9 +127,9 @@ if (-not (Verify-PublishedAPI) -and -not (Verify-Published)) {
   }
 }
 
-if (Verify-Published) {
-  Log "OK — rdp-status.json (active=$($json.active)) live: https://raw.githubusercontent.com/$repo/$statusBranch/rdp-status.json"
-} else {
-  Log "status belum terverifikasi via raw (cache bisa telat s/d 5 menit; web pakai fallback API + parser log). Sesi TETAP jalan."
+if (Verify-PublishedAPI) {
+  Log "OK — status run/attempt/active terverifikasi melalui GitHub API."
+  exit 0
 }
-exit 0
+Log 'Gagal mempublikasikan status. Dashboard tidak dapat menyediakan koneksi; periksa izin Contents write workflow.'
+exit 1

@@ -18,3 +18,5 @@ test('failed and cancelled runs cannot be presented as ready or merely idle',()=
  const state=sessionState(run,session,[{id:1,name:'rdp',status:'in_progress',conclusion:null,steps:[{name:'Setup akses privat Tailscale',number:11,status:'completed',conclusion:'failure'}]}]);
  assert.equal(state.phase,'failed');assert.equal(state.progress.failed_step,'Setup akses privat Tailscale');assert.equal(state.connection,null);assert.equal(state.active,true);
 });
+
+test('Portmap uses public hostname and allocated port only for current valid session',()=>{const pm={...session,akses:{mode:'portmap',portmap:{status:'ok',host:'owner.portmap.host',port:41858}}};assert.equal(sessionState(run,pm).connection?.host,'owner.portmap.host');assert.equal(sessionState(run,pm).connection?.port,41858);assert.equal(sessionState(run,pm).connection?.transport,'portmap');assert.equal(sessionState({...run,status:'completed'},pm).connection,null);assert.equal(sessionState(run,{...pm,akses:{mode:'portmap',portmap:{status:'ok',host:'http://bad/path',port:41858}}}).connection,null);});

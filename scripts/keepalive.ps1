@@ -23,7 +23,7 @@ if($env:GITHUB_STEP_SUMMARY){
 | Password | Buka dashboard terlindungi; tidak dipublikasikan |
 | Berakhir (UTC) | $($st.expires_at) |
 
-Koneksi privat siap bukan bukti semua game telah berhasil dijalankan.
+Koneksi siap bukan bukti semua game telah berhasil dijalankan.
 "@ | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
 }
 $nextPublish=(Get-Date).ToUniversalTime().AddMinutes(5)

@@ -38,6 +38,7 @@ if (-not $isActive) {
       Clear-Field $json.akses.tunnel 'port'    0
       Clear-Field $json.akses.tunnel 'address' ''
     }
+    if ($json.akses.PSObject.Properties['portmap']) { Clear-Field $json.akses.portmap 'host' ''; Clear-Field $json.akses.portmap 'port' 0 }
     if ($json.akses.PSObject.Properties['tailscale']) {
       Clear-Field $json.akses.tailscale 'ip' ''
       Clear-Field $json.akses.tailscale 'magicdns' ''

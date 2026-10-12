@@ -5,8 +5,9 @@ $st=Read-Status
 if (-not $st -or -not $st.expires_at) { throw 'Status sesi tidak memiliki expires_at' }
 $stop=[DateTimeOffset]::Parse($st.expires_at).UtcDateTime.AddMinutes(-2)
 $ip=$st.akses.tailscale.ip
-Write-Host '::group::SUDAH ONLINE — koneksi privat'
-Log "Alamat   : $ip`:3389"
+$endpoint=if($st.akses.mode -eq 'portmap'){"$($st.akses.portmap.host):$($st.akses.portmap.port)"}else{"$ip`:3389"}
+Write-Host '::group::SUDAH ONLINE — informasi koneksi'
+Log "Alamat   : $endpoint"
 Log "Username : $($st.rdp_user)"
 Log 'Password : lihat/salin di dashboard terlindungi; tidak ditulis ke log publik.'
 Log "Berakhir : $($st.expires_at) UTC"
@@ -17,7 +18,7 @@ if($env:GITHUB_STEP_SUMMARY){
 ## SUDAH ONLINE
 | Koneksi | Nilai |
 | --- | --- |
-| Host | $ip`:3389 |
+| Host | $endpoint |
 | Username | $($st.rdp_user) |
 | Password | Buka dashboard terlindungi; tidak dipublikasikan |
 | Berakhir (UTC) | $($st.expires_at) |

@@ -1,5 +1,4 @@
-# rdpfree-workflow-schema: 4
-# Connection first. Optional setup follows; no game installation.
+# rdpfree-workflow-schema: 5
 name: RdpFree — RDP 6 Jam
 'on':
   workflow_dispatch:
@@ -30,12 +29,13 @@ name: RdpFree — RDP 6 Jam
         default: xyadmin
         type: string
       akses:
-        description: Akses privat Tailscale. HP/PC harus berada di tailnet yang sama.
+        description: Tailscale privat atau endpoint publik Portmap
         required: false
-        default: tailscale
+        default: portmap
         type: choice
         options:
         - tailscale
+        - portmap
       storage_boost:
         description: ' Storage Boost: bebaskan 45-75GB (70GB -> 120GB+ free) dengan hapus Android/Haskell/CodeQL/cache'
         required: false
@@ -136,6 +136,16 @@ name: RdpFree — RDP 6 Jam
         options:
         - ya
         - tidak
+      portmap_host:
+        description: Hostname publik mapping Portmap, tanpa tcp://
+        required: false
+        default: ''
+        type: string
+      portmap_port:
+        description: Port publik mapping Portmap (bukan port Windows)
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: write
   actions: read
@@ -149,7 +159,7 @@ jobs:
     env:
       DUR: ${{ inputs.durasi_menit }}
       HOSTNAME: ${{ inputs.hostname }}
-      AKSES: tailscale
+      AKSES: ${{ inputs.akses }}
       WIN10: ${{ inputs.win10 }}
       XYDESK: ${{ inputs.xydesk }}
       EXTRAS: ${{ inputs.ekstra }}
@@ -169,6 +179,8 @@ jobs:
       ROBLOX: ${{ inputs.roblox }}
       MINECRAFT_JAVA: ${{ inputs.minecraft_java }}
       MINECRAFT_BEDROCK: ${{ inputs.minecraft_bedrock }}
+      PORTMAP_HOST: ${{ inputs.portmap_host || vars.PORTMAP_HOST }}
+      PORTMAP_PORT: ${{ inputs.portmap_port || vars.PORTMAP_PORT }}
     steps:
     - name: Checkout
       uses: actions/checkout@v5
@@ -200,6 +212,14 @@ jobs:
       timeout-minutes: 15
       shell: pwsh
       run: ./scripts/setup-akses.ps1
+      if: ${{ inputs.akses != 'portmap' }}
+    - name: Setup akses publik Portmap (OpenVPN)
+      if: ${{ inputs.akses == 'portmap' }}
+      timeout-minutes: 8
+      shell: pwsh
+      env:
+        PORTMAP_OVPN_CONFIG: ${{ secrets.PORTMAP_OVPN_CONFIG }}
+      run: ./scripts/setup-portmap.ps1
     - name: Wallpaper dan mikrofon sesi pengguna
       shell: pwsh
       timeout-minutes: 5
@@ -245,13 +265,14 @@ jobs:
       shell: pwsh
       run: '$st = Get-Content out/rdp-status.json -Raw | ConvertFrom-Json
 
-        Write-Host "Tailscale: $($st.akses.tailscale.ip):3389"
+        if ($st.akses.mode -eq ''portmap'') { Write-Host "Portmap: $($st.akses.portmap.host):$($st.akses.portmap.port)"
+        } else { Write-Host "Tailscale: $($st.akses.tailscale.ip):3389" }
 
         Write-Host "Username: $env:RDP_USER"
 
-        Write-Host ''Password tidak dicetak ke log. Gunakan password manager atau vault dashboard.''
+        Write-Host ''Password hanya di dashboard terlindungi / password manager, bukan log publik.''
 
-        Write-Host "Mikrofon: $($st.media.microphone) | Wallpaper: $($st.media.wallpaper)"'
+        '
     - name: Publish status ke branch 'status'
       timeout-minutes: 10
       shell: pwsh

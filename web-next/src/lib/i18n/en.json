@@ -381,5 +381,9 @@
   "Buat konfigurasi OpenVPN dan mapping TCP menuju port Windows 3389 di akun Portmap milikmu.": "Create an OpenVPN configuration and a TCP mapping to Windows port 3389 in your own Portmap account.",
   "Simpan isi file .ovpn sebagai GitHub Actions Secret bernama PORTMAP_OVPN_CONFIG. Jangan commit file atau membagikannya ke fork.": "Save the .ovpn file contents as a GitHub Actions Secret named PORTMAP_OVPN_CONFIG. Do not commit the file or share it across forks.",
   "Isi hostname dan port publik di Settings, lalu Periksa ulang. OpenVPN hanya berjalan di Windows; HP tidak perlu VPN.": "Enter the public hostname and port in Settings, then Check again. OpenVPN runs only on Windows; your phone does not need a VPN.",
-  "Hostname/port Portmap belum lengkap. Isi melalui Pengaturan.": "Portmap hostname/port is incomplete. Enter it in Settings."
+  "Hostname/port Portmap belum lengkap. Isi melalui Pengaturan.": "Portmap hostname/port is incomplete. Enter it in Settings.",
+  "portmap — belum dikonfigurasi": "portmap — not configured",
+  "Default akses adalah Tailscale. Portmap baru bisa dipilih setelah secret PORTMAP_OVPN_CONFIG, hostname, dan port publik lengkap.": "Tailscale is the default. Portmap becomes selectable only after PORTMAP_OVPN_CONFIG, the public hostname and port are configured.",
+  "Status secret belum terverifikasi. Portmap dikunci sampai pemeriksaan berhasil.": "The secret could not be verified. Portmap stays locked until verification succeeds.",
+  "Lengkapi konfigurasi Portmap, lalu muat ulang halaman setelah menyimpan secret. Hostname dan port dapat diisi sambil tetap memilih Tailscale.": "Complete Portmap configuration, then reload after saving the secret. You can enter the hostname and port while keeping Tailscale selected."
 }

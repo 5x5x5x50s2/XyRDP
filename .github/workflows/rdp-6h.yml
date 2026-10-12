@@ -31,7 +31,7 @@ name: RdpFree — RDP 6 Jam
       akses:
         description: Tailscale privat atau endpoint publik Portmap
         required: false
-        default: portmap
+        default: tailscale
         type: choice
         options:
         - tailscale

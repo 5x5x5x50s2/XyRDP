@@ -11,8 +11,8 @@ export async function publicCommunity(now=Date.now()){
  return {total:Number(totals?.total||0),online:Number(totals?.online||0),online_window_minutes:5,profiles,measured_at:new Date(now).toISOString()};
 }
 
-// Login counts automatically; publication of a profile is a separate, opt-in choice.
+// New users are disclosed on login; prior privacy choices are preserved.
 export async function recordCommunityLogin(id:string,login:string){
  const p=communityProfile(id,login),now=Date.now();
- await db().prepare('INSERT INTO community_members(subject,github_id,login,joined_at,last_seen,show_profile) VALUES(?,?,?,?,?,0) ON CONFLICT(subject) DO UPDATE SET login=excluded.login,last_seen=excluded.last_seen').bind('github:'+p.id,p.id,p.login,now,now).run();
+ await db().prepare('INSERT INTO community_members(subject,github_id,login,joined_at,last_seen,show_profile) VALUES(?,?,?,?,?,1) ON CONFLICT(subject) DO UPDATE SET login=excluded.login,last_seen=excluded.last_seen').bind('github:'+p.id,p.id,p.login,now,now).run();
 }

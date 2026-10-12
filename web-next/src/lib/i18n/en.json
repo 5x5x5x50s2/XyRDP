@@ -371,5 +371,8 @@
   "Dependensi terverifikasi, game dipasang manual": "Verified dependencies, manually installed games",
   "SA-MP menyiapkan DirectX legacy x86/x64 dan Visual C++, bukan GTA/client/mod. Windows Server dan GPU runner tidak menjamin game bisa dimainkan. Roblox dan Bedrock bukan target Windows Server yang didukung.": "SA-MP setup prepares legacy DirectX x86/x64 and Visual C++, not GTA, clients, or mods. Windows Server and runner GPUs do not guarantee playability. Roblox and Bedrock do not target Windows Server.",
   "Pilih image Windows & pengaturan": "Choose a Windows image & settings",
-  "Disk kosong saat mulai: ": "Free disk at startup: "
+  "Disk kosong saat mulai: ": "Free disk at startup: ",
+  "Foto dan nama GitHub akun baru dapat tampil di komunitas. Kamu bisa menyembunyikannya kapan saja di dashboard.": "New accounts may display their GitHub photo and name in the community. You can hide your profile anytime in the dashboard.",
+  "Profil akun baru ditampilkan otomatis setelah pemberitahuan login. Pilihan privasi akun lama tetap dipertahankan. Menyembunyikan profil tidak mengubah akses RDP atau jumlah pengguna.": "New profiles appear automatically after the login notice. Existing privacy choices are preserved. Hiding a profile does not change RDP access or user counts.",
+  "Status diperbarui setiap 8 detik saat halaman terlihat. Waktu berasal dari status workflow; job GitHub memiliki batas total 6 jam termasuk setup.": "Status refreshes every 8 seconds while visible. Timing comes from the workflow; GitHub jobs have a total six-hour limit including setup."
 }

@@ -1,3 +1,5 @@
+> Update 2026-10-12: new login records default visible after the login notice; existing privacy choices are preserved. Legacy heartbeat-only records remain private. Visibility uses a button, not a checkbox. See DESKTOP-GUIDES-AND-LOGS.md. The original rollout details below describe the earlier opt-in default.
+
 # Homepage community metrics
 
 `GET /api/community/stats` returns aggregate registered-account count, website-online count (five-minute window) and up to eight explicitly opted-in GitHub profiles. No per-user online state, exact last-seen timestamp, subject, email, IP, token or repository is returned. Public results may be cached for 15 seconds; homepage refresh is every 30 seconds while visible.

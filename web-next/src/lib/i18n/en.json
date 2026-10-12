@@ -385,5 +385,6 @@
   "portmap — belum dikonfigurasi": "portmap — not configured",
   "Default akses adalah Tailscale. Portmap baru bisa dipilih setelah secret PORTMAP_OVPN_CONFIG, hostname, dan port publik lengkap.": "Tailscale is the default. Portmap becomes selectable only after PORTMAP_OVPN_CONFIG, the public hostname and port are configured.",
   "Status secret belum terverifikasi. Portmap dikunci sampai pemeriksaan berhasil.": "The secret could not be verified. Portmap stays locked until verification succeeds.",
-  "Lengkapi konfigurasi Portmap, lalu muat ulang halaman setelah menyimpan secret. Hostname dan port dapat diisi sambil tetap memilih Tailscale.": "Complete Portmap configuration, then reload after saving the secret. You can enter the hostname and port while keeping Tailscale selected."
+  "Lengkapi konfigurasi Portmap, lalu muat ulang halaman setelah menyimpan secret. Hostname dan port dapat diisi sambil tetap memilih Tailscale.": "Complete Portmap configuration, then reload after saving the secret. You can enter the hostname and port while keeping Tailscale selected.",
+  "Pilih repo untuk GitHub App, lalu siapkan jalur akses dan password Windows.": "Choose a repository for the GitHub App, then set up your connection and Windows password."
 }

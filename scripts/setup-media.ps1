@@ -4,6 +4,7 @@ $XyTag='RdpFree:media'
 $ErrorActionPreference = 'Stop'
 $root='C:\ProgramData\RdpFree'
 New-Item -ItemType Directory -Path $root -Force | Out-Null
+Copy-Item (Join-Path $PSScriptRoot 'diagnose-desktop.ps1') (Join-Path $root 'Diagnose-Desktop.ps1') -Force
 $mic=$env:MICROPHONE -ne 'tidak'
 $wall=$true
 $policy='Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'

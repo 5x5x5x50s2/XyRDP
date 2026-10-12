@@ -63,6 +63,12 @@ function Get-SizeGB([string]$path) {
   return 0
 }
 function Remove-Tree([string]$path, [string]$label) {
+  $normalized=[IO.Path]::GetFullPath($path).TrimEnd('\')
+  $protected=@("$env:SystemRoot", "$env:SystemRoot\WinSxS", "$env:SystemRoot\Installer", "$env:SystemRoot\System32", "$env:SystemRoot\SysWOW64", "$env:SystemRoot\Microsoft.NET", "$env:SystemRoot\Temp", "$env:ProgramFiles\dotnet\shared", "$env:ProgramFiles\Tailscale", 'C:\ProgramData\RdpFree')
+  foreach($safe in $protected) {
+    if($normalized -ieq $safe -or ($safe -ine $env:SystemRoot -and $normalized.StartsWith($safe+'\',[StringComparison]::OrdinalIgnoreCase))) { Log "DILINDUNGI: $label"; return 0 }
+  }
+
   if (-not (Test-Path $path)) { Log "  $label : tidak ada -> skip"; return 0 }
   # FAST: langsung hapus tanpa hitung size, timeout 90s per path biar tidak stuck
   $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -88,7 +94,7 @@ function Remove-Tree([string]$path, [string]$label) {
     $still = Test-Path $path
     if ($still) { Log "  $label : GAGAL dihapus (masih ada)" }
     else { Log "  $label : DIHAPUS" }
-    return 1
+    if ($still) { return 0 }; return 1
   } catch { Log "  $label : error $($_.Exception.Message)"; return 0 }
   finally { $sw.Stop() }
 }
@@ -321,7 +327,7 @@ if ($debloat -ne 'tidak') {
     foreach ($extra in @('C:\Program Files\dotnet\sdk-manifests','C:\hostedtoolcache\windows\stack','C:\tools','C:\vcpkg','C:\gh','C:\Program Files\Git\mingw64\share\doc')) {
       if (Test-Path $extra) { try { $totalFreed += Remove-Tree $extra "extra $extra" } catch {} }
     }
-    Log '  FULL debloat shortcut & sisa HABIS'
+    Log '  Debloat full selesai dicoba. File terkunci dapat tersisa; lihat hasil verifikasi tiap target.'
   }
 } else {
   Log '  Debloat dilewati (DEBLOAT=tidak)'
@@ -350,7 +356,7 @@ try {
 $freeAfter = Get-FreeGB
 $freedNow = [math]::Round($freeAfter - $freeBefore,2)
 Log "  Free C: sesudah : ${freeAfter} GB (tambahan +${freedNow} GB real)"
-Log "  Estimasi total dihapus: ~${totalFreed} GB (hitungan folder)"
+Log "  Target folder berhasil dihapus: $totalFreed (bukan ukuran GB). Perubahan ruang aktual: ${freedNow} GB."
 
 # Simpan info storage ke status supaya dashboard / panduan bisa tampilkan
 try {
@@ -362,10 +368,10 @@ try {
     } catch {}
   }
   Update-Status @{ storage = [ordered]@{
-    boost='ok'; before_gb=$freeBefore; after_gb=$freeAfter; gained_gb=$freedNow; estimated_freed_gb=$totalFreed
+    boost='ok'; before_gb=$freeBefore; after_gb=$freeAfter; gained_gb=$freedNow; removed_targets=$totalFreed
     drives=$drives
     game_dir= if (Test-Path 'D:\Games') { 'D:\Games (disarankan untuk GTA)' } else { 'C:\Games' }
-    note='Storage boost selesai. Android/Haskell/CodeQL/dotnet lama & cache dibersihkan. Sisa 70GB -> bisa jadi 110-140GB free.'
+    note='Cleanup selesai. gained_gb adalah perubahan ruang aktual, bukan kapasitas yang dijanjikan. Target terkunci bisa tersisa.'
   } } | Out-Null
 } catch { Log "  tulis status storage gagal: $($_.Exception.Message)" }
 

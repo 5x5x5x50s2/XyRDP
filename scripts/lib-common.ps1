@@ -16,7 +16,7 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::
 # ---------- log ----------
 function Log([string]$m) {
   $tag = if ($script:XyTag) { $script:XyTag } else { 'XyRDP' }
-  Write-Host "[$tag] $m"
+  Write-Host ("[{0:HH:mm:ss} UTC][{1}] {2}" -f [DateTime]::UtcNow,$tag,$m)
 }
 
 function Log-Tail([string]$text, [int]$lines = 2) {

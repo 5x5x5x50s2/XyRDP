@@ -241,7 +241,7 @@ jobs:
       shell: pwsh
       timeout-minutes: 20
       run: ./scripts/setup-games.ps1
-    - name: Ringkasan koneksi tanpa kredensial rahasia
+    - name: KONEKSI SIAP — IP, username dan panduan password
       shell: pwsh
       run: '$st = Get-Content out/rdp-status.json -Raw | ConvertFrom-Json
 
@@ -256,7 +256,7 @@ jobs:
       timeout-minutes: 10
       shell: pwsh
       run: ./scripts/publish-status.ps1 -Active $true
-    - name: Tahan sesi sampai durasi habis
+    - name: SUDAH ONLINE — sesi aktif
       shell: pwsh
       run: ./scripts/keepalive.ps1
     - name: Finalize (matikan akses, bersihkan status, hapus run lama)

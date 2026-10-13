@@ -34,3 +34,5 @@ hive (inherited on first sign-in). No shell is killed and no logout is forced.
 Existing interactive sessions can run the standalone script with `-CurrentUserOnly`;
 existing offline user profiles are not modified. Legacy Windows dialogs may not
 support dark theme.
+
+Windows-2022 validation run 38360918910 passed: PowerShell parsing, Explorer registry read-back, repeated application, and Lightshot install/reinstall. Visual dark-theme coverage of all Windows dialogs was not tested.

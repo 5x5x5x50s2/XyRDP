@@ -1,6 +1,6 @@
 {
-  "lightshot": false,
-  "translucent": true,
+  "lightshot": true,
+  "translucent": false,
   "translucent_mode": "clear",
   "wallpaper": true,
   "wallpaper_file": "wallpaper.jpg",

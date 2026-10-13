@@ -106,7 +106,7 @@ function Get-Reg([string]$Path, [string]$Name) {
 # ---------- konfigurasi (assets/rdp-extras.json) ----------
 $script:XyCfgDefaults = [ordered]@{
   lightshot        = $false           # jangan jalankan app latar jika tidak diminta
-  translucent      = $true
+  translucent      = $false
   translucent_mode = 'clear'          # normal | opaque | clear | blur | acrylic
   wallpaper        = $true
   wallpaper_file   = 'wallpaper.jpg'
@@ -160,6 +160,7 @@ function Get-Cfg {
     $c.wallpaper_file   = (Get-CfgStr $j 'wallpaper_file'   $c.wallpaper_file).ToLower()
     $c.rdp_user         = Get-CfgStr $j 'rdp_user' $c.rdp_user
   }
+  $c.translucent = $false # Retired: ignore legacy dashboard/config values.
   return $c
 }
 

@@ -88,7 +88,7 @@ name: RdpFree — RDP 6 Jam
         - ya
         - tidak
       grafis:
-        description: 'GPU software: Mesa3D llvmpipe (OpenGL 4.5+/4.6) + lavapipe Vulkan — WAJIB ya untuk GTA SAMP'
+        description: 'Toolkit Mesa CPU opsional; bukan GPU fisik atau jaminan FPS/game. Tidak mengganti DLL Windows.'
         required: false
         default: tidak
         type: choice
@@ -239,7 +239,7 @@ jobs:
       timeout-minutes: 15
       shell: pwsh
       run: ./scripts/setup-win10.ps1
-    - name: Setup grafis (GPU software - Mesa3D llvmpipe + lavapipe) — WAJIB untuk SAMP
+    - name: Toolkit grafis opsional (Mesa CPU, tanpa mengganti DLL Windows)
       if: ${{ inputs.grafis != 'tidak' }}
       timeout-minutes: 12
       continue-on-error: true

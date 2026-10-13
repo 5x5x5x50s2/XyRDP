@@ -12,13 +12,22 @@ jobs:
       - name: Parse scripts and verify retired transparency setting
         shell: pwsh
         run: |
-          foreach ($name in @('lib-common','setup-extras','setup-grafis')) {
+          foreach ($name in @('lib-common','setup-extras','setup-grafis','setup-explorer')) {
             $errors=$null; $tokens=$null
             [System.Management.Automation.Language.Parser]::ParseFile("$pwd/scripts/$name.ps1",[ref]$tokens,[ref]$errors) | Out-Null
             if ($errors.Count) { throw ($errors | Out-String) }
           }
           . ./scripts/lib-common.ps1
           if ((Get-Cfg).translucent) { throw 'TranslucentTB must be disabled' }
+      - name: Verify Explorer preferences and repeated application
+        shell: pwsh
+        run: |
+          ./scripts/setup-explorer.ps1
+          ./scripts/setup-explorer.ps1 -CurrentUserOnly
+          $a=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+          if ($a.Hidden -ne 1 -or $a.HideFileExt -ne 0 -or $a.AutoCheckSelect -ne 1 -or $a.ShowSuperHidden -ne 0) { throw 'Explorer preferences mismatch' }
+          $t=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+          if ($t.AppsUseLightTheme -ne 0 -or $t.SystemUsesLightTheme -ne 0) { throw 'Dark theme mismatch' }
       - name: Test vendor Lightshot installation without RDP session
         shell: pwsh
         run: |

@@ -261,6 +261,10 @@ jobs:
       shell: pwsh
       timeout-minutes: 20
       run: ./scripts/setup-games.ps1
+    - name: Explorer — hidden files, extensions, checkboxes, dark theme
+      shell: pwsh
+      timeout-minutes: 2
+      run: ./scripts/setup-explorer.ps1
     - name: KONEKSI SIAP — IP, username dan panduan password
       shell: pwsh
       run: '$st = Get-Content out/rdp-status.json -Raw | ConvertFrom-Json

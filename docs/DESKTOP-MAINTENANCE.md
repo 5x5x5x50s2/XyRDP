@@ -25,3 +25,12 @@ passed script parsing, disabled legacy transparency config, vendor Lightshot
 installation, executable discovery, and repeat installation. Interactive screenshot
 capture under xyadmin and Mesa performance have not been tested. No RDP session
 was started/stopped.
+
+## Explorer defaults
+`setup-explorer.ps1` runs independently of optional extras before the connection
+summary: hidden items, extensions, item checkboxes and dark theme are enabled.
+Protected OS files stay hidden. Values are verified in HKCU and the Default user
+hive (inherited on first sign-in). No shell is killed and no logout is forced.
+Existing interactive sessions can run the standalone script with `-CurrentUserOnly`;
+existing offline user profiles are not modified. Legacy Windows dialogs may not
+support dark theme.

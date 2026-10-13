@@ -4,7 +4,7 @@
   values are ignored; new sessions use native opaque taskbar settings. This does
   not remotely uninstall software from an already-running RDP session.
 - Lightshot enabled in template config. Use official vendor installer, verify
-  Authenticode and Skillbrains publisher, request all-users install, enforce a
+  pinned SHA256 from microsoft/winget-pkgs (Skillbrains.Lightshot 5.5.0.7), request all-users install, enforce a
   180-second installer wait, check exit code and actual executable. Startup paths
   are quoted. Remove unnecessary inbound firewall permission and unverified mirror.
 - Mesa remains optional, now staged as an isolated toolkit with upstream files.
@@ -14,5 +14,8 @@
   automatically reverted. Read C:\XyRDP\grafis\README.txt before per-app setup.
 - RDP password masking is unchanged. Temporary sessions do not make durable
   public workflow logs private. Credentials remain in the protected dashboard.
+- Initial Windows test rejected the unpinned vendor download at signature validation.
+  Changed to the versioned vendor URL and independently published winget SHA256;
+  mismatched files fail closed rather than bypassing integrity checks.
 - Added manual Windows-2022 validation for parsing and repeat Lightshot installation;
   it does not start an RDP session or install games.

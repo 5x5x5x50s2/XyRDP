@@ -69,11 +69,14 @@ function Find-Lightshot {
 function Install-LightshotDirect {
   $exe = Join-Path $env:RUNNER_TEMP 'setup-lightshot.exe'
   try {
-    if (-not (Get-File 'https://app.prntscr.com/build/setup-lightshot.exe' $exe 180)) { return $false }
-    $sig = Get-AuthenticodeSignature -FilePath $exe
-    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Skillbrains') {
-      Log 'Lightshot installer rejected: publisher/signature validation failed.'; return $false
+    if (-not (Get-File 'https://updater.prntscr.com/builds/setup-lightshot-5.5.0.7.exe' $exe 180)) { return $false }
+    # Pinned hash from microsoft/winget-pkgs Skillbrains.Lightshot 5.5.0.7 manifest.
+    $expectedHash = '928C2808421DFD487FFA697379548CBE682C0E13AEB595EB89973BA9C515B8A1'
+    if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -ne $expectedHash) {
+      Log 'Lightshot installer rejected: pinned SHA256 mismatch.'; return $false
     }
+    $sig = Get-AuthenticodeSignature -FilePath $exe
+    Log "Lightshot pinned SHA256 verified; Authenticode status=$($sig.Status)"
     $installLog = Join-Path $env:RUNNER_TEMP 'lightshot-install.log'
     $proc = Start-Process -FilePath $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/ALLUSERS',('/LOG="{0}"' -f $installLog)) -PassThru
     if (-not $proc.WaitForExit(180000)) {

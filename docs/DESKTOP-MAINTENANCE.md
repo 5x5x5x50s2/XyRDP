@@ -19,3 +19,9 @@
   mismatched files fail closed rather than bypassing integrity checks.
 - Added manual Windows-2022 validation for parsing and repeat Lightshot installation;
   it does not start an RDP session or install games.
+
+Validation result: Windows-2022 run 38359540094 (https://github.com/xykal/XyRDP/actions/runs/38359540094)
+passed script parsing, disabled legacy transparency config, vendor Lightshot
+installation, executable discovery, and repeat installation. Interactive screenshot
+capture under xyadmin and Mesa performance have not been tested. No RDP session
+was started/stopped.

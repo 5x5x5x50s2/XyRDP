@@ -106,8 +106,6 @@ function Get-Reg([string]$Path, [string]$Name) {
 # ---------- konfigurasi (assets/rdp-extras.json) ----------
 $script:XyCfgDefaults = [ordered]@{
   lightshot        = $false           # jangan jalankan app latar jika tidak diminta
-  translucent      = $false
-  translucent_mode = 'clear'          # normal | opaque | clear | blur | acrylic
   wallpaper        = $true
   wallpaper_file   = 'wallpaper.jpg'
   win10_look       = $true            # semua tweak tampilan Windows 10
@@ -152,16 +150,14 @@ function Get-Cfg {
     $c | Add-Member -NotePropertyName $k -NotePropertyValue $script:XyCfgDefaults[$k] -Force
   }
   if ($j) {
-    foreach ($k in @('lightshot','translucent','wallpaper','win10_look','win10_badge','win10_wallpaper','xydesk_host','dark_theme','lightweight_mode','vscode','notepadpp','storage_boost','samp','samp_extra')) {
+    foreach ($k in @('lightshot','wallpaper','win10_look','win10_badge','win10_wallpaper','xydesk_host','dark_theme','lightweight_mode','vscode','notepadpp','storage_boost','samp','samp_extra')) {
       $c.$k = Get-CfgBool $j $k $c.$k
     }
-    $c.translucent_mode = (Get-CfgStr $j 'translucent_mode' $c.translucent_mode).ToLower()
-    $c.debloat          = (Get-CfgStr $j 'debloat' $c.debloat).ToLower()
+        $c.debloat          = (Get-CfgStr $j 'debloat' $c.debloat).ToLower()
     $c.wallpaper_file   = (Get-CfgStr $j 'wallpaper_file'   $c.wallpaper_file).ToLower()
     $c.rdp_user         = Get-CfgStr $j 'rdp_user' $c.rdp_user
   }
-  $c.translucent = $false # Retired: ignore legacy dashboard/config values.
-  return $c
+    return $c
 }
 
 # ---------- lokasi repo (Actions: GITHUB_WORKSPACE, lokal: folder script/..) ----------

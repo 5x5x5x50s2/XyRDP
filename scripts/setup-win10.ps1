@@ -62,7 +62,6 @@ try { Disable-LocalUser -Name 'Administrator' -ErrorAction Stop; Log '  akun Adm
 
 # ---------- 3. personalisasi ala Windows 10 ----------
 $themeMode = if ($cfg.dark_theme) { 0 } else { 1 }
-$transparencyMode = if ($cfg.translucent) { 1 } else { 0 }
 Set-RegBoth 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' 'EnableTransparency' $transparencyMode 'DWord' | Out-Null
 Set-RegBoth 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' 'ColorPrevalence'   1 'DWord' | Out-Null   # warna aksen di taskbar (khas Win10)
 Set-RegBoth 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' 'SystemUsesLightTheme' $themeMode 'DWord' | Out-Null
@@ -81,7 +80,7 @@ Set-RegBoth $dwm 'AccentColor'         0xffd77800 'DWord' | Out-Null   # ABGR
 Set-RegBoth $dwm 'ColorizationColor'   0xc40078d7 'DWord' | Out-Null
 Set-RegBoth $dwm 'ColorizationAfterglow' 0xc40078d7 'DWord' | Out-Null
 Set-RegBoth $dwm 'EnableWindowColorization' 1 'DWord' | Out-Null
-Log "  personalisasi diterapkan (tema=$(if ($cfg.dark_theme) { 'gelap' } else { 'terang' }), transparansi=$($cfg.translucent), aksen, taskbar)"
+Log "  personalisasi diterapkan (tema=$(if ($cfg.dark_theme) { 'gelap' } else { 'terang' }), aksen, taskbar)"
 
 # ---------- 4. Windows Search diaktifkan (Start menu bisa mencari) ----------
 try {

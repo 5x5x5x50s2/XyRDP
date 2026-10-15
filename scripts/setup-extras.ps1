@@ -28,22 +28,21 @@ if ($env:EXTRAS) {
 }
 if (-not $master) {
   Log "EXTRAS='$env:EXTRAS' — semua langkah ekstra dilewati."
-  Update-Status @{ extras = @{ lightshot = 'skip'; translucent = 'skip'; wallpaper = 'skip'; wallpaper_file = ''; vscode = 'skip'; notepadpp = 'skip'; admin = $true } } | Out-Null
+  Update-Status @{ extras = @{ lightshot = 'skip'; wallpaper = 'skip'; wallpaper_file = ''; vscode = 'skip'; notepadpp = 'skip'; admin = $true } } | Out-Null
   exit 0
 }
 
 # ---------- 1. Konfigurasi ----------
 $cfg = Get-Cfg
 if ($env:WALLPAPER_URL) { Log 'WALLPAPER_URL diisi dari input workflow — override file di repo' }
-Log "lightshot=$($cfg.lightshot) | translucent=$($cfg.translucent) ($($cfg.translucent_mode)) | wallpaper=$($cfg.wallpaper) | win10_look=$($cfg.win10_look) | VSCode=$($cfg.vscode) | Notepad++=$($cfg.notepadpp)"
+Log "lightshot=$($cfg.lightshot) | wallpaper=$($cfg.wallpaper) | win10_look=$($cfg.win10_look) | VSCode=$($cfg.vscode) | Notepad++=$($cfg.notepadpp)"
 
 # Terapkan tema juga bila pengguna mematikan langkah visual Win10.
 $themeMode = if ($cfg.dark_theme) { 0 } else { 1 }
-$transparencyMode = if ($cfg.translucent) { 1 } else { 0 }
 Set-RegBoth 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' 'SystemUsesLightTheme' $themeMode 'DWord' | Out-Null
 Set-RegBoth 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' 'AppsUseLightTheme' $themeMode 'DWord' | Out-Null
 Set-RegBoth 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' 'EnableTransparency' $transparencyMode 'DWord' | Out-Null
-Log "  tema $(if ($cfg.dark_theme) { 'gelap' } else { 'terang' }) + transparency=$($cfg.translucent) diterapkan ke profil Default"
+Log "  tema $(if ($cfg.dark_theme) { 'gelap' } else { 'terang' })  diterapkan ke profil Default"
 
 # ---------- 2. LIGHTSHOT ----------
 function Find-Lightshot {
@@ -110,10 +109,6 @@ if ($cfg.lightshot) {
     $resLightshot = 'gagal'
   }
 }
-
-# ---------- 3. TranslucentTB removed from fresh-run provisioning ----------
-$resTrans = 'disabled'
-Log 'TranslucentTB disabled; no download, installation or startup registration.'
 
 # ---------- 3b. EDITOR CODING OPSIONAL -------------------------------------
 # Git/Node/Python/7-Zip/Visual Studio sudah ada pada image windows-2022.
@@ -263,8 +258,7 @@ try {
 # ---------- 6. Rangkum ke status ----------
 Update-Status @{ extras = [ordered]@{
     lightshot      = $resLightshot
-    translucent    = $resTrans
-    wallpaper      = $resWall
+        wallpaper      = $resWall
     wallpaper_file = $wallName
     vscode         = $resVSCode
     notepadpp      = $resNotepadPP
@@ -273,7 +267,7 @@ Update-Status @{ extras = [ordered]@{
 Close-DefaultHive
 
 $adminTxt = $(if ($adminOk) { 'YA' } else { 'TIDAK' })
-Log ("SELESAI — lightshot={0} translucent={1} wallpaper={2} admin={3}" -f $resLightshot, $resTrans, $resWall, $adminTxt)
+Log ("SELESAI — lightshot={0} wallpaper={2} admin={3}" -f $resLightshot, $resWall, $adminTxt)
 try { Probe-Rdp 'akhir step' | Out-Null } catch {}
 
 exit 0

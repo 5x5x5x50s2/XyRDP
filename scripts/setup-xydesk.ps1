@@ -163,8 +163,87 @@ $svcTxt = if ($svcOk.Count -eq 2) { 'ok' } elseif ($svcOk.Count -eq 1) { "sebagi
 Log "  layanan: $svcTxt"
 $rdpAlive6 = Probe-Rdp 'setelah start layanan'
 
-# ---------- 6. Akses privat ----------
-Log 'Hubungkan HP dan Windows ke tailnet yang sama. RDP playback dan audio capture memakai kanal RDP; bridge UDP memerlukan host tambahan.'
+# ---------- 6. Akses privat + Daemon UDP :4433 RawInput (Game FPS 360° Aim) ----------
+try {
+  $daemonDir = 'C:\ProgramData\XyDesk'
+  New-Item -ItemType Directory -Path $daemonDir -Force -ErrorAction SilentlyContinue | Out-Null
+  $daemonPs1 = Join-Path $daemonDir 'xydesk-rawinput-udp.ps1'
+  $daemonCode = @'
+Add-Type -TypeDefinition @"
+using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+
+public static class XyRawInputDaemon {
+    [StructLayout(LayoutKind.Sequential)]
+    struct INPUT { public uint type; public MOUSEINPUT mi; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct MOUSEINPUT {
+        public int dx; public int dy; public uint mouseData;
+        public uint dwFlags; public uint time; public IntPtr dwExtraInfo;
+    }
+    [DllImport("user32.dll")] static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    public static void Run(int port) {
+        using (var udp = new UdpClient(port)) {
+            IPEndPoint ep = new IPEndPoint(IPAddress.Any, 0);
+            byte[] ack = new byte[] { (byte)'X', (byte)'Y', (byte)'I', (byte)'A', 1 };
+            long lastAck = 0;
+            while (true) {
+                try {
+                    byte[] rx = udp.Receive(ref ep);
+                    if (rx == null || rx.Length < 12) continue;
+                    if (rx[0] != (byte)'X' || rx[1] != (byte)'Y' || rx[2] != (byte)'I' || rx[3] != (byte)'1') continue;
+                    byte cmd = rx[4];
+                    short a1 = BitConverter.ToInt16(rx, 6);
+                    short a2 = BitConverter.ToInt16(rx, 8);
+                    if (cmd == 1) {
+                        var inp = new INPUT[1];
+                        inp[0].type = 0;
+                        inp[0].mi.dx = a1;
+                        inp[0].mi.dy = a2;
+                        inp[0].mi.dwFlags = 0x0001; // MOUSEEVENTF_MOVE (relative)
+                        SendInput(1, inp, Marshal.SizeOf(typeof(INPUT)));
+                    } else if (cmd == 2) {
+                        byte btn = rx[5];
+                        bool down = (a1 != 0);
+                        uint fl = 0;
+                        if (btn == 0) fl = down ? 0x0002u : 0x0004u;
+                        else if (btn == 1) fl = down ? 0x0008u : 0x0010u;
+                        else if (btn == 2) fl = down ? 0x0020u : 0x0040u;
+                        if (fl != 0) {
+                            var inp = new INPUT[1];
+                            inp[0].type = 0;
+                            inp[0].mi.dwFlags = fl;
+                            SendInput(1, inp, Marshal.SizeOf(typeof(INPUT)));
+                        }
+                    } else if (cmd == 3) {
+                        var inp = new INPUT[1];
+                        inp[0].type = 0;
+                        inp[0].mi.dwFlags = 0x0800; // MOUSEEVENTF_WHEEL
+                        inp[0].mi.mouseData = (uint)a1;
+                        SendInput(1, inp, Marshal.SizeOf(typeof(INPUT)));
+                    }
+                    long now = Environment.TickCount;
+                    if (cmd == 5 || (now - lastAck) >= 250) {
+                        lastAck = now;
+                        udp.Send(ack, ack.Length, ep);
+                    }
+                } catch { }
+            }
+        }
+    }
+}
+"@ -ErrorAction SilentlyContinue
+[XyRawInputDaemon]::Run(4433)
+'@
+  Set-Content -LiteralPath $daemonPs1 -Value $daemonCode -Encoding UTF8 -Force
+  $runKey = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+  Set-Reg $runKey 'XyDeskRawInputUDP' "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$daemonPs1`"" 'String' | Out-Null
+  Log '  daemon RawInput Game FPS (UDP :4433 -> SendInput MOUSEEVENTF_MOVE) terdaftar di HKLM Run'
+} catch { Log "  daemon RawInput gagal didaftarkan: $($_.Exception.Message)" }
+Log 'Hubungkan HP dan Windows ke tailnet yang sama. RDP playback dan audio capture memakai kanal RDP; bridge UDP :4433 siap untuk RawInput Game FPS.'
 
 # ---------- 6b. Verifikasi RDP masih hidup setelah tweak ----------
 # CATATAN PENTING (validasi 2026-10-03): setelah tweak, listener 3389 di runner

@@ -58,7 +58,13 @@ try {
   Get-NetFirewallRule -DisplayName 'XyDesk Remote*' -ErrorAction SilentlyContinue | Disable-NetFirewallRule -ErrorAction SilentlyContinue
   Remove-NetFirewallRule -DisplayName 'RdpFree Portmap RDP' -ErrorAction SilentlyContinue
   New-NetFirewallRule -DisplayName 'RdpFree Portmap RDP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389 -InterfaceAlias $adapter.Name -Profile Any | Out-Null
-  Update-Status @{akses=@{mode='portmap';portmap=@{status='ok';host=$hostName;port=$port;note='OpenVPN dan listener RDP siap. Endpoint publik; koneksi dari HP masih perlu diuji.'}}} | Out-Null
+  Update-Status @{
+    akses = @{
+      mode    = 'portmap'
+      portmap = @{ status = 'ok'; host = $hostName; port = $port; note = 'OpenVPN dan listener RDP siap. Endpoint publik; koneksi dari HP masih perlu diuji.' }
+      tunnel  = @{ status = 'ok'; host = $hostName; port = $port; address = "$hostName`:$port"; selftest = 'ok'; outside = 'portmap' }
+    }
+  } | Out-Null
   Log "Portmap siap di runner: $hostName`:$port -> TCP 3389. NLA dan TLS aktif; password tidak dicetak."
 }catch{
   Update-Status @{akses=@{mode='portmap';portmap=@{status='failed';note=$_.Exception.Message}}} | Out-Null

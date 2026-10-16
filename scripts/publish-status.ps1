@@ -78,11 +78,14 @@ try {
     Log "branch '$statusBranch' dibuat (via API)"
   }
   $b64  = [Convert]::ToBase64String([IO.File]::ReadAllBytes($src))
-  $body = @{ message = "XyRDP status update (run $($env:GITHUB_RUN_NUMBER))"; content = $b64; branch = $statusBranch }
-  $cur  = GH 'GET' "/repos/$repo/contents/rdp-status.json?ref=$statusBranch" $null
-  if ($cur -and $cur.sha) { $body.sha = $cur.sha }
-  $res = GH 'PUT' "/repos/$repo/contents/rdp-status.json" $body
-  if ($res -and $res.content) { Log "Contents API OK (commit $($res.commit.sha.Substring(0,7)))" } else { throw "PUT contents tidak mengembalikan hasil" }
+  foreach ($remotePath in @('rdp-status.json', 'out/rdp-status.json')) {
+    $body = @{ message = "XyRDP status update (run $($env:GITHUB_RUN_NUMBER))"; content = $b64; branch = $statusBranch }
+    $cur  = GH 'GET' "/repos/$repo/contents/$remotePath`?ref=$statusBranch" $null
+    if ($cur -and $cur.sha) { $body.sha = $cur.sha }
+    $res = GH 'PUT' "/repos/$repo/contents/$remotePath" $body
+    if ($res -and $res.content) { Log "Contents API OK ($remotePath -> commit $($res.commit.sha.Substring(0,7)))" }
+    elseif ($remotePath -eq 'rdp-status.json') { throw "PUT contents tidak mengembalikan hasil" }
+  }
 } catch { Log "cara-1 gagal ($($_.Exception.Message)) — lanjut fallback git" }
 
 # ---- cara 2 (fallback): git push + Bearer header ----
@@ -114,10 +117,12 @@ if (-not (Verify-PublishedAPI)) {
   try {
     git init -q -b $statusBranch $tmp | Out-Null
     Copy-Item $src (Join-Path $tmp 'rdp-status.json') -Force
+    New-Item -ItemType Directory -Path (Join-Path $tmp 'out') -Force | Out-Null
+    Copy-Item $src (Join-Path $tmp 'out\rdp-status.json') -Force
     Push-Location $tmp
     git config user.name  "github-actions[bot]" | Out-Null
     git config user.email "41898282+github-actions[bot]@users.noreply.github.com" | Out-Null
-    git add rdp-status.json
+    git add rdp-status.json out/rdp-status.json
     git -c commit.gpgsign=false commit -q -m "XyRDP status update" | Out-Null
     $out = git -c "http.extraHeader=Authorization: Bearer $env:GITHUB_TOKEN" push --force "https://github.com/$repo.git" "HEAD:refs/heads/$statusBranch" 2>&1
     $out | ForEach-Object { Log "git: $_" }

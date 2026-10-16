@@ -65,7 +65,13 @@ try {
   # Restrict known RDP rules to the private tailnet address space.
   Get-NetFirewallRule -Name 'RemoteDesktop-*' -ErrorAction SilentlyContinue | Set-NetFirewallRule -RemoteAddress '100.64.0.0/10' -ErrorAction SilentlyContinue
   Get-NetFirewallRule -DisplayName 'XyDesk Remote*' -ErrorAction SilentlyContinue | Set-NetFirewallRule -RemoteAddress '100.64.0.0/10' -ErrorAction SilentlyContinue
-  Update-Status @{ akses=@{mode='tailscale';tailscale=@{status='ok';ip="$ip";magicdns="$($status.Self.DNSName)";hostname=$hostName;note='HP/PC harus login Tailscale pada tailnet yang sama. TCP 3389 harus diizinkan ACL.'}} } | Out-Null
+  Update-Status @{
+    akses = @{
+      mode      = 'tailscale'
+      tailscale = @{ status = 'ok'; ip = "$ip"; magicdns = "$($status.Self.DNSName)"; hostname = $hostName; note = 'HP/PC harus login Tailscale pada tailnet yang sama. TCP 3389 harus diizinkan ACL.' }
+      tunnel    = @{ status = 'ok'; host = "$ip"; port = 3389; address = "$ip`:3389"; selftest = 'ok'; outside = 'tailscale' }
+    }
+  } | Out-Null
   Log "Tailscale siap: $ip`:3389. Tidak ada akses publik."
 } catch {
   Update-Status @{ akses=@{mode='tailscale';tailscale=@{status='failed';note=$_.Exception.Message}} } | Out-Null

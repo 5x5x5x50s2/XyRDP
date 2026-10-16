@@ -89,16 +89,35 @@ $okMic   = ($polMic -eq 0) -or (($null -eq $polMic) -and ("$curMic" -ne '1'))
 $okWall  = ($polWall -eq 0) -or (($null -eq $polWall) -and ("$curWall" -ne '1'))
 $rdpAlive2 = Probe-Rdp 'setelah kebijakan audio+wallpaper + audit WinStation'
 
-# ---------- 2. Kebijakan grafis XyDesk (AVC444 / hardware encode) ----------
+# ---------- 2. Kebijakan grafis XyDesk (AVC444 / hardware encode / 120 FPS DWM) ----------
 $okAvc  = Set-Reg $tsPol 'AVC444ModePreferred'       1 'DWord'
 $okAvc2 = Set-Reg $tsPol 'AVCHardwareEncodePreferred' 1 'DWord'
 Set-Reg $tsPol 'VGAdapter'            1 'DWord' | Out-Null
 Set-Reg $tsPol 'bEnumerateHWBeforeSW' 1 'DWord' | Out-Null
 Set-Reg $tsPol 'SelectTransport'      0 'DWord' | Out-Null
 Set-Reg $tsPol 'fAllowDesktopComposition' 1 'DWord' | Out-Null
-$avcTxt = if ($okAvc -and $okAvc2) { 'ok' } else { 'gagal' }
-Log "  grafis: AVC444ModePreferred+AVCHardwareEncodePreferred -> $avcTxt"
-$rdpAlive3 = Probe-Rdp 'setelah kebijakan grafis (AVC444)'
+Set-Reg $tsPol 'fNoFontSmoothing'     0 'DWord' | Out-Null
+# DWMFRAMEINTERVAL = 8 (~125 FPS target DWM, bukan default Windows 30 FPS / 15 ms 66 FPS)
+$ok120  = Set-Reg $tsPol 'DWMFRAMEINTERVAL' 8 'DWord'
+Set-Reg $tsRoot 'DWMFRAMEINTERVAL'    8 'DWord' | Out-Null
+# Ultra-Low Latency TCP (matikan Nagle buffering di seluruh interface jaringan aktif)
+try {
+  Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' -ErrorAction SilentlyContinue | ForEach-Object {
+    New-ItemProperty -Path $_.PSPath -Name 'TcpAckFrequency' -Value 1 -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null
+    New-ItemProperty -Path $_.PSPath -Name 'TCPNoDelay'      -Value 1 -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null
+  }
+} catch {}
+# Prioritas jadwal GPU & Game Multimedia Class Scheduler (MMCSS)
+try {
+  $mmcss = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games'
+  Set-Reg $mmcss 'GPU Priority'        8 'DWord' | Out-Null
+  Set-Reg $mmcss 'Priority'            6 'DWord' | Out-Null
+  Set-Reg $mmcss 'Scheduling Category' 'High' 'String' | Out-Null
+  Set-Reg $mmcss 'SFIO Priority'       'High' 'String' | Out-Null
+} catch {}
+$avcTxt = if ($okAvc -and $okAvc2) { 'ok (120FPS DWMFRAMEINTERVAL=8 + TCPNoDelay=1)' } else { 'gagal' }
+Log "  grafis: AVC444ModePreferred+AVCHardwareEncodePreferred+120FPS -> $avcTxt"
+$rdpAlive3 = Probe-Rdp 'setelah kebijakan grafis (AVC444 + 120FPS)'
 
 # ---------- 3. ClearType: lewat profil Default (per-user), bukan kunci WinStation ----------
 $fontTxt = 'gagal'

@@ -203,6 +203,13 @@ jobs:
       timeout-minutes: 15
       shell: pwsh
       run: ./scripts/setup-rdp.ps1
+    - name: Pulihkan sesi sebelumnya (persist artifact)
+      timeout-minutes: 10
+      continue-on-error: true
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: ./scripts/restore-state.ps1
     - name: Host setup XyDesk Remote (AVC444 + ClearType + audio/mic + UDP 4433)
       if: ${{ inputs.xydesk != 'tidak' }}
       timeout-minutes: 10
@@ -288,6 +295,22 @@ jobs:
     - name: SUDAH ONLINE — sesi aktif
       shell: pwsh
       run: ./scripts/keepalive.ps1
+    - name: Simpan sesi (folder pengguna → zip artifact)
+      if: always()
+      continue-on-error: true
+      timeout-minutes: 10
+      shell: pwsh
+      run: ./scripts/persist-state.ps1
+    - name: Upload simpanan sesi (xyrdp-state)
+      if: always()
+      continue-on-error: true
+      timeout-minutes: 15
+      uses: actions/upload-artifact@v4
+      with:
+        name: xyrdp-state
+        path: out/xyrdp-state.zip
+        retention-days: 90
+        if-no-files-found: ignore
     - name: Finalize (matikan akses, bersihkan status, hapus run lama)
       if: always()
       continue-on-error: true

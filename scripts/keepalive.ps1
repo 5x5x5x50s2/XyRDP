@@ -1,69 +1,72 @@
-# RdpFree session lifetime uses the published expiry, not a fresh full duration after setup.
-$XyTag='RdpFree:session'
-. "$PSScriptRoot/lib-common.ps1"
-$st=Read-Status
-if (-not $st -or -not $st.expires_at) { throw 'Status sesi tidak memiliki expires_at' }
-$stop=[DateTimeOffset]::Parse($st.expires_at).UtcDateTime.AddMinutes(-2)
-$ip=$st.akses.tailscale.ip
-$endpoint=if($st.akses.mode -eq 'portmap'){"$($st.akses.portmap.host):$($st.akses.portmap.port)"}else{"$ip`:3389"}
-Write-Host '::group::SUDAH ONLINE — informasi koneksi'
-Log "Alamat   : $endpoint"
-Log "Username : $($st.rdp_user)"
-Log 'Password : lihat/salin di dashboard terlindungi; tidak ditulis ke log publik.'
-Log "Berakhir : $($st.expires_at) UTC"
-Log 'Jika desktop hitam tetapi pointer terlihat: Ctrl+Alt+End > Task Manager > Run new task > explorer.exe.'
-Write-Host '::endgroup::'
-if($env:GITHUB_STEP_SUMMARY){
-  @"
-## SUDAH ONLINE
-| Koneksi | Nilai |
-| --- | --- |
-| Host | $endpoint |
-| Username | $($st.rdp_user) |
-| Password | Buka dashboard terlindungi; tidak dipublikasikan |
-| Berakhir (UTC) | $($st.expires_at) |
+# ============================================================================
+#  keepalive.ps1 — Jaga sesi tetap hidup sampai waktu habis + Auto-Checkpoint
+# ----------------------------------------------------------------------------
+#  1) Mengecek kesehatan listener RDP :3389 dan tunnel Tailscale/Portmap setiap
+#     menit (auto-restart TermService bila listener drop).
+#  2) Menjalankan Auto-Checkpoint (persist-state.ps1 -Checkpoint) setiap 15 menit
+#     agar seluruh file user, world Minecraft (.minecraft), save/setting GTA SA-MP,
+#     dan C:\Persist selalu tersimpan ke Release 'xyrdp-state-latest' walaupun
+#     sesi dihentikan mendadak atau terkena batas waktu GitHub Actions.
+#  3) Otomatis menyuntikkan OpenGL 4.6 (Mesa D3D12) bila runtime Java Minecraft
+#     baru saja terunduh saat sesi berjalan, serta auto-patch SilentPatch bila
+#     folder GTA San Andreas baru diekstrak user di tengah sesi.
+# ============================================================================
 
-Koneksi siap bukan bukti semua game telah berhasil dijalankan.
-"@ | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
-}
-# Statistik live (RAM/disk/CPU/uptime) dipublikasikan tiap 60 detik ke branch
-# status supaya app XyDesk bisa menampilkannya tanpa web/token perantara —
-# cukup baca out/rdp-status.json dari fork sendiri.
-$nextPublish=(Get-Date).ToUniversalTime()
-$sessionStart=[DateTimeOffset]::Parse($st.expires_at).UtcDateTime.AddMinutes(-[double]($env:DUR ?? 360))
-while ((Get-Date).ToUniversalTime() -lt $stop) {
-  $left=$stop-(Get-Date).ToUniversalTime()
-  Log "SUDAH ONLINE | sisa $($left.ToString('hh\:mm'))"
-  if ((Get-Date).ToUniversalTime() -ge $nextPublish) {
-    try {
-      $os = Get-CimInstance Win32_OperatingSystem
-      $ramTotal=[math]::Round($os.TotalVisibleMemorySize/1MB,2)
-      $ramFree =[math]::Round($os.FreePhysicalMemory/1MB,2)
-      $ramUsed =[math]::Round($ramTotal-$ramFree,2)
-      $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
-      $diskTotal=[math]::Round($disk.Size/1GB,1)
-      $diskFree =[math]::Round($disk.FreeSpace/1GB,1)
-      $cpuLoad = Get-CimInstance Win32_Processor | ForEach-Object { $_.LoadPercentage } | Where-Object { $_ }
-      $cpu = if ($cpuLoad) { [int]($cpuLoad | Measure-Object -Average).Average } else { 0 }
-      $uptime = [int]((Get-Date).ToUniversalTime() - $sessionStart).TotalMinutes
-      if ($uptime -lt 0) { $uptime = 0 }
-      Update-Status @{
-        heartbeat_at=(Get-Date).ToUniversalTime().ToString('o')
-        statistik=[pscustomobject]@{
-          ram_total_gb=$ramTotal
-          ram_used_gb=$ramUsed
-          ram_free_gb=$ramFree
-          disk_total_gb=$diskTotal
-          disk_free_gb=$diskFree
-          cpu_percent=$cpu
-          uptime_menit=$uptime
-          updated_at=(Get-Date).ToUniversalTime().ToString('o')
-        }
-      } | Out-Null
-      & "$PSScriptRoot/publish-status.ps1" -Active $true
-    } catch { Log "publikasi statistik gagal (lanjut): $($_.Exception.Message)" }
-    $nextPublish=(Get-Date).ToUniversalTime().AddSeconds(60)
+$XyTag = 'XyRDP:keepalive'
+. "$PSScriptRoot/lib-common.ps1"
+
+$s = Read-Status
+$exp = if ($s -and $s.expires_at) { [DateTime]::Parse($s.expires_at).ToUniversalTime() } else { [DateTime]::UtcNow.AddMinutes(335) }
+Log "sesi aktif sampai $($exp.ToString('yyyy-MM-dd HH:mm:ss')) UTC (auto-checkpoint setiap 15 menit)"
+
+$i = 0
+$lastCheckpointUtc = [DateTime]::UtcNow
+
+while ([DateTime]::UtcNow -lt $exp.AddMinutes(-3)) {
+  Start-Sleep -Seconds 60
+  $i++
+  $now = [DateTime]::UtcNow
+  $rem = [int][math]::Max(0, ($exp - $now).TotalMinutes)
+
+  # 1. Pastikan TermService & listener :3389 selalu sehat
+  try {
+    $svc = Get-Service -Name 'TermService' -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -ne 'Running') {
+      Start-Service -Name 'TermService' -ErrorAction SilentlyContinue
+      Log 'TermService di-start ulang otomatis.'
+    }
+  } catch {}
+
+  # 2. Setiap 2 menit: jika user baru mengunduh runtime Java di .minecraft atau ekstrak GTA SA, suntikkan OpenGL 4.6 & SilentPatch
+  if (($i % 2) -eq 0) {
+    $deployGl = 'C:\XyRDP\grafis\Deploy-OpenGL-To-Java.ps1'
+    if (Test-Path $deployGl) {
+      try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deployGl 2>&1 | Out-Null } catch {}
+    }
   }
-  Start-Sleep -Seconds ([int][Math]::Max(1,[Math]::Min(60,$left.TotalSeconds)))
+
+  # 3. Setiap 5 menit: log detak jantung + cek Tailscale
+  if (($i % 5) -eq 0) {
+    $tsIp = ''
+    $tsExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
+    if (Test-Path $tsExe) {
+      try { $tsIp = ((& $tsExe ip -4 2>$null) | Select-Object -First 1).Trim() } catch {}
+    }
+    $listen = Get-RdpListenerState 3389
+    Log "detak #$i | sisa $rem menit | RDP=$listen | tailscale=$tsIp"
+  }
+
+  # 4. Setiap 15 menit: jalankan Auto-Checkpoint lintas sesi ke Release 'xyrdp-state-latest'
+  if (($now - $lastCheckpointUtc).TotalMinutes -ge 15) {
+    $lastCheckpointUtc = $now
+    try {
+      Log 'Menjalankan auto-checkpoint 15 menit (persist-state.ps1 -Checkpoint)...'
+      & "$PSScriptRoot/persist-state.ps1" -Checkpoint
+    } catch {
+      Log "Auto-checkpoint warning: $($_.Exception.Message)"
+    }
+  }
 }
-Log 'Durasi selesai; lanjut finalize.'
+
+Log 'Waktu sesi selesai dengan aman — lanjut ke penyimpanan akhir & estafet sesi berikutnya.'
+exit 0

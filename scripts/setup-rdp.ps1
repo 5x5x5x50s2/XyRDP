@@ -101,12 +101,36 @@ try {
 } catch { Log "  highest admin setup warning: $($_.Exception.Message)" }
 if ($u.ToLower() -eq 'runneradmin') { Log "user '$u' (runneradmin bawaan) siap: HIGHEST ADMIN tanpa buat ulang" } else { Log "user '$u' siap: Administrators + Remote Desktop Users, password tidak expire (HIGHEST)" }
 
-# ---------- 2. RDP standar ----------
+# ---------- 2. RDP standar + Unlock On-Mic / Audio Capture sejak awal ----------
 # fDenyTSConnections: pakai Set-Reg (robust: Set-ItemProperty -> New-ItemProperty
 # -> reg.exe -> ambil kepemilikan) supaya tidak diam-diam gagal seperti pada
 # validasi 2026-10-03.
-$okDeny = Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server' 'fDenyTSConnections' 0 'DWord'
+$tsRoot = 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server'
+$tsTcp  = "$tsRoot\WinStations\RDP-Tcp"
+$tsPol  = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+$okDeny = Set-Reg $tsRoot 'fDenyTSConnections' 0 'DWord'
 Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -ErrorAction SilentlyContinue
+
+# Aktifkan On-Mic (fDisableAudioCapture=0) & Audio Playback (fDisableAudio=0) & Kamera (fDisableCam=0)
+# SEBELUM TermService di-start agar listener RDP-Tcp langsung memuat izin mikrofon tanpa perlu restart belakangan.
+$micOn = ($env:MICROPHONE -ne 'tidak')
+$disableMicVal = [int](-not $micOn)
+foreach ($regPath in @($tsRoot, $tsTcp, $tsPol)) {
+  Set-Reg $regPath 'fDisableAudio'        0              'DWord' | Out-Null
+  Set-Reg $regPath 'fDisableAudioCapture' $disableMicVal 'DWord' | Out-Null
+  Set-Reg $regPath 'fDisableCam'          0              'DWord' | Out-Null
+  Set-Reg $regPath 'fDisableCdm'          0              'DWord' | Out-Null
+  Set-Reg $regPath 'fDisableClip'         0              'DWord' | Out-Null
+}
+Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone' 'Value' 'Allow' 'String' | Out-Null
+Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged' 'Value' 'Allow' 'String' | Out-Null
+Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam' 'Value' 'Allow' 'String' | Out-Null
+Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam\NonPackaged' 'Value' 'Allow' 'String' | Out-Null
+
+foreach ($aSvc in @('AudioEndpointBuilder', 'Audiosrv')) {
+  try { Set-Service -Name $aSvc -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name $aSvc -ErrorAction SilentlyContinue } catch {}
+}
+
 Enable-NetFirewallRule -DisplayGroup 'Remote Desktop' -ErrorAction SilentlyContinue | Out-Null
 # pastikan layanan RDP jalan
 foreach ($svc in @('TermService')) {

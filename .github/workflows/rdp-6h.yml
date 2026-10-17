@@ -85,7 +85,7 @@ on:
           - software
           - tidak
       runner:
-        description: 'OS & Image Runner (Windows / Linux Desktop)'
+        description: 'OS & Image Runner (Windows / Linux Desktop / Linux Polos)'
         required: false
         default: 'windows-2022'
         type: choice
@@ -96,6 +96,14 @@ on:
           - ubuntu-24.04
           - ubuntu-22.04
           - ubuntu-latest
+      linux_mode:
+        description: 'Mode Linux (desktop = XFCE4 GUI XRDP :3389, polos = Server SSH Tanpa XFCE4 :22/:3389)'
+        required: false
+        default: 'desktop'
+        type: choice
+        options:
+          - desktop
+          - polos
       microphone:
         description: 'Aktifkan redireksi mikrofon & kamera RDP'
         required: false
@@ -177,6 +185,7 @@ jobs:
       XYDESK: ${{ inputs.xydesk || 'ya' }}
       EKSTRA: ${{ inputs.ekstra || 'ya' }}
       GRAFIS: ${{ inputs.grafis || 'software' }}
+      LINUX_MODE: ${{ inputs.linux_mode || 'desktop' }}
       MICROPHONE: ${{ inputs.microphone || 'ya' }}
       ROBLOX: ${{ inputs.roblox || 'tidak' }}
       MINECRAFT_JAVA: ${{ inputs.minecraft_java || 'tidak' }}

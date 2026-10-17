@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  setup-linux-rdp.sh — Full Linux Desktop RDP (XFCE4 + XRDP :3389 + Tailscale
-#                       / Portmap + Anti-Reset Persistence + Telemetry)
+#  setup-linux-rdp.sh — Multi-Mode Linux Cloud Server & Desktop
+#  - Mode "desktop" : Ubuntu XFCE4 GUI + XRDP :3389 + OpenSSH :22 + PulseAudio On-Mic
+#  - Mode "polos"   : Linux Polos Tanpa XFCE4 (Headless SSH Server :22 & :3389 Kilat)
 # ============================================================================
 set -e
 
@@ -20,52 +21,114 @@ DUR="$(echo "$DUR" | tr -cd '0-9')"
 [ "$DUR" -lt 10 ] && DUR=342
 [ "$DUR" -gt 342 ] && DUR=342
 
+LINUX_MODE="$(echo "${LINUX_MODE:-desktop}" | tr '[:upper:]' '[:lower:]')"
+if [ "$LINUX_MODE" != "polos" ] && [ "$LINUX_MODE" != "headless" ]; then
+  LINUX_MODE="desktop"
+else
+  LINUX_MODE="polos"
+fi
+
 RDP_USER="${RDP_USER:-xyadmin}"
 HOST_BASE="$(echo "${HOSTNAME:-rdpfree}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
 [ -z "$HOST_BASE" ] && HOST_BASE="rdpfree"
 FULL_HOST="${HOST_BASE}-${GITHUB_RUN_NUMBER:-1}"
 
-log "Menyiapkan Linux Desktop RDP | host=$FULL_HOST | user=$RDP_USER | durasi=${DUR}m"
+log "Menyiapkan Linux Cloud (${LINUX_MODE}) | host=$FULL_HOST | user=$RDP_USER | durasi=${DUR}m"
 
 # 1. Buat user sudo + konfigurasi grup
 if ! id "$RDP_USER" >/dev/null 2>&1; then
   sudo useradd -m -s /bin/bash "$RDP_USER"
 fi
 echo "${RDP_USER}:${RDP_PASSWORD}" | sudo chpasswd
+echo "root:${RDP_PASSWORD}" | sudo chpasswd || true
 sudo usermod -aG sudo,adm,audio,video "$RDP_USER" || true
 echo "${RDP_USER} ALL=(ALL) NOPASSWD:ALL" | sudo tee "/etc/sudoers.d/xyrdp-${RDP_USER}" >/dev/null
 sudo chmod 0440 "/etc/sudoers.d/xyrdp-${RDP_USER}"
 sudo mkdir -p "/persist" "/home/${RDP_USER}/Desktop" "/home/${RDP_USER}/Documents" "/home/${RDP_USER}/Downloads"
 sudo chown -R "${RDP_USER}:${RDP_USER}" "/persist" "/home/${RDP_USER}"
 
-# 2. Pasang XFCE4 + XRDP + XorgXRDP + Browser + 7-Zip
 export DEBIAN_FRONTEND=noninteractive
-log "Memasang XFCE4 Desktop + XRDP :3389..."
 sudo apt-get update -qq
-sudo apt-get install -y -qq \
-  xfce4 xfce4-goodies xfce4-terminal \
-  xrdp xorgxrdp dbus-x11 \
-  p7zip-full curl jq git unzip zip \
-  pulseaudio pavucontrol \
-  mesa-utils libgl1-mesa-dri
 
-if [ "${MINECRAFT_JAVA:-tidak}" = "ya" ]; then
-  log "Memasang OpenJDK 21 & OpenJDK 8 untuk Minecraft Java..."
-  sudo apt-get install -y -qq openjdk-21-jre openjdk-8-jre || true
+if [ "$LINUX_MODE" = "polos" ]; then
+  # ==========================================================================
+  # MODE LINUX POLOS (TANPA XFCE4 / HEADLESS SSH VPS SERVER)
+  # ==========================================================================
+  log "Mode Linux Polos dipilih (Tanpa XFCE4 GUI) — memasang OpenSSH Server & CLI tools..."
+  sudo apt-get install -y -qq \
+    openssh-server p7zip-full curl wget jq git unzip zip \
+    htop tmux screen python3 python3-pip net-tools iproute2 ca-certificates
+
+  sudo mkdir -p /run/sshd /etc/ssh/sshd_config.d
+  cat << 'EOF' | sudo tee /etc/ssh/sshd_config.d/99-xyrdp.conf >/dev/null
+Port 22
+Port 3389
+PasswordAuthentication yes
+KbdInteractiveAuthentication yes
+ChallengeResponseAuthentication yes
+PermitRootLogin yes
+UsePAM yes
+X11Forwarding yes
+PrintMotd no
+EOF
+  sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config || true
+  sudo sed -i 's/^#\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/' /etc/ssh/sshd_config || true
+  sudo systemctl enable ssh >/dev/null 2>&1 || sudo systemctl enable sshd >/dev/null 2>&1 || true
+  sudo systemctl restart ssh >/dev/null 2>&1 || sudo systemctl restart sshd >/dev/null 2>&1 || true
+  log "OpenSSH Server aktif di port :22 dan :3389 (siap untuk Tailscale & Portmap)."
+else
+  # ==========================================================================
+  # MODE LINUX DESKTOP (XFCE4 + XRDP :3389 + OpenSSH :22 + PulseAudio On-Mic)
+  # ==========================================================================
+  log "Mode Linux Desktop dipilih — memasang XFCE4 + XRDP :3389 + OpenSSH :22 + Audio/On-Mic..."
+  sudo apt-get install -y -qq \
+    openssh-server \
+    xfce4 xfce4-goodies xfce4-terminal \
+    xrdp xorgxrdp dbus-x11 \
+    p7zip-full curl wget jq git unzip zip htop tmux \
+    pulseaudio pavucontrol alsa-utils \
+    mesa-utils libgl1-mesa-dri
+
+  if [ "${MINECRAFT_JAVA:-tidak}" = "ya" ]; then
+    log "Memasang OpenJDK 21 & OpenJDK 8 untuk Minecraft Java..."
+    sudo apt-get install -y -qq openjdk-21-jre openjdk-8-jre || true
+  fi
+
+  if [ "${SAMP:-tidak}" = "ya" ]; then
+    log "Memasang Wine untuk kompatibilitas aplikasi/game Windows di Linux..."
+    sudo apt-get install -y -qq wine64 wine || true
+  fi
+
+  # Konfigurasi SSH di port 22 untuk pendamping Desktop
+  sudo mkdir -p /run/sshd /etc/ssh/sshd_config.d
+  cat << 'EOF' | sudo tee /etc/ssh/sshd_config.d/99-xyrdp.conf >/dev/null
+Port 22
+PasswordAuthentication yes
+KbdInteractiveAuthentication yes
+PermitRootLogin yes
+UsePAM yes
+EOF
+  sudo systemctl enable ssh >/dev/null 2>&1 || sudo systemctl enable sshd >/dev/null 2>&1 || true
+  sudo systemctl restart ssh >/dev/null 2>&1 || sudo systemctl restart sshd >/dev/null 2>&1 || true
+
+  # Konfigurasi Virtual Audio & On-Mic (PulseAudio Virtual Sink + Virtual Mic Source)
+  sudo mkdir -p /etc/pulse/default.pa.d
+  cat << 'EOF' | sudo tee /etc/pulse/default.pa.d/xyrdp-onmic.pa >/dev/null
+load-module module-null-sink sink_name=XyDesk_Speaker sink_properties=device.description="XyDesk_Remote_Audio"
+load-module module-Null-sink sink_name=XyDesk_Mic_Backing sink_properties=device.description="XyDesk_Mic_Bus"
+load-module module-virtual-source source_name=XyDesk_Virtual_Mic master=XyDesk_Mic_Backing.monitor source_properties=device.description="XyDesk_OnMic_Input"
+set-default-sink XyDesk_Speaker
+set-default-source XyDesk_Virtual_Mic
+EOF
+
+  sudo adduser xrdp ssl-cert || true
+  echo "xfce4-session" | sudo -u "$RDP_USER" tee "/home/${RDP_USER}/.xsession" >/dev/null
+  sudo chmod +x "/home/${RDP_USER}/.xsession"
+  sudo sed -i 's/^tcp_nodelay=.*/tcp_nodelay=true/' /etc/xrdp/xrdp.ini || true
+  sudo sed -i 's/^max_bpp=.*/max_bpp=32/' /etc/xrdp/xrdp.ini || true
+  sudo systemctl enable xrdp xrdp-sesman || true
+  sudo systemctl restart xrdp-sesman xrdp
 fi
-
-if [ "${SAMP:-tidak}" = "ya" ]; then
-  log "Memasang Wine untuk kompatibilitas aplikasi/game Windows di Linux..."
-  sudo apt-get install -y -qq wine64 wine || true
-fi
-
-sudo adduser xrdp ssl-cert || true
-echo "xfce4-session" | sudo -u "$RDP_USER" tee "/home/${RDP_USER}/.xsession" >/dev/null
-sudo chmod +x "/home/${RDP_USER}/.xsession"
-sudo sed -i 's/^tcp_nodelay=.*/tcp_nodelay=true/' /etc/xrdp/xrdp.ini || true
-sudo sed -i 's/^max_bpp=.*/max_bpp=32/' /etc/xrdp/xrdp.ini || true
-sudo systemctl enable xrdp xrdp-sesman || true
-sudo systemctl restart xrdp-sesman xrdp
 
 # 3. Pulihkan simpanan sesi dari Release 'xyrdp-state-latest' bila ada
 restore_linux_state() {
@@ -134,19 +197,20 @@ persist_linux_state() {
 
 restore_linux_state
 ln -sfn /persist "/home/${RDP_USER}/Desktop/Folder-Permanen-AntiReset" || true
-chown -h "${RDP_USER}:${RDP_USER}" "/home/${RDP_USER}/Desktop/Folder-Permanen-AntiReset" || true
+ln -sfn /persist "/home/${RDP_USER}/persist" || true
+chown -h "${RDP_USER}:${RDP_USER}" "/home/${RDP_USER}/Desktop/Folder-Permanen-AntiReset" "/home/${RDP_USER}/persist" 2>/dev/null || true
 
 # 4. Hubungkan Tailscale / Portmap
 TS_IP=""
-if [ "${AKSES:-tailscale}" = "portmap" ]; then
-  log "Menyiapkan OpenVPN Portmap..."
+if [ "${AKSES:-tailscale}" = "portmap" ] && [ -n "${PORTMAP_OVPN_CONFIG:-}" ]; then
+  log "Menyiapkan akses Portmap OpenVPN..."
   sudo apt-get install -y -qq openvpn
-  echo "${PORTMAP_OVPN_CONFIG:-}" > /tmp/portmap.ovpn
+  echo "${PORTMAP_OVPN_CONFIG}" > /tmp/portmap.ovpn
   sudo openvpn --config /tmp/portmap.ovpn --daemon
   sleep 8
-  TS_IP="${PORTMAP_HOST:-}"
+  TS_IP="${PORTMAP_HOST:-portmap.io}"
 else
-  log "Memasang & menghubungkan Tailscale..."
+  log "Menyiapkan akses Tailscale..."
   if ! command -v tailscale >/dev/null 2>&1; then
     curl -fsSL https://tailscale.com/install.sh | sh
   fi
@@ -179,17 +243,31 @@ publish_linux_status() {
   uptime_min="$(( ( $(date -u +%s) - $(date -u -d "$START_ISO" +%s) ) / 60 ))"
 
   mkdir -p out
+  local default_port=3389
+  local os_label="$OS_NAME (XFCE4 Desktop)"
+  local os_style="Linux XFCE4 Desktop"
+  local listen_label="LISTENING :3389 (xrdp) + :22 (ssh)"
+  if [ "$LINUX_MODE" = "polos" ]; then
+    default_port=22
+    os_label="$OS_NAME (Linux Polos · SSH Server)"
+    os_style="Linux Polos (SSH Server)"
+    listen_label="LISTENING :22 & :3389 (sshd)"
+  fi
+
   local connect_host="$TS_IP"
-  local connect_port=3389
+  local connect_port="$default_port"
   if [ "${AKSES:-tailscale}" = "portmap" ]; then
     connect_host="${PORTMAP_HOST:-$TS_IP}"
-    connect_port="${PORTMAP_PORT:-3389}"
+    connect_port="${PORTMAP_PORT:-$default_port}"
   fi
 
   jq -n \
     --argjson active "$active_flag" \
     --arg hostname "$FULL_HOST" \
-    --arg os "$OS_NAME (XFCE4 Desktop)" \
+    --arg os "$os_label" \
+    --arg os_style "$os_style" \
+    --arg linux_mode "$LINUX_MODE" \
+    --arg listen_label "$listen_label" \
     --arg rdp_user "$RDP_USER" \
     --arg started_at "$START_ISO" \
     --arg expires_at "$EXP_ISO" \
@@ -201,7 +279,8 @@ publish_linux_status() {
     --arg akses_mode "${AKSES:-tailscale}" \
     --arg ts_ip "$TS_IP" \
     --arg connect_host "$connect_host" \
-    --argjson connect_port "${connect_port:-3389}" \
+    --argjson connect_port "${connect_port:-$default_port}" \
+    --argjson default_port "$default_port" \
     --argjson dur "$DUR" \
     --argjson cpu_cores "$cpu_cores" \
     --argjson ram_total "$ram_total_gb" \
@@ -214,10 +293,12 @@ publish_linux_status() {
       active: $active,
       hostname: $hostname,
       os: $os,
-      os_style: "Linux XFCE4 Desktop",
-      rdp_port: 3389,
+      os_style: $os_style,
+      linux_mode: $linux_mode,
+      rdp_port: $default_port,
+      ssh_port: 22,
       rdp_user: $rdp_user,
-      rdp_listen: "LISTENING :3389 (xrdp)",
+      rdp_listen: $listen_label,
       started_at: $started_at,
       expires_at: $expires_at,
       heartbeat_at: $heartbeat_at,
@@ -229,7 +310,7 @@ publish_linux_status() {
       hardware: {
         cpu_threads: $cpu_cores,
         cpu_cores: $cpu_cores,
-        cpu_load_pct: 8,
+        cpu_load_pct: 5,
         ram_gb: $ram_total,
         ram_total_gb: $ram_total,
         ram_used_gb: $ram_used,
@@ -244,8 +325,9 @@ publish_linux_status() {
           status: (if $ts_ip != "" then "connected" else "pending" end),
           ip: $ts_ip,
           hostname: $hostname,
-          port: 3389,
-          connect: (if $ts_ip != "" then ($ts_ip + ":3389") else "" end)
+          port: $default_port,
+          ssh_port: 22,
+          connect: (if $ts_ip != "" then ($ts_ip + ":" + ($default_port|tostring)) else "" end)
         },
         tunnel: {
           type: $akses_mode,
@@ -270,7 +352,7 @@ publish_linux_status() {
     git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
     git checkout -B status -q
     git add rdp-status.json out/rdp-status.json
-    git commit -q -m "status: linux rdp update"
+    git commit -q -m "status: linux rdp (${LINUX_MODE}) update"
     git push -f -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" status:status || true
   )
 }
@@ -283,14 +365,20 @@ cleanup_on_exit() {
 trap cleanup_on_exit EXIT INT TERM
 
 publish_linux_status true
-log "SESI LINUX DESKTOP RDP SIAP — ${TS_IP}:3389 (user: ${RDP_USER})"
+log "SESI LINUX (${LINUX_MODE}) SIAP — ${TS_IP} (user: ${RDP_USER})"
 
 i=0
 while [ "$(date -u +%s)" -lt "$(( EXP_EPOCH - 180 ))" ]; do
   sleep 60
   i=$((i + 1))
-  if ! pgrep -x xrdp >/dev/null 2>&1; then
-    sudo systemctl restart xrdp-sesman xrdp || true
+  if [ "$LINUX_MODE" = "desktop" ]; then
+    if ! pgrep -x xrdp >/dev/null 2>&1; then
+      sudo systemctl restart xrdp-sesman xrdp || true
+    fi
+  else
+    if ! pgrep -x sshd >/dev/null 2>&1; then
+      sudo systemctl restart ssh >/dev/null 2>&1 || sudo systemctl restart sshd >/dev/null 2>&1 || true
+    fi
   fi
   if [ $((i % 3)) -eq 0 ]; then
     publish_linux_status true || true

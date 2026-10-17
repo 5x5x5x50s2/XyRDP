@@ -8,13 +8,23 @@ Copy-Item (Join-Path $PSScriptRoot 'diagnose-desktop.ps1') (Join-Path $root 'Dia
 $mic=$env:MICROPHONE -ne 'tidak'
 $wall=$true
 $policy='Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+$tsRoot='Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server'
+$tsTcp="$tsRoot\WinStations\RDP-Tcp"
 Set-Reg $policy 'fDisableAudio' 0 'DWord' | Out-Null
 Set-Reg $policy 'fDisableAudioCapture' ([int](-not $mic)) 'DWord' | Out-Null
+Set-Reg $policy 'fDisableCam' 0 'DWord' | Out-Null
 Set-Reg $policy 'fNoRemoteDesktopWallpaper' ([int](-not $wall)) 'DWord' | Out-Null
+Set-Reg $tsRoot 'fDisableAudioCapture' ([int](-not $mic)) 'DWord' | Out-Null
+Set-Reg $tsTcp  'fDisableAudioCapture' ([int](-not $mic)) 'DWord' | Out-Null
 foreach ($service in @('AudioEndpointBuilder','Audiosrv')) {
   try { Set-Service $service -StartupType Automatic -ErrorAction Stop; Start-Service $service -ErrorAction Stop } catch { Log "Layanan $service belum aktif" }
 }
-if ($mic) { Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone' 'Value' 'Allow' 'String' | Out-Null }
+if ($mic) {
+  Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone' 'Value' 'Allow' 'String' | Out-Null
+  Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged' 'Value' 'Allow' 'String' | Out-Null
+  Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam' 'Value' 'Allow' 'String' | Out-Null
+  Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam\NonPackaged' 'Value' 'Allow' 'String' | Out-Null
+}
 $wallStatus='disabled'
 if ($wall) {
   $target=Join-Path $root 'wallpaper.jpg'

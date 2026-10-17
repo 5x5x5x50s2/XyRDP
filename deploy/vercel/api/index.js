@@ -525,6 +525,32 @@ module.exports = async (req, res) => {
       if (!ENV.oauth_id || !ENV.oauth_secret || !sessionSecretReady()) return redirect('/?err=oauth_belum_dikonfigurasi');
       const isApk = url.searchParams.get('apk') === '1';
       const apkSessionId = String(url.searchParams.get('session_id') || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+      const forcePrompt = url.searchParams.get('force') === '1';
+      if (isApk && apkSessionId && !forcePrompt) {
+        const existing = ghUser(req);
+        if (existing && existing.token && existing.login) {
+          const authData = {
+            token: existing.token,
+            login: existing.login,
+            name: existing.name || existing.login,
+            avatar_url: existing.avatar || `https://github.com/${existing.login}.png?size=160`,
+            at: Date.now(),
+          };
+          apkAuthTokens.set(apkSessionId, authData);
+          try {
+            await fetch('https://api.xydeskremote.biz.id/api/github/oauth/complete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ session_id: apkSessionId, ...authData }),
+            });
+          } catch {}
+          const deepLink = `xydesk://github-auth?token=${encodeURIComponent(authData.token)}&login=${encodeURIComponent(authData.login)}&name=${encodeURIComponent(authData.name)}&avatar=${encodeURIComponent(authData.avatar_url)}`;
+          const intentLink = `intent://github-auth?token=${encodeURIComponent(authData.token)}&login=${encodeURIComponent(authData.login)}&name=${encodeURIComponent(authData.name)}&avatar=${encodeURIComponent(authData.avatar_url)}#Intent;scheme=xydesk;package=id.xydesk.remote;end`;
+          const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitHub Terhubung · XyDesk Remote</title><style>body{background:#09090b;color:#fafafa;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}.card{max-width:380px;background:#141418;border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:28px 22px}.btn{display:inline-block;margin-top:18px;padding:12px 24px;border-radius:999px;background:#fafafa;color:#09090b;font-weight:700;text-decoration:none;font-size:14px}</style></head><body><div class="card"><div style="font-size:18px;font-weight:800;margin-bottom:8px">GitHub Terhubung</div><div style="font-size:13px;color:#a1a1aa">Sesi aktif sebagai <b>@${String(authData.login).replace(/[<>&"']/g, '')}</b>. Mengembalikan otomatis ke XyDesk Remote...</div><a class="btn" href="${deepLink}">Kembali ke XyDesk Remote</a></div><script>setTimeout(function(){window.location.replace(${JSON.stringify(deepLink)});},60);setTimeout(function(){window.location.replace(${JSON.stringify(intentLink)});},500);</script></body></html>`;
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+          return res.end(html);
+        }
+      }
       const state = (isApk && apkSessionId)
         ? `apk_${apkSessionId}_${b64u(crypto.randomBytes(8))}`
         : b64u(crypto.randomBytes(16));
@@ -557,6 +583,12 @@ module.exports = async (req, res) => {
       const meRes = await fetch(API + '/user', { headers: { 'User-Agent': 'XyRDP-vc', 'Authorization': `Bearer ${tok.access_token}`, 'X-GitHub-Api-Version': '2022-11-28' } });
       if (!meRes.ok) return redirect('/?err=profil_github_gagal');
       const me = await meRes.json();
+      const payload = {
+        t: tok.access_token, l: me.login, n: me.name || '', a: me.avatar_url || '',
+        r: `${me.login}/${ENV.repo}`,
+        e: Date.now() + SESSION_TTL_DAYS * 24 * 3600 * 1000,
+      };
+      const sessionCookies = [cookieHeader('ghs', seal(payload), SESSION_TTL_DAYS * 24 * 3600, req), cookieHeader('ost', '', 0, req)];
       if (isApkState) {
         const parts = state.split('_');
         const sessionId = parts.length >= 2 ? parts[1] : '';
@@ -579,16 +611,11 @@ module.exports = async (req, res) => {
         }
         const deepLink = `xydesk://github-auth?token=${encodeURIComponent(authData.token)}&login=${encodeURIComponent(authData.login)}&name=${encodeURIComponent(authData.name)}&avatar=${encodeURIComponent(authData.avatar_url)}`;
         const intentLink = `intent://github-auth?token=${encodeURIComponent(authData.token)}&login=${encodeURIComponent(authData.login)}&name=${encodeURIComponent(authData.name)}&avatar=${encodeURIComponent(authData.avatar_url)}#Intent;scheme=xydesk;package=id.xydesk.remote;end`;
-        const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitHub Terhubung · XyDesk Remote</title><style>body{background:#09090b;color:#fafafa;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}.card{max-width:380px;background:#141418;border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:28px 22px}.btn{display:inline-block;margin-top:18px;padding:12px 24px;border-radius:999px;background:#fafafa;color:#09090b;font-weight:700;text-decoration:none;font-size:14px}</style></head><body><div class="card"><div style="font-size:18px;font-weight:800;margin-bottom:8px">GitHub Berhasil Terhubung!</div><div style="font-size:13px;color:#a1a1aa">Login sebagai <b>@${String(authData.login).replace(/[<>&"']/g, '')}</b>. Mengembalikan otomatis ke aplikasi XyDesk Remote...</div><a class="btn" href="${deepLink}">Kembali ke XyDesk Remote</a></div><script>setTimeout(function(){window.location.replace(${JSON.stringify(deepLink)});},80);setTimeout(function(){window.location.replace(${JSON.stringify(intentLink)});},600);</script></body></html>`;
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitHub Terhubung · XyDesk Remote</title><style>body{background:#09090b;color:#fafafa;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}.card{max-width:380px;background:#141418;border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:28px 22px}.btn{display:inline-block;margin-top:18px;padding:12px 24px;border-radius:999px;background:#fafafa;color:#09090b;font-weight:700;text-decoration:none;font-size:14px}</style></head><body><div class="card"><div style="font-size:18px;font-weight:800;margin-bottom:8px">GitHub Terhubung</div><div style="font-size:13px;color:#a1a1aa">Masuk sebagai <b>@${String(authData.login).replace(/[<>&"']/g, '')}</b>. Mengembalikan otomatis ke aplikasi XyDesk Remote...</div><a class="btn" href="${deepLink}">Kembali ke XyDesk Remote</a></div><script>setTimeout(function(){window.location.replace(${JSON.stringify(deepLink)});},80);setTimeout(function(){window.location.replace(${JSON.stringify(intentLink)});},600);</script></body></html>`;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': sessionCookies });
         return res.end(html);
       }
-      const payload = {
-        t: tok.access_token, l: me.login, n: me.name || '', a: me.avatar_url || '',
-        r: `${me.login}/${ENV.repo}`,
-        e: Date.now() + SESSION_TTL_DAYS * 24 * 3600 * 1000,
-      };
-      return redirect('/', [cookieHeader('ghs', seal(payload), SESSION_TTL_DAYS * 24 * 3600, req), cookieHeader('ost', '', 0, req)]);
+      return redirect('/', sessionCookies);
     }
 
     if (req.method === 'POST' && p === '/auth/logout') {

@@ -1,0 +1,303 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  setup-linux-rdp.sh — Full Linux Desktop RDP (XFCE4 + XRDP :3389 + Tailscale
+#                       / Portmap + Anti-Reset Persistence + Telemetry)
+# ============================================================================
+set -e
+
+log() {
+  printf "[%s UTC][XyRDP:linux] %s\n" "$(date -u +%H:%M:%S)" "$*"
+}
+
+if [ -z "${RDP_PASSWORD:-}" ] || [ "${#RDP_PASSWORD}" -lt 8 ]; then
+  log "ERROR: secret RDP_PASSWORD belum di-set / kurang dari 8 karakter."
+  exit 1
+fi
+
+DUR="${DUR:-342}"
+DUR="$(echo "$DUR" | tr -cd '0-9')"
+[ -z "$DUR" ] && DUR=342
+[ "$DUR" -lt 10 ] && DUR=342
+[ "$DUR" -gt 342 ] && DUR=342
+
+RDP_USER="${RDP_USER:-xyadmin}"
+HOST_BASE="$(echo "${HOSTNAME:-rdpfree}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
+[ -z "$HOST_BASE" ] && HOST_BASE="rdpfree"
+FULL_HOST="${HOST_BASE}-${GITHUB_RUN_NUMBER:-1}"
+
+log "Menyiapkan Linux Desktop RDP | host=$FULL_HOST | user=$RDP_USER | durasi=${DUR}m"
+
+# 1. Buat user sudo + konfigurasi grup
+if ! id "$RDP_USER" >/dev/null 2>&1; then
+  sudo useradd -m -s /bin/bash "$RDP_USER"
+fi
+echo "${RDP_USER}:${RDP_PASSWORD}" | sudo chpasswd
+sudo usermod -aG sudo,adm,audio,video "$RDP_USER" || true
+echo "${RDP_USER} ALL=(ALL) NOPASSWD:ALL" | sudo tee "/etc/sudoers.d/xyrdp-${RDP_USER}" >/dev/null
+sudo chmod 0440 "/etc/sudoers.d/xyrdp-${RDP_USER}"
+sudo mkdir -p "/persist" "/home/${RDP_USER}/Desktop" "/home/${RDP_USER}/Documents" "/home/${RDP_USER}/Downloads"
+sudo chown -R "${RDP_USER}:${RDP_USER}" "/persist" "/home/${RDP_USER}"
+
+# 2. Pasang XFCE4 + XRDP + XorgXRDP + Browser + 7-Zip
+export DEBIAN_FRONTEND=noninteractive
+log "Memasang XFCE4 Desktop + XRDP :3389..."
+sudo apt-get update -qq
+sudo apt-get install -y -qq \
+  xfce4 xfce4-goodies xfce4-terminal \
+  xrdp xorgxrdp dbus-x11 \
+  p7zip-full curl jq git unzip zip \
+  pulseaudio pavucontrol \
+  mesa-utils libgl1-mesa-dri
+
+if [ "${MINECRAFT_JAVA:-tidak}" = "ya" ]; then
+  log "Memasang OpenJDK 21 & OpenJDK 8 untuk Minecraft Java..."
+  sudo apt-get install -y -qq openjdk-21-jre openjdk-8-jre || true
+fi
+
+if [ "${SAMP:-tidak}" = "ya" ]; then
+  log "Memasang Wine untuk kompatibilitas aplikasi/game Windows di Linux..."
+  sudo apt-get install -y -qq wine64 wine || true
+fi
+
+sudo adduser xrdp ssl-cert || true
+echo "xfce4-session" | sudo -u "$RDP_USER" tee "/home/${RDP_USER}/.xsession" >/dev/null
+sudo chmod +x "/home/${RDP_USER}/.xsession"
+sudo sed -i 's/^tcp_nodelay=.*/tcp_nodelay=true/' /etc/xrdp/xrdp.ini || true
+sudo sed -i 's/^max_bpp=.*/max_bpp=32/' /etc/xrdp/xrdp.ini || true
+sudo systemctl enable xrdp xrdp-sesman || true
+sudo systemctl restart xrdp-sesman xrdp
+
+# 3. Pulihkan simpanan sesi dari Release 'xyrdp-state-latest' bila ada
+restore_linux_state() {
+  if [ -z "${GITHUB_TOKEN:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ]; then return 0; fi
+  local api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+  local asset_id
+  asset_id="$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api/releases/tags/xyrdp-state-latest" | jq -r '.assets[]? | select(.name=="xyrdp-linux-state.zip") | .id' | head -n1)"
+  if [ -n "$asset_id" ] && [ "$asset_id" != "null" ]; then
+    log "Memulihkan state Linux dari Release xyrdp-state-latest (asset $asset_id)..."
+    mkdir -p /tmp/xyrdp-restore
+    if curl -sL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" \
+      "$api/releases/assets/${asset_id}" -o /tmp/xyrdp-restore/state.zip; then
+      7z x /tmp/xyrdp-restore/state.zip -o/tmp/xyrdp-restore/ext -y >/dev/null 2>&1 || true
+      for d in Desktop Documents Downloads; do
+        if [ -d "/tmp/xyrdp-restore/ext/$d" ]; then
+          cp -rf "/tmp/xyrdp-restore/ext/$d/." "/home/${RDP_USER}/$d/" 2>/dev/null || true
+        fi
+      done
+      if [ -d "/tmp/xyrdp-restore/ext/_persist" ]; then
+        cp -rf "/tmp/xyrdp-restore/ext/_persist/." "/persist/" 2>/dev/null || true
+      fi
+      sudo chown -R "${RDP_USER}:${RDP_USER}" "/home/${RDP_USER}" "/persist"
+      log "State Linux berhasil dipulihkan."
+    fi
+    rm -rf /tmp/xyrdp-restore
+  fi
+}
+
+persist_linux_state() {
+  if [ -z "${GITHUB_TOKEN:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ]; then return 0; fi
+  mkdir -p /tmp/xyrdp-persist/stage
+  for d in Desktop Documents Downloads; do
+    if [ -d "/home/${RDP_USER}/$d" ]; then
+      mkdir -p "/tmp/xyrdp-persist/stage/$d"
+      cp -rf "/home/${RDP_USER}/$d/." "/tmp/xyrdp-persist/stage/$d/" 2>/dev/null || true
+    fi
+  done
+  if [ -d "/persist" ]; then
+    mkdir -p "/tmp/xyrdp-persist/stage/_persist"
+    cp -rf "/persist/." "/tmp/xyrdp-persist/stage/_persist/" 2>/dev/null || true
+  fi
+  rm -f /tmp/xyrdp-persist/xyrdp-linux-state.zip
+  (cd /tmp/xyrdp-persist/stage && 7z a -tzip -mx=1 -mmt=on /tmp/xyrdp-persist/xyrdp-linux-state.zip . >/dev/null 2>&1) || true
+  if [ ! -f /tmp/xyrdp-persist/xyrdp-linux-state.zip ]; then return 0; fi
+
+  local api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+  local rel_id
+  rel_id="$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api/releases/tags/xyrdp-state-latest" | jq -r '.id // empty')"
+  if [ -z "$rel_id" ]; then
+    rel_id="$(curl -s -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Content-Type: application/json" \
+      "$api/releases" -d '{"tag_name":"xyrdp-state-latest","name":"XyRDP Persistent Session State (Auto-Save)","prerelease":true}' | jq -r '.id // empty')"
+  fi
+  if [ -n "$rel_id" ]; then
+    local old_asset
+    old_asset="$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api/releases/tags/xyrdp-state-latest" | jq -r '.assets[]? | select(.name=="xyrdp-linux-state.zip") | .id' | head -n1)"
+    if [ -n "$old_asset" ] && [ "$old_asset" != "null" ]; then
+      curl -s -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api/releases/assets/${old_asset}" >/dev/null 2>&1 || true
+    fi
+    curl -s -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Content-Type: application/zip" \
+      "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rel_id}/assets?name=xyrdp-linux-state.zip" \
+      --data-binary @/tmp/xyrdp-persist/xyrdp-linux-state.zip >/dev/null 2>&1 || true
+    log "State Linux berhasil disimpan ke Release xyrdp-state-latest."
+  fi
+  rm -rf /tmp/xyrdp-persist
+}
+
+restore_linux_state
+ln -sfn /persist "/home/${RDP_USER}/Desktop/Folder-Permanen-AntiReset" || true
+chown -h "${RDP_USER}:${RDP_USER}" "/home/${RDP_USER}/Desktop/Folder-Permanen-AntiReset" || true
+
+# 4. Hubungkan Tailscale / Portmap
+TS_IP=""
+if [ "${AKSES:-tailscale}" = "portmap" ]; then
+  log "Menyiapkan OpenVPN Portmap..."
+  sudo apt-get install -y -qq openvpn
+  echo "${PORTMAP_OVPN_CONFIG:-}" > /tmp/portmap.ovpn
+  sudo openvpn --config /tmp/portmap.ovpn --daemon
+  sleep 8
+  TS_IP="${PORTMAP_HOST:-}"
+else
+  log "Memasang & menghubungkan Tailscale..."
+  if ! command -v tailscale >/dev/null 2>&1; then
+    curl -fsSL https://tailscale.com/install.sh | sh
+  fi
+  sudo systemctl enable --now tailscaled
+  sudo tailscale up --authkey="${TAILSCALE_AUTH_KEY}" --hostname="${FULL_HOST}" --accept-routes --reset
+  for _ in $(seq 1 20); do
+    TS_IP="$(tailscale ip -4 2>/dev/null | head -n1 | tr -d '[:space:]')"
+    [ -n "$TS_IP" ] && break
+    sleep 2
+  done
+  log "Tailscale terhubung: IP=${TS_IP}"
+fi
+
+START_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+EXP_EPOCH="$(( $(date -u +%s) + DUR * 60 ))"
+EXP_ISO="$(date -u -d "@${EXP_EPOCH}" +%Y-%m-%dT%H:%M:%SZ)"
+OS_NAME="$(. /etc/os-release && echo "${PRETTY_NAME:-Ubuntu Linux}")"
+
+publish_linux_status() {
+  local active_flag="$1"
+  local now_iso
+  now_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local cpu_cores ram_total_gb ram_used_gb disk_total_gb disk_free_gb disk_used_gb uptime_min
+  cpu_cores="$(nproc)"
+  ram_total_gb="$(awk '/MemTotal/ {printf "%.1f", $2/1024/1024}' /proc/meminfo)"
+  ram_used_gb="$(awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END{printf "%.1f", (t-a)/1024/1024}' /proc/meminfo)"
+  disk_total_gb="$(df -BG / | awk 'NR==2 {gsub("G","",$2); print $2}')"
+  disk_free_gb="$(df -BG / | awk 'NR==2 {gsub("G","",$4); print $4}')"
+  disk_used_gb="$(df -BG / | awk 'NR==2 {gsub("G","",$3); print $3}')"
+  uptime_min="$(( ( $(date -u +%s) - $(date -u -d "$START_ISO" +%s) ) / 60 ))"
+
+  mkdir -p out
+  local connect_host="$TS_IP"
+  local connect_port=3389
+  if [ "${AKSES:-tailscale}" = "portmap" ]; then
+    connect_host="${PORTMAP_HOST:-$TS_IP}"
+    connect_port="${PORTMAP_PORT:-3389}"
+  fi
+
+  jq -n \
+    --argjson active "$active_flag" \
+    --arg hostname "$FULL_HOST" \
+    --arg os "$OS_NAME (XFCE4 Desktop)" \
+    --arg rdp_user "$RDP_USER" \
+    --arg started_at "$START_ISO" \
+    --arg expires_at "$EXP_ISO" \
+    --arg heartbeat_at "$now_iso" \
+    --arg run_id "${GITHUB_RUN_ID:-0}" \
+    --arg run_attempt "${GITHUB_RUN_ATTEMPT:-1}" \
+    --arg run_number "${GITHUB_RUN_NUMBER:-1}" \
+    --arg run_url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+    --arg akses_mode "${AKSES:-tailscale}" \
+    --arg ts_ip "$TS_IP" \
+    --arg connect_host "$connect_host" \
+    --argjson connect_port "${connect_port:-3389}" \
+    --argjson dur "$DUR" \
+    --argjson cpu_cores "$cpu_cores" \
+    --argjson ram_total "$ram_total_gb" \
+    --argjson ram_used "$ram_used_gb" \
+    --argjson disk_total "$disk_total_gb" \
+    --argjson disk_free "$disk_free_gb" \
+    --argjson disk_used "$disk_used_gb" \
+    --argjson uptime_min "$uptime_min" \
+    '{
+      active: $active,
+      hostname: $hostname,
+      os: $os,
+      os_style: "Linux XFCE4 Desktop",
+      rdp_port: 3389,
+      rdp_user: $rdp_user,
+      rdp_listen: "LISTENING :3389 (xrdp)",
+      started_at: $started_at,
+      expires_at: $expires_at,
+      heartbeat_at: $heartbeat_at,
+      duration_menit: $dur,
+      run_id: $run_id,
+      run_attempt: $run_attempt,
+      run_number: $run_number,
+      run_url: $run_url,
+      hardware: {
+        cpu_threads: $cpu_cores,
+        cpu_cores: $cpu_cores,
+        cpu_load_pct: 8,
+        ram_gb: $ram_total,
+        ram_total_gb: $ram_total,
+        ram_used_gb: $ram_used,
+        disk_total_gb: $disk_total,
+        disk_free_gb: $disk_free,
+        disk_used_gb: $disk_used,
+        uptime_minutes: $uptime_min
+      },
+      akses: {
+        mode: $akses_mode,
+        tailscale: {
+          status: (if $ts_ip != "" then "connected" else "pending" end),
+          ip: $ts_ip,
+          hostname: $hostname,
+          port: 3389,
+          connect: (if $ts_ip != "" then ($ts_ip + ":3389") else "" end)
+        },
+        tunnel: {
+          type: $akses_mode,
+          host: $connect_host,
+          port: $connect_port,
+          connect: ($connect_host + ":" + ($connect_port|tostring))
+        }
+      }
+    }' > out/rdp-status.json
+
+  # Push ke branch status
+  local tmp_git="/tmp/xyrdp-status-branch"
+  rm -rf "$tmp_git"
+  mkdir -p "$tmp_git"
+  cp out/rdp-status.json "$tmp_git/rdp-status.json"
+  mkdir -p "$tmp_git/out"
+  cp out/rdp-status.json "$tmp_git/out/rdp-status.json"
+  (
+    cd "$tmp_git"
+    git init -q
+    git config user.name "github-actions[bot]"
+    git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+    git checkout -B status -q
+    git add rdp-status.json out/rdp-status.json
+    git commit -q -m "status: linux rdp update"
+    git push -f -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" status:status || true
+  )
+}
+
+cleanup_on_exit() {
+  log "Menyimpan state Linux akhir & membersihkan status sesi..."
+  persist_linux_state || true
+  publish_linux_status false || true
+}
+trap cleanup_on_exit EXIT INT TERM
+
+publish_linux_status true
+log "SESI LINUX DESKTOP RDP SIAP — ${TS_IP}:3389 (user: ${RDP_USER})"
+
+i=0
+while [ "$(date -u +%s)" -lt "$(( EXP_EPOCH - 180 ))" ]; do
+  sleep 60
+  i=$((i + 1))
+  if ! pgrep -x xrdp >/dev/null 2>&1; then
+    sudo systemctl restart xrdp-sesman xrdp || true
+  fi
+  if [ $((i % 3)) -eq 0 ]; then
+    publish_linux_status true || true
+  fi
+  if [ $((i % 15)) -eq 0 ]; then
+    persist_linux_state || true
+  fi
+done
+
+log "Durasi sesi Linux selesai."

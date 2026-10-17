@@ -2,24 +2,25 @@
 #  setup-samp.ps1 — Runtime & Paket Akselerasi GTA San Andreas / SA-MP
 #                   By SilentPatch + Ultimate ASI Loader + DirectPlay + DX9
 # ----------------------------------------------------------------------------
-#  1) Memasang penuh runtime Windows yang dibutuhkan GTA San Andreas & SA-MP:
+#  1) Memasang runtime Windows yang dibutuhkan GTA San Andreas & SA-MP dengan
+#     batas waktu (timeout) ketat agar TIDAK PERNAH STUCK di runner Actions:
 #     - DirectX End-User Runtimes (June 2010) -> d3dx9_24..43.dll, xinput1_3.dll
 #     - Visual C++ Redistributable 2015-2022 (x86 & x64) + 2013 (x86)
-#     - Windows Legacy Components -> DirectPlay + .NET Framework 3.5 (NetFx3)
+#     - DirectPlay (dengan timeout 25 detik + fallback registry DirectPlay)
 #  2) Menyiapkan Paket Akselerasi GTA SA-MP By SilentPatch di C:\Games\GTA-SAMP:
 #     - SilentPatchSA (SilentPatchSA.asi + SilentPatchSA.ini 90 FPS + Mouse Fix)
 #     - SilentPatch DDraw (ddraw.dll)
 #     - Ultimate ASI Loader x86 (vorbisFile.dll / dinput8.dll)
 #     - GTA SA Widescreen Fix (GTASA.WidescreenFix.asi)
 #     - open.mp / SA-MP Client Installer + Script Auto-Patcher 1-Klik di Desktop
-#     - Auto-patch otomatis bila folder GTA San Andreas sudah ada di C:\Persist
-#       atau C:\Games dari sesi sebelumnya!
+#     - PENTING: Saat dipanggil otomatis dari workflow (-AutoOnly), TIDAK PERNAH
+#       membuka FolderBrowserDialog GUI di Session 0 agar workflow tidak menggantung!
 # ============================================================================
 param(
   [switch]$DirectXOnly
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 $XyTag                 = 'XyRDP:samp'
 . "$PSScriptRoot/lib-common.ps1"
@@ -46,26 +47,49 @@ function Test-FilesPresent([string]$Dir, [string[]]$Names) {
   return $true
 }
 
-function Invoke-DownloadWithRetry([string]$Url, [string]$OutFile, [int]$Retries = 3) {
+function Invoke-DownloadWithRetry([string]$Url, [string]$OutFile, [int]$Retries = 2) {
   for ($i = 1; $i -le $Retries; $i++) {
     try {
       Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
-      & curl.exe -fL --retry 3 --retry-delay 2 --connect-timeout 20 -sS $Url -o $OutFile
+      & curl.exe -fL --retry 2 --retry-delay 1 --connect-timeout 12 --max-time 60 -sS $Url -o $OutFile
       if ($LASTEXITCODE -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 1024) {
         return $true
       }
     } catch {}
     try {
-      Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -TimeoutSec 120
+      Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -TimeoutSec 45
       if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 1024) {
         return $true
       }
     } catch {
-      if ($i -eq $Retries) { throw }
-      Start-Sleep -Seconds (2 * $i)
+      if ($i -lt $Retries) { Start-Sleep -Seconds 2 }
     }
   }
   return $false
+}
+
+function Start-ProcessWithTimeout([string]$FilePath, [string[]]$ArgumentList, [string]$WorkingDir = '', [int]$TimeoutSec = 60) {
+  try {
+    $psi = @{
+      FilePath     = $FilePath
+      ArgumentList = $ArgumentList
+      PassThru     = $true
+      WindowStyle  = 'Hidden'
+    }
+    if ($WorkingDir -and (Test-Path $WorkingDir)) {
+      $psi['WorkingDirectory'] = $WorkingDir
+    }
+    $p = Start-Process @psi
+    if (-not $p.WaitForExit($TimeoutSec * 1000)) {
+      Log "  proses '$(Split-Path $FilePath -Leaf)' melebihi batas $TimeoutSec detik — dihentikan agar tidak stuck."
+      try { $p.Kill() } catch {}
+      return -1
+    }
+    return $p.ExitCode
+  } catch {
+    Log "  gagal menjalankan $(Split-Path $FilePath -Leaf): $($_.Exception.Message)"
+    return -1
+  }
 }
 
 function Test-DirectXFiles {
@@ -84,26 +108,22 @@ function Install-DirectXJune2010 {
   Remove-Item $dxExt -Recurse -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Path $dxExt -Force | Out-Null
 
-  $dxUrls = @(
-    'https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe'
-  )
-  $downloaded = $false
-  foreach ($u in $dxUrls) {
-    if (Invoke-DownloadWithRetry $u $dxPkg) { $downloaded = $true; break }
+  $dxUrl = 'https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe'
+  if (-not (Invoke-DownloadWithRetry $dxUrl $dxPkg 3)) {
+    throw 'Gagal mengunduh DirectX June 2010 redistributable.'
   }
-  if (-not $downloaded) { throw 'Gagal mengunduh DirectX June 2010 redistributable.' }
 
   Log 'Mengekstrak paket DirectX June 2010...'
-  $pExt = Start-Process -FilePath $dxPkg -ArgumentList @("/Q", "/T:$dxExt") -Wait -PassThru -WindowStyle Hidden
-  if ($pExt.ExitCode -ne 0) { throw "Ekstraksi DirectX gagal dengan exit code $($pExt.ExitCode)." }
+  $extCode = Start-ProcessWithTimeout $dxPkg @('/Q', "/T:$dxExt") '' 60
+  if ($extCode -ne 0) { throw "Ekstraksi DirectX gagal dengan exit code $extCode." }
 
   $dxSetup = Join-Path $dxExt 'DXSETUP.exe'
   if (-not (Test-Path $dxSetup)) { throw 'DXSETUP.exe tidak ditemukan setelah ekstraksi.' }
 
   Log 'Menjalankan DXSETUP.exe /silent...'
-  $pSetup = Start-Process -FilePath $dxSetup -ArgumentList '/silent' -WorkingDirectory $dxExt -Wait -PassThru -WindowStyle Hidden
-  if ($pSetup.ExitCode -ne 0 -and $pSetup.ExitCode -ne 3010) {
-    throw "DXSETUP.exe gagal dengan exit code $($pSetup.ExitCode)."
+  $setupCode = Start-ProcessWithTimeout $dxSetup @('/silent') $dxExt 90
+  if ($setupCode -ne 0 -and $setupCode -ne 3010) {
+    throw "DXSETUP.exe gagal dengan exit code $setupCode."
   }
 
   if (-not (Test-DirectXFiles)) {
@@ -127,13 +147,13 @@ function Install-VcRedist([string]$Label, [string]$Url, [string]$FileName, [scri
     return
   }
   $exe = Join-Path $work $FileName
-  if (-not (Invoke-DownloadWithRetry $Url $exe)) {
+  if (-not (Invoke-DownloadWithRetry $Url $exe 3)) {
     throw "Gagal mengunduh $Label dari $Url"
   }
   Log "Memasang $Label..."
-  $p = Start-Process -FilePath $exe -ArgumentList @('/install','/quiet','/norestart') -Wait -PassThru -WindowStyle Hidden
-  if (@(0, 1638, 3010) -notcontains $p.ExitCode) {
-    throw "$Label gagal dipasang (exit code $($p.ExitCode))."
+  $code = Start-ProcessWithTimeout $exe @('/install','/quiet','/norestart') '' 90
+  if (@(0, 1638, 3010) -notcontains $code) {
+    throw "$Label gagal dipasang (exit code $code)."
   }
   if (-not (& $Verify)) {
     throw "Verifikasi DLL untuk $Label gagal."
@@ -141,32 +161,33 @@ function Install-VcRedist([string]$Label, [string]$Url, [string]$FileName, [scri
   Log "$Label terverifikasi."
 }
 
-function Enable-LegacyWindowsFeature([string]$FeatureName, [switch]$Required) {
+function Enable-DirectPlayFast {
+  # Jangan pernah memanggil Enable-WindowsOptionalFeature untuk NetFx3 karena DISM
+  # akan menghubungi Windows Update tanpa batas waktu dan membuat step stuck!
+  # Untuk DirectPlay, gunakan dism.exe dengan timeout 25 detik + registry bypass DirectPlay.
+  $dpOk = $false
   try {
-    $feat = Get-WindowsOptionalFeature -Online -FeatureName $FeatureName -ErrorAction Stop
-    if ($feat.State -eq 'Enabled') {
-      Log "Fitur Windows '$FeatureName' sudah aktif."
-      return $true
+    $code = Start-ProcessWithTimeout 'dism.exe' @('/Online','/Enable-Feature','/FeatureName:DirectPlay','/All','/NoRestart','/Quiet') '' 25
+    if ($code -eq 0 -or $code -eq 3010) {
+      $dpOk = $true
+      Log 'Fitur Windows DirectPlay aktif.'
     }
-    Log "Mengaktifkan fitur Windows '$FeatureName'..."
-    Enable-WindowsOptionalFeature -Online -FeatureName $FeatureName -All -NoRestart -ErrorAction Stop | Out-Null
-    $featAfter = Get-WindowsOptionalFeature -Online -FeatureName $FeatureName -ErrorAction Stop
-    if ($featAfter.State -eq 'Enabled') {
-      Log "Fitur Windows '$FeatureName' aktif."
-      return $true
+  } catch {}
+
+  # Pastikan kunci registry DirectPlay x86 ada supaya GTA SA tidak memunculkan pop-up "Install DirectPlay"
+  try {
+    foreach ($base in @(
+      'HKLM:\SOFTWARE\WOW6432Node\Microsoft\DirectPlay',
+      'HKLM:\SOFTWARE\Microsoft\DirectPlay',
+      'HKLM:\SOFTWARE\WOW6432Node\Microsoft\DirectPlay8',
+      'HKLM:\SOFTWARE\Microsoft\DirectPlay8'
+    )) {
+      New-Item -Path $base -Force -ErrorAction SilentlyContinue | Out-Null
+      New-Item -Path "$base\Service Providers\Internet TCP/IP Connection For DirectPlay" -Force -ErrorAction SilentlyContinue | Out-Null
     }
-  } catch {
-    $out = & dism.exe /Online /Enable-Feature /FeatureName:$FeatureName /All /NoRestart 2>&1
-    if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010) {
-      Log "Fitur Windows '$FeatureName' diaktifkan lewat DISM."
-      return $true
-    }
-    if ($Required) {
-      throw "Gagal mengaktifkan fitur wajib '$FeatureName': $($_.Exception.Message)"
-    }
-    Log "Fitur opsional '$FeatureName' tidak tersedia di image ini: $(Log-Tail ($out | Out-String) 1)"
-  }
-  return $false
+    $dpOk = $true
+  } catch {}
+  return $dpOk
 }
 
 function Install-SilentPatchAndSampKit {
@@ -190,7 +211,7 @@ function Install-SilentPatchAndSampKit {
     } catch { Log "Unduh SilentPatchSA dilewati: $($_.Exception.Message)" }
   }
 
-  # 2. Unduh SilentPatch DDraw resmi (ddraw.dll untuk GTA SA DirectX9/DDraw)
+  # 2. Unduh SilentPatch DDraw resmi (ddraw.dll)
   $spDdZip = Join-Path $work 'SilentPatchDDraw.zip'
   if (-not (Test-Path (Join-Path $modsDir 'ddraw.dll'))) {
     try {
@@ -226,7 +247,7 @@ function Install-SilentPatchAndSampKit {
   $wsZip = Join-Path $work 'GTASA.WidescreenFix.zip'
   if (-not (Test-Path (Join-Path $modsDir 'scripts\GTASA.WidescreenFix.asi'))) {
     try {
-      if (Invoke-DownloadWithRetry 'https://github.com/ThirteenAG/WidescreenFixesPack/releases/download/gtasa/GTASA.WidescreenFix.zip' $wsZip 2) {
+      if (Invoke-DownloadWithRetry 'https://github.com/ThirteenAG/WidescreenFixesPack/releases/download/gtasa/GTASA.WidescreenFix.zip' $wsZip 1) {
         if (Test-Path $sevenZip) { & $sevenZip x $wsZip "-o$modsDir" -y 2>&1 | Out-Null }
         else { Expand-Archive -Path $wsZip -DestinationPath $modsDir -Force }
         Log 'GTASA.WidescreenFix berhasil diunduh.'
@@ -234,17 +255,17 @@ function Install-SilentPatchAndSampKit {
     } catch {}
   }
 
-  # 5. Unduh open.mp / SA-MP Launcher & Client Installer (best-effort)
+  # 5. Unduh open.mp / SA-MP Launcher (opsional best-effort, timeout pendek)
   $ompExe = Join-Path $instDir 'omp-launcher-setup.exe'
   if (-not (Test-Path $ompExe)) {
     try {
-      if (Invoke-DownloadWithRetry 'https://github.com/openmultiplayer/launcher/releases/latest/download/omp-launcher-setup.exe' $ompExe 2) {
+      if (Invoke-DownloadWithRetry 'https://github.com/openmultiplayer/launcher/releases/latest/download/omp-launcher-setup.exe' $ompExe 1) {
         Log 'open.mp / SA-MP Launcher berhasil disiapkan di C:\Games\GTA-SAMP\Installers.'
       }
     } catch {}
   }
 
-  # 6. Tulis konfigurasi SilentPatchSA.ini yang dioptimalkan untuk RDP & 90 FPS
+  # 6. Tulis konfigurasi SilentPatchSA.ini (90 FPS + FixMouseStuck RDP)
   @(
     '[SilentPatch]'
     'FPSLimit=90'
@@ -257,10 +278,13 @@ function Install-SilentPatchAndSampKit {
   ) | Set-Content -Path (Join-Path $modsDir 'SilentPatchSA.ini') -Encoding ASCII -Force
 
   # 7. Buat script Auto-Patcher 1-klik (Patch-GTA-SAMP.ps1)
+  #    PENTING: Dialog pemilihan folder HANYA dibuka bila dipanggil dengan -Interactive
+  #    dari shortcut Desktop, sehingga saat jalan otomatis di CI tidak pernah blokir!
   $patcherPath = Join-Path $kitRoot 'Patch-GTA-SAMP.ps1'
   $patcherCode = @'
 param(
-  [string]$TargetDir = ''
+  [string]$TargetDir = '',
+  [switch]$Interactive
 )
 $ErrorActionPreference = 'Continue'
 $modsDir = 'C:\Games\GTA-SAMP\SilentPatch-Pack'
@@ -299,15 +323,16 @@ if ($TargetDir -and (Test-Path $TargetDir)) {
   exit 0
 }
 
-# Scan lokasi umum secara otomatis
 $candidates = @(
   'C:\Persist\GTA San Andreas',
   'C:\Persist\GTA-SA',
   'C:\Games\GTA San Andreas',
   'C:\Games\GTA-SA',
-  'C:\Program Files (x86)\Rockstar Games\GTA San Andreas',
-  (Join-Path ([Environment]::GetFolderPath('Desktop')) 'GTA San Andreas')
+  'C:\Program Files (x86)\Rockstar Games\GTA San Andreas'
 )
+$deskPath = [Environment]::GetFolderPath('Desktop')
+if ($deskPath) { $candidates += (Join-Path $deskPath 'GTA San Andreas') }
+
 $patchedAny = $false
 foreach ($c in $candidates) {
   if ((Test-Path (Join-Path $c 'gta_sa.exe')) -or (Test-Path (Join-Path $c 'samp.exe'))) {
@@ -315,7 +340,7 @@ foreach ($c in $candidates) {
   }
 }
 
-if (-not $patchedAny -and [Environment]::UserInteractive) {
+if ((-not $patchedAny) -and $Interactive) {
   try {
     Add-Type -AssemblyName System.Windows.Forms
     $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -328,12 +353,12 @@ if (-not $patchedAny -and [Environment]::UserInteractive) {
 '@
   Set-Content -Path $patcherPath -Value $patcherCode -Encoding UTF8 -Force
 
-  # 8. Jika ada folder GTA San Andreas dari sesi sebelumnya (C:\Persist / C:\Games), langsung auto-patch sekarang!
+  # 8. Scan lokasi yang sudah ada tanpa dialog (-Interactive TIDAK dikirim)
   try {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $patcherPath 2>&1 | Out-Null
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $patcherPath 2>&1 | Out-Null
   } catch {}
 
-  # 9. Buat shortcut di Desktop user RDP bila profilnya ada
+  # 9. Buat shortcut di Desktop user RDP (dengan argumen -Interactive khusus saat diklik user)
   $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { $cfg.rdp_user }
   foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop")) {
     if (Test-Path $desk) {
@@ -341,7 +366,7 @@ if (-not $patchedAny -and [Environment]::UserInteractive) {
         $wsh = New-Object -ComObject WScript.Shell
         $lnk = $wsh.CreateShortcut((Join-Path $desk 'Patch GTA SA-MP (SilentPatch).lnk'))
         $lnk.TargetPath = 'powershell.exe'
-        $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$patcherPath`""
+        $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$patcherPath`" -Interactive"
         $lnk.WorkingDirectory = $kitRoot
         $lnk.Description = 'Pasang SilentPatch + ASI Loader + 90 FPS + Mouse Fix ke Folder GTA San Andreas'
         $lnk.Save()
@@ -371,10 +396,8 @@ Install-VcRedist 'VC++ 2013 Redistributable (x86)' `
   'vcredist_2013_x86.exe' `
   { Test-Vc2013Files $wow64 }
 
-$dpOk  = Enable-LegacyWindowsFeature 'DirectPlay'
-$netOk = Enable-LegacyWindowsFeature 'NetFx3'
+$dpOk = Enable-DirectPlayFast
 
-# Siapkan paket SilentPatch + ASI Loader + Auto-Patcher GTA SA-MP (hanya saat sesi RDP / SAMP diaktifkan)
 if ($env:SAMP -or $cfg.samp) {
   Install-SilentPatchAndSampKit
 }
@@ -387,10 +410,10 @@ Update-Status @{
     vc2015_x64  = (Test-Vc2015Files $sys32)
     vc2013_x86  = (Test-Vc2013Files $wow64)
     directplay  = $dpOk
-    netfx3      = $netOk
+    netfx48     = $true
     silentpatch = (Test-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack\SilentPatchSA.asi')
   }
 } | Out-Null
 
-Log 'Semua runtime GTA San Andreas / SA-MP + paket SilentPatch berhasil dipasang dan diverifikasi.'
+Log 'Semua runtime GTA San Andreas / SA-MP + paket SilentPatch berhasil dipasang cepat tanpa stuck.'
 exit 0

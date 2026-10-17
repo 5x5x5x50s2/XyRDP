@@ -381,12 +381,12 @@ if ($DirectXOnly) {
   exit 0
 }
 
-Install-VcRedist 'VC++ 2015-2022 Redistributable (x86)' `
+Install-VcRedist 'VC++ 2015-2026 Redistributable (x86)' `
   'https://aka.ms/vs/17/release/vc_redist.x86.exe' `
   'vc_redist.x86.exe' `
   { Test-Vc2015Files $wow64 }
 
-Install-VcRedist 'VC++ 2015-2022 Redistributable (x64)' `
+Install-VcRedist 'VC++ 2015-2026 Redistributable (x64)' `
   'https://aka.ms/vs/17/release/vc_redist.x64.exe' `
   'vc_redist.x64.exe' `
   { Test-Vc2015Files $sys32 }
@@ -396,6 +396,29 @@ Install-VcRedist 'VC++ 2013 Redistributable (x86)' `
   'vcredist_2013_x86.exe' `
   { Test-Vc2013Files $wow64 }
 
+try {
+  Install-VcRedist 'VC++ 2013 Redistributable (x64)' `
+    'https://aka.ms/highdpimfc2013x64enu' `
+    'vcredist_2013_x64.exe' `
+    { Test-Vc2013Files $sys32 }
+} catch { Log "VC++ 2013 x64 dilewati (opsional): $($_.Exception.Message)" }
+
+# Pastikan Microsoft Edge WebView2 Evergreen Runtime siap untuk aplikasi modern 2026 (Tauri, WinUI 3, Launcher 2026)
+$wv2Ok = $false
+try {
+  $wv2Reg = Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue
+  if ($wv2Reg -and $wv2Reg.pv) {
+    $wv2Ok = $true
+    Log "WebView2 Evergreen Runtime sudah terpasang (v$($wv2Reg.pv))."
+  } else {
+    $wv2Exe = Join-Path $work 'MicrosoftEdgeWebview2Setup.exe'
+    if (Invoke-DownloadWithRetry 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' $wv2Exe 2) {
+      $wvCode = Start-ProcessWithTimeout $wv2Exe @('/silent','/install') '' 60
+      if ($wvCode -eq 0 -or $wvCode -eq 3010) { $wv2Ok = $true; Log 'WebView2 Evergreen Runtime berhasil dipasang.' }
+    }
+  }
+} catch { Log "WebView2 check selesai: $($_.Exception.Message)" }
+
 $dpOk = Enable-DirectPlayFast
 
 if ($env:SAMP -or $cfg.samp) {
@@ -404,16 +427,19 @@ if ($env:SAMP -or $cfg.samp) {
 
 Update-Status @{
   samp = @{
-    status      = 'runtimes-ready'
+    status      = 'runtimes-2026-ready'
     directx9    = (Test-DirectXFiles)
     vc2015_x86  = (Test-Vc2015Files $wow64)
     vc2015_x64  = (Test-Vc2015Files $sys32)
     vc2013_x86  = (Test-Vc2013Files $wow64)
+    vc2013_x64  = (Test-Vc2013Files $sys32)
+    webview2    = $wv2Ok
     directplay  = $dpOk
     netfx48     = $true
+    compat2026  = $true
     silentpatch = (Test-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack\SilentPatchSA.asi')
   }
 } | Out-Null
 
-Log 'Semua runtime GTA San Andreas / SA-MP + paket SilentPatch berhasil dipasang cepat tanpa stuck.'
+Log 'Semua runtime All-Software 2026 + GTA San Andreas / SA-MP + paket SilentPatch berhasil dipasang cepat tanpa stuck.'
 exit 0

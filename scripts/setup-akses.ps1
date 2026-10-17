@@ -57,9 +57,23 @@ try {
   $ip=@($status.Self.TailscaleIPs | Where-Object { $_ -match '^100\.' }) | Select-Object -First 1
   if ($status.BackendState -ne 'Running' -or -not $ip) { throw 'Tailscale belum siap atau belum disetujui oleh pemilik tailnet' }
   $deadline=(Get-Date).AddSeconds(90)
+  $repairedRdp=$false
   do {
     $listener=Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue
-    if ($listener) { break }; Start-Sleep -Seconds 3
+    if ($listener) { break }
+    if (-not $repairedRdp) {
+      $repairedRdp=$true
+      Log 'Listener RDP 3389 belum aktif saat Tailscale naik; mengaktifkan ulang TermService & fDenyTSConnections=0...'
+      try {
+        & reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -ErrorAction SilentlyContinue
+        Enable-NetFirewallRule -DisplayGroup 'Remote Desktop' -ErrorAction SilentlyContinue | Out-Null
+        Set-Service -Name 'TermService' -StartupType Automatic -ErrorAction SilentlyContinue
+        Restart-Service -Name 'TermService' -Force -ErrorAction SilentlyContinue
+        Start-Service -Name 'UmRdpService' -ErrorAction SilentlyContinue
+      } catch {}
+    }
+    Start-Sleep -Seconds 3
   } while ((Get-Date) -lt $deadline)
   if (-not $listener) { throw 'Tailscale tersambung tetapi listener RDP 3389 belum aktif; periksa setup-rdp.' }
   # Restrict known RDP rules to the private tailnet address space.

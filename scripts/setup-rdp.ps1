@@ -101,40 +101,86 @@ try {
 } catch { Log "  highest admin setup warning: $($_.Exception.Message)" }
 if ($u.ToLower() -eq 'runneradmin') { Log "user '$u' (runneradmin bawaan) siap: HIGHEST ADMIN tanpa buat ulang" } else { Log "user '$u' siap: Administrators + Remote Desktop Users, password tidak expire (HIGHEST)" }
 
-# ---------- 2. RDP standar + Unlock On-Mic / Audio Capture sejak awal ----------
-# fDenyTSConnections: pakai Set-Reg (robust: Set-ItemProperty -> New-ItemProperty
-# -> reg.exe -> ambil kepemilikan) supaya tidak diam-diam gagal seperti pada
-# validasi 2026-10-03.
-$tsRoot = 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server'
-$tsTcp  = "$tsRoot\WinStations\RDP-Tcp"
-$tsPol  = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+# ---------- 2. RDP standar + Unlock On-Mic / Audio Capture + Kompatibilitas Software 2026 ----------
+# fDenyTSConnections: pakai Set-Reg (robust: Set-ItemProperty -> reg.exe -> New-ItemProperty)
+# PENTING: JANGAN PERNAH memanggil New-Item / Grant-KeyAccess pada WinStations\RDP-Tcp karena
+# mengubah owner/ACL kunci tersebut akan membuat TermService (NetworkService) kehilangan akses
+# baca ke konfigurasi WinStation sehingga port 3389 gagal listen!
+$tsRoot = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server'
+$tsTcp  = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+$tsPol  = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
 $okDeny = Set-Reg $tsRoot 'fDenyTSConnections' 0 'DWord'
-Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $tsRoot -Name 'fDenyTSConnections' -Value 0 -ErrorAction SilentlyContinue
+& reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f 2>&1 | Out-Null
 
 # Aktifkan On-Mic (fDisableAudioCapture=0) & Audio Playback (fDisableAudio=0) & Kamera (fDisableCam=0)
-# SEBELUM TermService di-start agar listener RDP-Tcp langsung memuat izin mikrofon tanpa perlu restart belakangan.
+# melalui Group Policy Terminal Services & Terminal Server root, serta Set-ItemProperty ringan pada RDP-Tcp.
 $micOn = ($env:MICROPHONE -ne 'tidak')
 $disableMicVal = [int](-not $micOn)
-foreach ($regPath in @($tsRoot, $tsTcp, $tsPol)) {
+foreach ($regPath in @($tsRoot, $tsPol)) {
   Set-Reg $regPath 'fDisableAudio'        0              'DWord' | Out-Null
   Set-Reg $regPath 'fDisableAudioCapture' $disableMicVal 'DWord' | Out-Null
   Set-Reg $regPath 'fDisableCam'          0              'DWord' | Out-Null
   Set-Reg $regPath 'fDisableCdm'          0              'DWord' | Out-Null
   Set-Reg $regPath 'fDisableClip'         0              'DWord' | Out-Null
 }
-Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone' 'Value' 'Allow' 'String' | Out-Null
-Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged' 'Value' 'Allow' 'String' | Out-Null
-Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam' 'Value' 'Allow' 'String' | Out-Null
-Set-Reg 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam\NonPackaged' 'Value' 'Allow' 'String' | Out-Null
+# Pada WinStations\RDP-Tcp, HANYA gunakan Set-ItemProperty pada value yang sudah ada (tanpa mengubah ACL kunci!)
+try {
+  Set-ItemProperty -Path $tsTcp -Name 'fDisableAudioCapture' -Value $disableMicVal -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsTcp -Name 'fDisableAudio'        -Value 0              -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsTcp -Name 'fDisableCam'          -Value 0              -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsTcp -Name 'fDisableCdm'          -Value 0              -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsTcp -Name 'fDisableClip'         -Value 0              -ErrorAction SilentlyContinue
+} catch {}
+
+Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone' 'Value' 'Allow' 'String' | Out-Null
+Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged' 'Value' 'Allow' 'String' | Out-Null
+Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam' 'Value' 'Allow' 'String' | Out-Null
+Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam\NonPackaged' 'Value' 'Allow' 'String' | Out-Null
+
+# Kompatibilitas All-Software 2026 (Win32, x64, MSIX, WinUI 3, Electron, Tauri, Unity, Unreal, Game & Installer Modern):
+# 1) LongPathsEnabled=1 (wajib untuk aplikasi/runtime 2026 dengan path > 260 karakter)
+# 2) AppModelUnlock Developer Mode & Sideloading (agar aplikasi MSIX / Windows App SDK 2026 langsung jalan)
+# 3) Matikan SmartScreen & Zone.Identifier block (agar semua .exe/.msi/.bat unduhan 2026 tidak diblokir Windows)
+# 4) ExecutionPolicy Bypass x64 & x86 (agar script installer modern berjalan tanpa blokir)
+try {
+  Set-Reg 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' 'LongPathsEnabled' 1 'DWord' | Out-Null
+  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' 'AllowDevelopmentWithoutDevLicense' 1 'DWord' | Out-Null
+  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' 'AllowAllTrustedApps' 1 'DWord' | Out-Null
+  Set-Reg 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' 'EnableSmartScreen' 0 'DWord' | Out-Null
+  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer' 'SmartScreenEnabled' 'Off' 'String' | Out-Null
+  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Attachments' 'SaveZoneInformation' 1 'DWord' | Out-Null
+  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Associations' 'LowRiskFileTypes' '.exe;.bat;.cmd;.msi;.ps1;.vbs;.jar;.zip;.7z;.rar' 'String' | Out-Null
+  Set-Reg 'HKLM:\SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell' 'ExecutionPolicy' 'Bypass' 'String' | Out-Null
+  Set-Reg 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell' 'ExecutionPolicy' 'Bypass' 'String' | Out-Null
+  Set-Reg 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' 'DOTNET_CLI_TELEMETRY_OPTOUT' '1' 'String' | Out-Null
+  Set-Reg 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' 'DOTNET_ROLL_FORWARD' 'LatestMajor' 'String' | Out-Null
+  Log '  Kompatibilitas All-Software 2026 aktif (LongPaths, AppModelUnlock, SmartScreen Off, .NET RollForward LatestMajor)'
+} catch { Log "  warning kompatibilitas 2026: $($_.Exception.Message)" }
 
 foreach ($aSvc in @('AudioEndpointBuilder', 'Audiosrv')) {
   try { Set-Service -Name $aSvc -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name $aSvc -ErrorAction SilentlyContinue } catch {}
 }
 
 Enable-NetFirewallRule -DisplayGroup 'Remote Desktop' -ErrorAction SilentlyContinue | Out-Null
-# pastikan layanan RDP jalan
-foreach ($svc in @('TermService')) {
+try {
+  New-NetFirewallRule -DisplayName 'XyRDP-TCP-3389' -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow -ErrorAction SilentlyContinue | Out-Null
+  New-NetFirewallRule -DisplayName 'XyRDP-UDP-3389' -Direction Inbound -Protocol UDP -LocalPort 3389 -Action Allow -ErrorAction SilentlyContinue | Out-Null
+} catch {}
+
+# pastikan layanan RDP (TermService & UmRdpService) jalan dan port 3389 benar-benar LISTEN
+foreach ($svc in @('TermService', 'UmRdpService')) {
   try { Set-Service -Name $svc -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name $svc -ErrorAction SilentlyContinue } catch {}
+}
+Start-Sleep -Seconds 3
+if ((Get-RdpListenerState 3389) -eq 'TIDAK ADA listener') {
+  Log '  listener 3389 belum muncul setelah Start-Service; me-refresh TermService...'
+  try {
+    & reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+    Restart-Service -Name 'TermService' -Force -ErrorAction SilentlyContinue
+    Start-Service -Name 'UmRdpService' -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 4
+  } catch {}
 }
 # tunggu sampai RDP BENAR-BENAR menjawab handshake X.224 (maks 120 detik).
 # "port LISTENING" saja tidak cukup: di runner nyata listener 3389 sempat hidup

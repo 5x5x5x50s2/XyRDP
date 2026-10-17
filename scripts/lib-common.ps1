@@ -36,22 +36,37 @@ function Log-Tail([string]$text, [int]$lines = 2) {
 # -> reg.exe add /f -> ambil kepemilikan kunci lalu ulangi.
 
 function To-RegExePath([string]$Path) {
-  $p = $Path -replace '^Registry::', ''
+  $p = ($Path -replace '^Registry::', '') -replace '^HKLM:\\', 'HKEY_LOCAL_MACHINE\' -replace '^HKCU:\\', 'HKEY_CURRENT_USER\' -replace '^HKU:\\', 'HKEY_USERS\' -replace '^HKCR:\\', 'HKEY_CLASSES_ROOT\' -replace '^HKLM\\', 'HKEY_LOCAL_MACHINE\' -replace '^HKCU\\', 'HKEY_CURRENT_USER\' -replace '^HKU\\', 'HKEY_USERS\' -replace '^HKCR\\', 'HKEY_CLASSES_ROOT\'
   $map = @{ 'HKEY_LOCAL_MACHINE' = 'HKLM'; 'HKEY_CURRENT_USER' = 'HKCU'; 'HKEY_USERS' = 'HKU'; 'HKEY_CLASSES_ROOT' = 'HKCR'; 'HKEY_CURRENT_CONFIG' = 'HKCC' }
   foreach ($k in $map.Keys) { if ($p.StartsWith($k + '\')) { return ($map[$k] + $p.Substring($k.Length)) } }
   return $null
 }
 
+function Normalize-PsRegPath([string]$Path) {
+  if ($Path -match '^HKLM\\') { return ('HKLM:\' + $Path.Substring(5)) }
+  if ($Path -match '^HKCU\\') { return ('HKCU:\' + $Path.Substring(5)) }
+  if ($Path -match '^HKU\\')  { return ('Registry::HKEY_USERS\' + $Path.Substring(4)) }
+  if ($Path -match '^HKCR\\') { return ('Registry::HKEY_CLASSES_ROOT\' + $Path.Substring(5)) }
+  if ($Path -match '^Registry::HKEY_LOCAL_MACHINE\\') { return ('HKLM:\' + $Path.Substring('Registry::HKEY_LOCAL_MACHINE\'.Length)) }
+  if ($Path -match '^Registry::HKEY_CURRENT_USER\\')  { return ('HKCU:\' + $Path.Substring('Registry::HKEY_CURRENT_USER\'.Length)) }
+  return $Path
+}
+
 function Grant-KeyAccess([string]$Path) {
   # ambil kepemilikan + FullControl untuk user sekarang (dipakai hanya kalau
-  # penulisan ditolak; mis. CurrentVersion milik TrustedInstaller)
+  # penulisan ditolak; mis. CurrentVersion milik TrustedInstaller).
+  # JANGAN PERNAH ubah ACL/owner WinStations\RDP-Tcp karena akan memutus akses TermService (NetworkService) ke listener 3389!
   try {
+    if ($Path -match 'WinStations|RDP-Tcp') {
+      return $false
+    }
     $ident = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    $sub = $Path -replace '^Registry::', ''
-    if ($sub.StartsWith('HKEY_LOCAL_MACHINE\')) {
-      $hive = [Microsoft.Win32.Registry]::LocalMachine; $sub = $sub.Substring('HKEY_LOCAL_MACHINE\'.Length)
-    } elseif ($sub.StartsWith('HKEY_CURRENT_USER\')) {
-      $hive = [Microsoft.Win32.Registry]::CurrentUser; $sub = $sub.Substring('HKEY_CURRENT_USER\'.Length)
+    $rk = To-RegExePath $Path
+    if (-not $rk) { return $false }
+    if ($rk.StartsWith('HKLM\')) {
+      $hive = [Microsoft.Win32.Registry]::LocalMachine; $sub = $rk.Substring(5)
+    } elseif ($rk.StartsWith('HKCU\')) {
+      $hive = [Microsoft.Win32.Registry]::CurrentUser; $sub = $rk.Substring(5)
     } else { return $false }
 
     $key = $hive.OpenSubKey($sub, [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree, [System.Security.AccessControl.RegistryRights]::TakeOwnership)
@@ -67,31 +82,32 @@ function Grant-KeyAccess([string]$Path) {
 }
 
 function Set-Reg([string]$Path, [string]$Name, $Value, [string]$Type = 'String') {
+  $psPath = Normalize-PsRegPath $Path
   # 1) value sudah ada -> Set-ItemProperty (hak paling minimal)
   $exists = $false
-  try { $null = Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop; $exists = $true } catch {}
+  try { $null = Get-ItemProperty -Path $psPath -Name $Name -ErrorAction Stop; $exists = $true } catch {}
   if ($exists) {
-    try { Set-ItemProperty -Path $Path -Name $Name -Value $Value -ErrorAction Stop; return $true }
+    try { Set-ItemProperty -Path $psPath -Name $Name -Value $Value -ErrorAction Stop; return $true }
     catch { Log "  reg: Set-ItemProperty gagal ($Name): $($_.Exception.Message)" }
   }
-  # 2) bikin/set lewat provider
-  try {
-    New-Item -Path $Path -Force -ErrorAction Stop | Out-Null
-    New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force -ErrorAction Stop | Out-Null
-    return $true
-  } catch { Log "  reg: New-ItemProperty gagal ($Name): $($_.Exception.Message)" }
-  # 3) fallback reg.exe
+  # 2) reg.exe add langsung (tidak merusak key ACL & membuat key/value secara native Win32)
   $rk = To-RegExePath $Path
   if ($rk) {
-    $t = switch ("$Type") { 'DWord' { 'REG_DWORD' } 'ExpandString' { 'REG_EXPAND_SZ' } 'MultiString' { 'REG_MULTI_SZ' } default { 'REG_SZ' } }
+    $t = switch ("$Type") { 'DWord' { 'REG_DWORD' } 'QWord' { 'REG_QWORD' } 'ExpandString' { 'REG_EXPAND_SZ' } 'MultiString' { 'REG_MULTI_SZ' } default { 'REG_SZ' } }
     $out = & reg add $rk /v $Name /t $t /d $Value /f 2>&1
     if ($LASTEXITCODE -eq 0) { return $true }
     Log "  reg: reg.exe add gagal ($Name): $(Log-Tail "$out" 1)"
   }
-  # 4) ambil kepemilikan kunci, lalu ulangi
+  # 3) bikin/set lewat provider PowerShell
+  try {
+    if (-not (Test-Path $psPath)) { New-Item -Path $psPath -Force -ErrorAction Stop | Out-Null }
+    New-ItemProperty -Path $psPath -Name $Name -Value $Value -PropertyType $Type -Force -ErrorAction Stop | Out-Null
+    return $true
+  } catch { Log "  reg: New-ItemProperty gagal ($Name): $($_.Exception.Message)" }
+  # 4) ambil kepemilikan kunci, lalu ulangi (kecuali WinStations\RDP-Tcp)
   if (Grant-KeyAccess $Path) {
     try {
-      New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force -ErrorAction Stop | Out-Null
+      New-ItemProperty -Path $psPath -Name $Name -Value $Value -PropertyType $Type -Force -ErrorAction Stop | Out-Null
       return $true
     } catch { Log "  reg: masih gagal setelah ambil kepemilikan ($Name): $($_.Exception.Message)" }
   }
@@ -100,7 +116,8 @@ function Set-Reg([string]$Path, [string]$Name, $Value, [string]$Type = 'String')
 }
 
 function Get-Reg([string]$Path, [string]$Name) {
-  try { return (Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop).$Name } catch { return $null }
+  $psPath = Normalize-PsRegPath $Path
+  try { return (Get-ItemProperty -Path $psPath -Name $Name -ErrorAction Stop).$Name } catch { return $null }
 }
 
 # ---------- konfigurasi (assets/rdp-extras.json) ----------

@@ -536,7 +536,7 @@ module.exports = async (req, res) => {
         + `?client_id=${encodeURIComponent(ENV.oauth_id)}`
         + `&redirect_uri=${encodeURIComponent(cb)}`
         + `&scope=${encodeURIComponent(scope)}`
-        + `&state=${encodeURIComponent(state)}&allow_signup=0`;
+        + `&state=${encodeURIComponent(state)}&allow_signup=true`;
       return redirect(loc, [cookieHeader('ost', state, 900, req)]);
     }
 
@@ -830,14 +830,25 @@ module.exports = async (req, res) => {
       const body = await readBody(req);
       const rdpUser = normalizeRdpUser(body.rdp_user || 'xyadmin');
       if (!rdpUser) return send(400, { error: 'Username RDP harus 3–20 karakter: huruf/angka, lalu huruf, angka, _ atau -. Hindari nama akun bawaan Windows.' });
+      const allowedRunners = ['windows-2022', 'windows-2025', 'windows-latest', 'ubuntu-24.04', 'ubuntu-22.04', 'ubuntu-latest'];
+      const chosenRunner = allowedRunners.includes(String(body.runner || '')) ? String(body.runner) : 'windows-2022';
+      const chosenLinuxMode = String(body.linux_mode || '') === 'polos' ? 'polos' : 'desktop';
       const inputs = {
-        durasi_menit: String(body.durasi || '360'),
+        durasi_menit: String(body.durasi || body.durasi_menit || '360'),
         hostname: String(body.hostname || 'xyrdp').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 30) || 'xyrdp',
         rdp_user: rdpUser,
-        akses: ['keduanya', 'tailscale', 'semua', 'rustdesk', 'tunnel'].includes(String(body.akses)) ? String(body.akses) : 'tailscale',
-        tunnel_provider: ['otomatis', 'bore', 'ngrok'].includes(String(body.tunnel_provider)) ? String(body.tunnel_provider) : 'otomatis',
+        akses: ['keduanya', 'tailscale', 'portmap', 'semua', 'rustdesk', 'tunnel'].includes(String(body.akses)) ? String(body.akses) : 'tailscale',
+        runner: chosenRunner,
+        linux_mode: chosenLinuxMode,
         win10: (body.win10 === 'tidak' ? 'tidak' : 'ya'),
         grafis: (body.grafis === 'tidak' ? 'tidak' : 'software'),
+        xydesk: (body.xydesk === 'tidak' ? 'tidak' : 'ya'),
+        microphone: (body.microphone === 'tidak' ? 'tidak' : 'ya'),
+        samp: (body.samp === 'tidak' ? 'tidak' : 'ya'),
+        ekstra: (body.ekstra === 'tidak' ? 'tidak' : 'ya'),
+        storage_boost: (body.storage_boost === 'tidak' ? 'tidak' : 'ya'),
+        debloat: ['ringan', 'full', 'tidak'].includes(String(body.debloat)) ? String(body.debloat) : 'ringan',
+        perpanjang_otomatis: (body.perpanjang_otomatis === 'tidak' ? 'tidak' : 'ya'),
       };
       await gh(ctx.token, 'POST', `/repos/${ctx.owner}/${ctx.repo}/actions/workflows/${ENV.workflow}/dispatches`, { ref: ctx.branch || ENV.branch, inputs });
       return send(200, { ok: true, inputs, repo: `${ctx.owner}/${ctx.repo}` });

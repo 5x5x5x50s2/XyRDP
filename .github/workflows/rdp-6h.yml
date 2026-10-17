@@ -165,8 +165,8 @@ concurrency:
 
 jobs:
   rdp:
-    name: Sesi RDP (${{ (inputs.linux_mode == 'polos' && !startsWith(inputs.runner || 'windows-2022', 'ubuntu')) && 'ubuntu-24.04 (Linux Polos)' || inputs.runner || 'windows-2022' }})
-    runs-on: ${{ (inputs.linux_mode == 'polos' && !startsWith(inputs.runner || 'windows-2022', 'ubuntu')) && 'ubuntu-24.04' || inputs.runner || 'windows-2022' }}
+    name: Sesi RDP (${{ inputs.runner || 'windows-2022' }})
+    runs-on: ${{ inputs.runner || 'windows-2022' }}
     timeout-minutes: 360
     env:
       DUR: ${{ inputs.durasi_menit || '360' }}
@@ -200,122 +200,133 @@ jobs:
       # ======================================================================
       # JALUR LINUX DESKTOP RDP / LINUX POLOS SSH VPS (Ubuntu 24.04 / 22.04 / Latest)
       # ======================================================================
-      - name: Setup & Jalankan Sesi Linux (Desktop XFCE4 XRDP :3389 / Polos SSH :22&:3389)
-        if: ${{ startsWith(inputs.runner || 'windows-2022', 'ubuntu') || inputs.linux_mode == 'polos' }}
+      - name: Setup dasar RDP & Akses Linux (XRDP :3389 / SSH :22 + Tailscale)
+        if: ${{ startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: bash
         run: |
           chmod +x ./scripts/setup-linux-rdp.sh
-          ./scripts/setup-linux-rdp.sh
+          ./scripts/setup-linux-rdp.sh --setup-only
+
+      - name: Jaga sesi tetap hidup (keepalive + auto-checkpoint 15m) [Linux]
+        if: ${{ startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
+        shell: bash
+        run: ./scripts/setup-linux-rdp.sh --keepalive-only
+
+      - name: Finalize (matikan sesi + bersihkan status) [Linux]
+        if: ${{ always() && startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
+        shell: bash
+        continue-on-error: true
+        run: ./scripts/setup-linux-rdp.sh --finalize-only
 
       # ======================================================================
       # JALUR WINDOWS DESKTOP RDP (Windows Server 2022 / 2025 / Latest)
       # ======================================================================
       - name: Bersihkan run lama
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/cleanup-actions.ps1
 
       - name: Setup dasar RDP (user + port 3389)
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         run: ./scripts/setup-rdp.ps1
 
       - name: Pulihkan simpanan sesi sebelumnya
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/restore-state.ps1
 
       - name: Setup akses Tailscale
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' && (inputs.akses || 'tailscale') == 'tailscale' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.akses || 'tailscale') == 'tailscale' }}
         shell: pwsh
         run: ./scripts/setup-akses.ps1
 
       - name: Setup akses Portmap OpenVPN
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' && inputs.akses == 'portmap' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.akses == 'portmap' }}
         shell: pwsh
         run: ./scripts/setup-portmap.ps1
 
       - name: Publish status awal ke branch status
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/publish-status.ps1
 
       - name: Tampilan Windows 10 + Dark Mode
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' && (inputs.win10 || 'ya') != 'tidak' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.win10 || 'ya') != 'tidak' }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-win10.ps1
 
       - name: Tweak Explorer & Desktop
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-explorer.ps1
 
       - name: Audio & Kamera RDP
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' && (inputs.microphone || 'ya') != 'tidak' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.microphone || 'ya') != 'tidak' }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-media.ps1
 
       - name: Host setup XyDesk Remote
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' && (inputs.xydesk || 'ya') != 'tidak' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.xydesk || 'ya') != 'tidak' }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-xydesk.ps1
 
       - name: Grafis OpenGL 4.6 D3D12 (Mesa3D untuk Minecraft & Game)
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' && (inputs.grafis || 'software') != 'tidak' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.grafis || 'software') != 'tidak' }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-grafis.ps1
 
       - name: Runtime All-Software 2026 & GTA SA-MP By SilentPatch
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' && (inputs.samp || 'ya') != 'tidak' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.samp || 'ya') != 'tidak' }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-samp.ps1
 
       - name: Installer game opsional (Minecraft Java/Bedrock & Roblox)
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' && (inputs.roblox == 'ya' || inputs.minecraft_java == 'ya' || inputs.minecraft_bedrock == 'ya') }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.roblox == 'ya' || inputs.minecraft_java == 'ya' || inputs.minecraft_bedrock == 'ya') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-games.ps1
 
       - name: Aplikasi ekstra (7-Zip, Chrome, Lightshot, Wallpaper)
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' && (inputs.ekstra || 'ya') != 'tidak' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.ekstra || 'ya') != 'tidak' }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-extras.ps1
 
       - name: Optimasi storage runner
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' && ((inputs.storage_boost || 'ya') != 'tidak' || (inputs.debloat || 'ringan') != 'tidak') }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && ((inputs.storage_boost || 'ya') != 'tidak' || (inputs.debloat || 'ringan') != 'tidak') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/optimize-storage.ps1
 
       - name: Publish status siap pakai
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/publish-status.ps1
 
       - name: Jaga sesi tetap hidup (keepalive + auto-checkpoint 15m)
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' }}
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         run: ./scripts/keepalive.ps1
 
       - name: Simpan sesi (persist-state.ps1)
-        if: ${{ always() && !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' }}
+        if: ${{ always() && !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/persist-state.ps1
 
       - name: Upload simpanan sesi
-        if: ${{ always() && !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' }}
+        if: ${{ always() && !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -325,7 +336,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Finalize (matikan sesi + bersihkan status)
-        if: ${{ always() && !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.linux_mode != 'polos' }}
+        if: ${{ always() && !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/finalize-rdp.ps1
@@ -355,7 +366,7 @@ jobs:
               xydesk              = "$($env:XYDESK)"
               ekstra              = "$($env:EKSTRA)"
               grafis              = "$($env:GRAFIS)"
-              runner              = "${{ (inputs.linux_mode == 'polos' && !startsWith(inputs.runner || 'windows-2022', 'ubuntu')) && 'ubuntu-24.04' || inputs.runner || 'windows-2022' }}"
+              runner              = "${{ inputs.runner || 'windows-2022' }}"
               linux_mode          = "$($env:LINUX_MODE)"
               microphone          = "$($env:MICROPHONE)"
               roblox              = "$($env:ROBLOX)"

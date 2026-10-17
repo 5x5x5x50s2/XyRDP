@@ -70,6 +70,7 @@ const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const ADMIN_LOGIN_MAX_FAILURES = 5;
 const adminLoginAttempts = new Map();
 const startAttempts = new Map();
+const apkAuthTokens = new Map();
 const START_WINDOW_MS = 5 * 60 * 1000;
 const START_MAX = 2;
 function checkStartRate(req, login) {
@@ -477,6 +478,14 @@ module.exports = async (req, res) => {
     }
 
     /* ============================ AUTH ==================================== */
+    if (req.method === 'GET' && p === '/auth/apk-poll') {
+      const sid = String(url.searchParams.get('session_id') || '').trim();
+      const hit = sid ? apkAuthTokens.get(sid) : null;
+      if (hit && Date.now() - hit.at < 10 * 60 * 1000) {
+        return send(200, { ok: true, ready: true, token: hit.token, login: hit.login, name: hit.name, avatar_url: hit.avatar_url });
+      }
+      return send(200, { ok: true, ready: false });
+    }
     if (req.method === 'GET' && p === '/auth/status') {
       const ctx = makeCtx(req);
       let debug = null;
@@ -514,22 +523,30 @@ module.exports = async (req, res) => {
 
     if (req.method === 'GET' && p === '/auth/login') {
       if (!ENV.oauth_id || !ENV.oauth_secret || !sessionSecretReady()) return redirect('/?err=oauth_belum_dikonfigurasi');
-      const state = b64u(crypto.randomBytes(16));
+      const isApk = url.searchParams.get('apk') === '1';
+      const apkSessionId = String(url.searchParams.get('session_id') || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+      const state = (isApk && apkSessionId)
+        ? `apk_${apkSessionId}_${b64u(crypto.randomBytes(8))}`
+        : b64u(crypto.randomBytes(16));
+      const scope = isApk
+        ? String(url.searchParams.get('scope') || 'repo workflow read:user user:email')
+        : 'repo';
       const cb = `${origin}/api/auth/callback`;
       const loc = 'https://github.com/login/oauth/authorize'
         + `?client_id=${encodeURIComponent(ENV.oauth_id)}`
         + `&redirect_uri=${encodeURIComponent(cb)}`
-        + `&scope=${encodeURIComponent('repo')}`
-        + `&state=${state}&allow_signup=0`;
+        + `&scope=${encodeURIComponent(scope)}`
+        + `&state=${encodeURIComponent(state)}&allow_signup=0`;
       return redirect(loc, [cookieHeader('ost', state, 900, req)]);
     }
 
     if (req.method === 'GET' && p === '/auth/callback') {
       const code = url.searchParams.get('code');
       const state = url.searchParams.get('state') || '';
+      const isApkState = state.startsWith('apk_');
       const cookies = readCookies(req);
       if (!code) return redirect('/?err=github_batal');
-      if (!cookies.ost || cookies.ost !== state) return redirect('/?err=state_tidak_cocok');
+      if (!isApkState && (!cookies.ost || cookies.ost !== state)) return redirect('/?err=state_tidak_cocok');
       const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': 'XyRDP-vc' },
@@ -540,6 +557,32 @@ module.exports = async (req, res) => {
       const meRes = await fetch(API + '/user', { headers: { 'User-Agent': 'XyRDP-vc', 'Authorization': `Bearer ${tok.access_token}`, 'X-GitHub-Api-Version': '2022-11-28' } });
       if (!meRes.ok) return redirect('/?err=profil_github_gagal');
       const me = await meRes.json();
+      if (isApkState) {
+        const parts = state.split('_');
+        const sessionId = parts.length >= 2 ? parts[1] : '';
+        const authData = {
+          token: tok.access_token,
+          login: me.login || '',
+          name: me.name || me.login || '',
+          avatar_url: me.avatar_url || '',
+          at: Date.now(),
+        };
+        if (sessionId) {
+          apkAuthTokens.set(sessionId, authData);
+          try {
+            await fetch('https://api.xydeskremote.biz.id/api/github/oauth/complete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ session_id: sessionId, ...authData }),
+            });
+          } catch {}
+        }
+        const deepLink = `xydesk://github-auth?token=${encodeURIComponent(authData.token)}&login=${encodeURIComponent(authData.login)}&name=${encodeURIComponent(authData.name)}&avatar=${encodeURIComponent(authData.avatar_url)}`;
+        const intentLink = `intent://github-auth?token=${encodeURIComponent(authData.token)}&login=${encodeURIComponent(authData.login)}&name=${encodeURIComponent(authData.name)}&avatar=${encodeURIComponent(authData.avatar_url)}#Intent;scheme=xydesk;package=id.xydesk.remote;end`;
+        const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitHub Terhubung · XyDesk Remote</title><style>body{background:#09090b;color:#fafafa;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}.card{max-width:380px;background:#141418;border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:28px 22px}.btn{display:inline-block;margin-top:18px;padding:12px 24px;border-radius:999px;background:#fafafa;color:#09090b;font-weight:700;text-decoration:none;font-size:14px}</style></head><body><div class="card"><div style="font-size:18px;font-weight:800;margin-bottom:8px">GitHub Berhasil Terhubung!</div><div style="font-size:13px;color:#a1a1aa">Login sebagai <b>@${String(authData.login).replace(/[<>&"']/g, '')}</b>. Mengembalikan otomatis ke aplikasi XyDesk Remote...</div><a class="btn" href="${deepLink}">Kembali ke XyDesk Remote</a></div><script>setTimeout(function(){window.location.replace(${JSON.stringify(deepLink)});},80);setTimeout(function(){window.location.replace(${JSON.stringify(intentLink)});},600);</script></body></html>`;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(html);
+      }
       const payload = {
         t: tok.access_token, l: me.login, n: me.name || '', a: me.avatar_url || '',
         r: `${me.login}/${ENV.repo}`,

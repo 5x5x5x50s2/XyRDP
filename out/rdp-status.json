@@ -1,50 +1,42 @@
 {
-  "active": false,
-  "hostname": "rdpfree-112",
-  "os": "Ubuntu 24.04.5 LTS (XFCE4 Desktop)",
-  "os_style": "Linux XFCE4 Desktop",
-  "linux_mode": "desktop",
-  "rdp_port": 3389,
-  "ssh_port": 22,
-  "rdp_user": "xyadmin",
-  "rdp_listen": "LISTENING :3389 (xrdp) + :22 (ssh)",
-  "started_at": "2026-10-18T10:15:56Z",
-  "expires_at": "2026-10-18T15:57:56Z",
-  "heartbeat_at": "2026-10-18T10:22:05Z",
-  "duration_menit": 342,
-  "run_id": "39118369271",
-  "run_attempt": "1",
-  "run_number": "112",
-  "run_url": "https://github.com/xykal/XyRDP/actions/runs/39118369271",
+  "active": true,
+  "hostname": "rdpfree-113",
+  "os": "Microsoft Windows Server 2022 Datacenter",
+  "os_build": "10.0.20348",
+  "os_style": "Native Windows",
   "hardware": {
-    "cpu_threads": 4,
-    "cpu_cores": 4,
-    "cpu_load_pct": 5,
-    "ram_gb": 15.6,
-    "ram_total_gb": 15.6,
-    "ram_used_gb": 1.0,
-    "disk_total_gb": 145,
-    "disk_free_gb": 83,
-    "disk_used_gb": 62,
-    "uptime_minutes": 6
+    "disk_free_gb": 82.7,
+    "ram_gb": 16.0,
+    "cpu_threads": 4
   },
+  "rdp_port": 3389,
+  "rdp_user": "xyadmin",
+  "rdp_listen": ":::3389 (svchost) | 0.0.0.0:3389 (svchost) + handshake ok via 127.0.0.1",
+  "rdp_denyts": true,
+  "started_at": "2026-10-18T10:23:54Z",
+  "expires_at": "2026-10-18T16:05:54Z",
+  "duration_menit": 342,
+  "run_id": "39119059495",
+  "run_attempt": "1",
+  "run_number": "113",
+  "run_url": "https://github.com/xykal/XyRDP/actions/runs/39119059495",
+  "mode": "bersih+win10",
   "akses": {
+    "tunnel": {
+      "selftest": "ok",
+      "port": 3389,
+      "host": "100.83.90.63",
+      "outside": "tailscale",
+      "status": "ok",
+      "address": "100.83.90.63:3389"
+    },
     "mode": "tailscale",
     "tailscale": {
-      "status": "ok",
-      "ip": "100.66.93.54",
-      "hostname": "rdpfree-112",
-      "port": 3389,
-      "ssh_port": 22,
-      "connect": "100.66.93.54:3389"
-    },
-    "tunnel": {
-      "status": "ok",
-      "type": "tailscale",
-      "host": "100.66.93.54",
-      "port": 3389,
-      "address": "100.66.93.54:3389",
-      "connect": "100.66.93.54:3389"
+      "magicdns": "rdpfree-113.tail01cd7c.ts.net.",
+      "hostname": "rdpfree-113",
+      "ip": "100.83.90.63",
+      "note": "HP/PC harus login Tailscale pada tailnet yang sama. TCP 3389 harus diizinkan ACL.",
+      "status": "ok"
     }
   }
 }

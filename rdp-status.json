@@ -1,134 +1,42 @@
 {
   "active": true,
-  "hostname": "rdpfree-114",
+  "hostname": "rdpfree-115",
   "os": "Microsoft Windows Server 2022 Datacenter",
   "os_build": "10.0.20348",
   "os_style": "Native Windows",
   "hardware": {
-    "disk_free_gb": 79.8,
-    "cpu_threads": 4,
-    "ram_gb": 16.0
+    "disk_free_gb": 82.9,
+    "ram_gb": 16.0,
+    "cpu_threads": 4
   },
   "rdp_port": 3389,
   "rdp_user": "xyadmin",
   "rdp_listen": ":::3389 (svchost) | 0.0.0.0:3389 (svchost) + handshake ok via 127.0.0.1",
   "rdp_denyts": true,
-  "started_at": "2026-10-18T16:04:49Z",
-  "expires_at": "2026-10-18T21:46:49Z",
+  "started_at": "2026-10-18T21:45:38Z",
+  "expires_at": "2026-10-19T03:27:38Z",
   "duration_menit": 342,
-  "run_id": "39143336501",
+  "run_id": "39169209804",
   "run_attempt": "1",
-  "run_number": "114",
-  "run_url": "https://github.com/xykal/XyRDP/actions/runs/39143336501",
+  "run_number": "115",
+  "run_url": "https://github.com/xykal/XyRDP/actions/runs/39169209804",
   "mode": "bersih+win10",
   "akses": {
-    "tunnel": {
-      "selftest": "ok",
-      "port": 3389,
-      "host": "100.83.90.63",
-      "status": "ok",
-      "address": "100.83.90.63:3389",
-      "outside": "tailscale"
-    },
     "mode": "tailscale",
     "tailscale": {
-      "magicdns": "rdpfree-114.tail01cd7c.ts.net.",
-      "note": "HP/PC harus login Tailscale pada tailnet yang sama. TCP 3389 harus diizinkan ACL.",
-      "hostname": "rdpfree-114",
       "status": "ok",
-      "ip": "100.83.90.63"
-    }
-  },
-  "win10": {
-    "look": "ok",
-    "badge": "ok",
-    "wallpaper": "ok",
-    "search": "ok",
-    "os": "Microsoft Windows Server 2022 Datacenter",
-    "note": "Tampilan Windows 10 (UI Windows Server 2022 = kernel/UI Windows 10 21H2)"
-  },
-  "media": {
-    "verification": "Login ulang, aktifkan mic di XyDesk dan izinkan Android. Uji Windows Settings > Sound > Input; kebijakan aktif bukan bukti capture end-to-end.",
-    "audio_output": "rdp_playback_enabled",
-    "microphone": "rdp_capture_enabled",
-    "wallpaper": "xyverse_configured_for_user_logon"
-  },
-  "xydesk": {
-    "host": "ok",
-    "denyts": "ok",
-    "multisession": "ok",
-    "avc444": "ok (120FPS DWMFRAMEINTERVAL=8 + TCPNoDelay=1)",
-    "fontsmoothing": "ok (ClearType profil Default)",
-    "audio_out": "ok (policy fDisableAudio=0, WinStations=0)",
-    "audio_mic": "ok (policy fDisableAudioCapture=0, WinStations=0) - mic HP redirect aktif, Allow di HP",
-    "wallpaper_rdp": "ok (policy fNoRemoteDesktopWallpaper=0) - wallpaper RDP tampil, cek client Experience→Wallpaper ON",
-    "firewall": "tcp3389=True udp3389=True udp4433=True",
-    "services": "ok",
-    "rdp_ready": "127.0.0.1 (handshake OK)",
-    "rdp_probe": "awal=True multi=True audio=True grafis=True clear=True fw=True svc=True",
-    "quic_udp4433": "dibuka di VM (tidak lewat tunnel TCP)",
-    "akses": "(menyusul)",
-    "note": "Host siap dipakai klien XyDesk Remote mode Koneksi RDP (Host+Port tunnel). Kunci WinStations\\RDP-Tcp sengaja TIDAK ditulis supaya listener 3389 tidak mati di runner GitHub."
-  },
-  "grafis": {
-    "mode": "mesa-d3d12-opengl46",
-    "path": "C:\\XyRDP\\grafis\\mesa-x64"
-  },
-  "samp": {
-    "vc2013_x64": true,
-    "directx9": true,
-    "directplay": true,
-    "silentpatch": true,
-    "vc2013_x86": true,
-    "status": "runtimes-2026-ready",
-    "dgvoodoo_d3d9": true,
-    "samp_client": true,
-    "windowed_mode": true,
-    "webview2": true,
-    "vc2015_x64": true,
-    "vc2015_x86": true,
-    "dep_optin": true
-  },
-  "games": {
-    "roblox": "installer-staged",
-    "minecraft_bedrock": "launcher-installed",
-    "minecraft_java_runtime": {
-      "prismlauncher": true,
-      "opengl46": true,
-      "java8": true,
-      "java21": true
+      "ip": "100.83.90.63",
+      "note": "HP/PC harus login Tailscale pada tailnet yang sama. TCP 3389 harus diizinkan ACL.",
+      "magicdns": "rdpfree-115.tail01cd7c.ts.net.",
+      "hostname": "rdpfree-115"
     },
-    "minecraft_java": "installed-with-opengl46"
-  },
-  "extras": {
-    "lightshot": "ok",
-    "wallpaper": "ok",
-    "wallpaper_file": "wallpaper.jpg",
-    "vscode": "skip",
-    "notepadpp": "skip",
-    "admin": true
-  },
-  "storage": {
-    "boost": "ok",
-    "before_gb": 71.07,
-    "after_gb": 95.67,
-    "gained_gb": 24.6,
-    "removed_targets": 22,
-    "drives": [
-      {
-        "used_gb": 159.78,
-        "size_gb": 255.45,
-        "letter": "C",
-        "free_gb": 95.67
-      },
-      {
-        "used_gb": 0.13,
-        "size_gb": 219.98,
-        "letter": "D",
-        "free_gb": 219.85
-      }
-    ],
-    "game_dir": "D:\\Games (disarankan untuk GTA)",
-    "note": "Cleanup selesai. gained_gb adalah perubahan ruang aktual, bukan kapasitas yang dijanjikan. Target terkunci bisa tersisa."
+    "tunnel": {
+      "host": "100.83.90.63",
+      "address": "100.83.90.63:3389",
+      "port": 3389,
+      "selftest": "ok",
+      "status": "ok",
+      "outside": "tailscale"
+    }
   }
 }

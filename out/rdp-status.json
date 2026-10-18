@@ -1,0 +1,50 @@
+{
+  "active": false,
+  "hostname": "rdpfree-112",
+  "os": "Ubuntu 24.04.5 LTS (XFCE4 Desktop)",
+  "os_style": "Linux XFCE4 Desktop",
+  "linux_mode": "desktop",
+  "rdp_port": 3389,
+  "ssh_port": 22,
+  "rdp_user": "xyadmin",
+  "rdp_listen": "LISTENING :3389 (xrdp) + :22 (ssh)",
+  "started_at": "2026-10-18T10:15:56Z",
+  "expires_at": "2026-10-18T15:57:56Z",
+  "heartbeat_at": "2026-10-18T10:22:05Z",
+  "duration_menit": 342,
+  "run_id": "39118369271",
+  "run_attempt": "1",
+  "run_number": "112",
+  "run_url": "https://github.com/xykal/XyRDP/actions/runs/39118369271",
+  "hardware": {
+    "cpu_threads": 4,
+    "cpu_cores": 4,
+    "cpu_load_pct": 5,
+    "ram_gb": 15.6,
+    "ram_total_gb": 15.6,
+    "ram_used_gb": 1.0,
+    "disk_total_gb": 145,
+    "disk_free_gb": 83,
+    "disk_used_gb": 62,
+    "uptime_minutes": 6
+  },
+  "akses": {
+    "mode": "tailscale",
+    "tailscale": {
+      "status": "ok",
+      "ip": "100.66.93.54",
+      "hostname": "rdpfree-112",
+      "port": 3389,
+      "ssh_port": 22,
+      "connect": "100.66.93.54:3389"
+    },
+    "tunnel": {
+      "status": "ok",
+      "type": "tailscale",
+      "host": "100.66.93.54",
+      "port": 3389,
+      "address": "100.66.93.54:3389",
+      "connect": "100.66.93.54:3389"
+    }
+  }
+}

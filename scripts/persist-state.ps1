@@ -32,7 +32,10 @@ $prof = "C:\Users\$u"
 $outDir = 'C:\XyRDP\persist'
 $stage  = Join-Path $outDir 'stage'
 $zip    = Join-Path $outDir 'xyrdp-state.zip'
-$maxBytes = 1900L * 1024 * 1024  # batas aman ~1.9 GB
+# Saat Checkpoint berkala di tengah sesi, batasi ukuran hingga 180 MB agar hemat RAM/CPU & tidak mengganggu game/browser.
+# Saat finalisasi akhir sesi, izinkan hingga 850 MB.
+$maxBytes = if ($Checkpoint) { 180L * 1024 * 1024 } else { 850L * 1024 * 1024 }
+$maxSingleFileBytes = if ($Checkpoint) { 45MB } else { 350MB }
 
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
@@ -85,7 +88,7 @@ function Copy-FilteredTree([string]$SrcRoot, [string]$DstRoot, [string]$Label) {
       if ($_.Name -eq 'desktop.ini' -or $_.Name -eq 'thumbs.db' -or $_.Name -eq 'lockfile') { return }
       $ext = $_.Extension.ToLower()
       if ($skipExts -contains $ext) { return }
-      if ($_.Length -gt 700MB) { return }
+      if ($_.Length -gt $maxSingleFileBytes) { return }
       if (($script:totalBytes + $_.Length) -gt $maxBytes) { return }
 
       $rel = $_.FullName.Substring($rootPath.Length).TrimStart('\')
@@ -269,11 +272,11 @@ if (Test-Path $prof) {
   }
 }
 
-# 5. Folder Permanen C:\Persist & C:\Games
+# 5. Folder Permanen C:\Persist & C:\Games (C:\Games hanya disalin saat penutupan sesi, bukan saat checkpoint berkala agar bebas lag)
 if (Test-Path 'C:\Persist') {
   Copy-FilteredTree 'C:\Persist' (Join-Path $stage '_persist') 'C:\Persist'
 }
-if (Test-Path 'C:\Games') {
+if ((-not $Checkpoint) -and (Test-Path 'C:\Games')) {
   Copy-FilteredTree 'C:\Games' (Join-Path $stage '_games') 'C:\Games'
 }
 
@@ -338,7 +341,8 @@ Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
 
 try {
   if (Test-Path $sevenZip) {
-    & $sevenZip a -tzip -mx=1 -mmt=on -ssw $tmpZip "$stage\*" 2>&1 | Out-Null
+    $mtArg = if ($Checkpoint) { '-mmt=1' } else { '-mmt=2' }
+    & $sevenZip a -tzip -mx=1 $mtArg -ssw $tmpZip "$stage\*" 2>&1 | Out-Null
   } else {
     Compress-Archive -Path "$stage\*" -DestinationPath $tmpZip -CompressionLevel Fastest -Force
   }
@@ -352,7 +356,7 @@ try {
 }
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 
-# Upload ke GitHub Release Tag 'xyrdp-state-latest'
+# Upload ke GitHub Release Tag 'xyrdp-state-latest' (gunakan curl.exe streaming agar tidak memakan RAM PowerShell)
 if ((Test-Path $zip) -and $env:GITHUB_TOKEN -and $env:GITHUB_REPOSITORY) {
   try {
     $apiBase = "https://api.github.com/repos/$($env:GITHUB_REPOSITORY)"
@@ -388,14 +392,27 @@ if ((Test-Path $zip) -and $env:GITHUB_TOKEN -and $env:GITHUB_REPOSITORY) {
         }
       }
       $uploadUrl = ($rel.upload_url -replace '\{\?name,label\}$', '') + '?name=xyrdp-state.zip'
-      $upHdr = @{
-        Authorization          = "Bearer $($env:GITHUB_TOKEN)"
-        Accept                 = 'application/vnd.github+json'
-        'Content-Type'         = 'application/zip'
-        'X-GitHub-Api-Version' = '2022-11-28'
-        'User-Agent'           = 'XyRDP-Persist'
+      $curlExe = "$env:SystemRoot\System32\curl.exe"
+      if (Test-Path $curlExe) {
+        & $curlExe -sS -X POST `
+          -H "Authorization: Bearer $($env:GITHUB_TOKEN)" `
+          -H "Accept: application/vnd.github+json" `
+          -H "Content-Type: application/zip" `
+          -H "X-GitHub-Api-Version: 2022-11-28" `
+          -H "User-Agent: XyRDP-Persist" `
+          --max-time 180 `
+          --data-binary "@$zip" `
+          "$uploadUrl" 2>&1 | Out-Null
+      } else {
+        $upHdr = @{
+          Authorization          = "Bearer $($env:GITHUB_TOKEN)"
+          Accept                 = 'application/vnd.github+json'
+          'Content-Type'         = 'application/zip'
+          'X-GitHub-Api-Version' = '2022-11-28'
+          'User-Agent'           = 'XyRDP-Persist'
+        }
+        Invoke-RestMethod -Uri $uploadUrl -Headers $upHdr -Method Post -InFile $zip -TimeoutSec 180 -ErrorAction Stop | Out-Null
       }
-      Invoke-RestMethod -Uri $uploadUrl -Headers $upHdr -Method Post -InFile $zip -TimeoutSec 180 -ErrorAction Stop | Out-Null
       Log "State berhasil di-backup ke Release '$tagName' (anti-reset lintas sesi aktif)."
     }
   } catch {

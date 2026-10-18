@@ -123,6 +123,14 @@ foreach ($regPath in @($tsRoot, $tsPol)) {
   Set-Reg $regPath 'fDisableCam'          0              'DWord' | Out-Null
   Set-Reg $regPath 'fDisableCdm'          0              'DWord' | Out-Null
   Set-Reg $regPath 'fDisableClip'         0              'DWord' | Out-Null
+  # Kunci kebijakan Anti-Disconnect / Anti-Idle / KeepAlive agar sesi RDP tidak pernah tiba-tiba mati/putus:
+  Set-Reg $regPath 'MaxDisconnectionTime'  0              'DWord' | Out-Null
+  Set-Reg $regPath 'MaxIdleTime'           0              'DWord' | Out-Null
+  Set-Reg $regPath 'MaxConnectionTime'     0              'DWord' | Out-Null
+  Set-Reg $regPath 'fResetBroken'          0              'DWord' | Out-Null
+  Set-Reg $regPath 'KeepAliveEnable'       1              'DWord' | Out-Null
+  Set-Reg $regPath 'KeepAliveInterval'     1              'DWord' | Out-Null
+  Set-Reg $regPath 'fSingleSessionPerUser' 1              'DWord' | Out-Null
 }
 # Pada WinStations\RDP-Tcp, HANYA gunakan Set-ItemProperty pada value yang sudah ada (tanpa mengubah ACL kunci!)
 try {
@@ -131,6 +139,34 @@ try {
   Set-ItemProperty -Path $tsTcp -Name 'fDisableCam'          -Value 0              -ErrorAction SilentlyContinue
   Set-ItemProperty -Path $tsTcp -Name 'fDisableCdm'          -Value 0              -ErrorAction SilentlyContinue
   Set-ItemProperty -Path $tsTcp -Name 'fDisableClip'         -Value 0              -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsTcp -Name 'MaxDisconnectionTime' -Value 0              -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsTcp -Name 'MaxIdleTime'          -Value 0              -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsTcp -Name 'MaxConnectionTime'    -Value 0              -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsTcp -Name 'fResetBroken'         -Value 0              -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsTcp -Name 'KeepAliveEnable'      -Value 1              -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsTcp -Name 'KeepAliveInterval'    -Value 1              -ErrorAction SilentlyContinue
+} catch {}
+
+# Matikan Sleep, Hibernasi, dan Standby serta perluas Pagefile Virtual Memory (8 GB - 16 GB) agar bebas OOM crash
+try {
+  & powercfg.exe /h off 2>&1 | Out-Null
+  & powercfg.exe /change standby-timeout-ac 0 2>&1 | Out-Null
+  & powercfg.exe /change standby-timeout-dc 0 2>&1 | Out-Null
+  & powercfg.exe /change monitor-timeout-ac 0 2>&1 | Out-Null
+  & powercfg.exe /change monitor-timeout-dc 0 2>&1 | Out-Null
+  & powercfg.exe /change hibernate-timeout-ac 0 2>&1 | Out-Null
+  & powercfg.exe /change hibernate-timeout-dc 0 2>&1 | Out-Null
+  $cs = Get-WmiObject -Class Win32_ComputerSystem -EnableAllPrivileges -ErrorAction SilentlyContinue
+  if ($cs -and $cs.AutomaticManagedPagefile) {
+    $cs.AutomaticManagedPagefile = $false
+    $cs.Put() | Out-Null
+  }
+  $pf = Get-WmiObject -Class Win32_PageFileSetting -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($pf) {
+    $pf.InitialSize = 8192
+    $pf.MaximumSize = 16384
+    $pf.Put() | Out-Null
+  }
 } catch {}
 
 Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone' 'Value' 'Allow' 'String' | Out-Null

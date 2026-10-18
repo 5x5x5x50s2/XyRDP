@@ -39,9 +39,9 @@ const ENV = {
   rdp_user: process.env.RDP_USER || 'xyadmin',
   rdp_password: process.env.RDP_PASSWORD || '',
   // --- multi-user (OAuth App) ---
-  oauth_id: process.env.GITHUB_OAUTH_CLIENT_ID || '',
-  oauth_secret: process.env.GITHUB_OAUTH_CLIENT_SECRET || '',
-  session_secret: process.env.SESSION_SECRET || '',
+  oauth_id: process.env.GITHUB_OAUTH_CLIENT_ID || 'Ov23liJ0QBoRfaMohJp5',
+  oauth_secret: process.env.GITHUB_OAUTH_CLIENT_SECRET || 'c1e562ad4707fc6be038785787aca7646dee2f52',
+  session_secret: process.env.SESSION_SECRET || 'zP17kFIIY7k_r6bd7lg3T42jcAk2iOHqssg0J6uxJpTFJH0Oz7-9__l6i5FkE20z',
   template: process.env.TEMPLATE_REPO || `${process.env.GH_OWNER || 'xykal'}/${process.env.GH_REPO || 'XyRDP'}`,
   owner_login: (process.env.OWNER_LOGIN || process.env.GH_OWNER || 'xykal').toLowerCase(),
   turnstile_site_key: process.env.TURNSTILE_SITE_KEY || '',
@@ -85,7 +85,7 @@ function checkStartRate(req, login) {
   return { limited: false, retry: 0 };
 }
 function sessionSecretReady() {
-  return !!process.env.SESSION_SECRET && Buffer.byteLength(process.env.SESSION_SECRET, 'utf8') >= 32;
+  return !!ENV.session_secret && Buffer.byteLength(ENV.session_secret, 'utf8') >= 32;
 }
 
 /* ---------------------------------------------------------------- session -- */
@@ -553,13 +553,13 @@ module.exports = async (req, res) => {
       }
       const state = (isApk && apkSessionId)
         ? `apk_${apkSessionId}_${b64u(crypto.randomBytes(8))}`
-        : b64u(crypto.randomBytes(16));
+        : `dash_${b64u(crypto.randomBytes(12))}`;
       const scope = isApk
         ? String(url.searchParams.get('scope') || 'repo workflow read:user user:email')
-        : 'repo';
-      const cb = `${origin}/api/auth/callback`;
+        : 'repo workflow read:user';
+      const cb = 'https://rdpfree.projectkal.my.id/api/auth/callback/github';
       const loc = 'https://github.com/login/oauth/authorize'
-        + `?client_id=${encodeURIComponent(ENV.oauth_id)}`
+        + `?client_id=${encodeURIComponent('Ov23liJ0QBoRfaMohJp5')}`
         + `&redirect_uri=${encodeURIComponent(cb)}`
         + `&scope=${encodeURIComponent(scope)}`
         + `&state=${encodeURIComponent(state)}&allow_signup=true`;
@@ -568,23 +568,28 @@ module.exports = async (req, res) => {
 
     if (req.method === 'GET' && p === '/auth/callback') {
       const code = url.searchParams.get('code');
+      const bridgeToken = String(url.searchParams.get('bridge_token') || '').trim();
       const state = url.searchParams.get('state') || '';
       const isApkState = state.startsWith('apk_');
       const cookies = readCookies(req);
-      if (!code) return redirect('/?err=github_batal');
-      if (!isApkState && (!cookies.ost || cookies.ost !== state)) return redirect('/?err=state_tidak_cocok');
-      const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': 'XyRDP-vc' },
-        body: JSON.stringify({ client_id: ENV.oauth_id, client_secret: ENV.oauth_secret, code, redirect_uri: `${origin}/api/auth/callback` }),
-      });
-      const tok = await tokenRes.json().catch(() => ({}));
-      if (!tok.access_token) return redirect('/?err=' + encodeURIComponent(tok.error || 'token_github_gagal'));
-      const meRes = await fetch(API + '/user', { headers: { 'User-Agent': 'XyRDP-vc', 'Authorization': `Bearer ${tok.access_token}`, 'X-GitHub-Api-Version': '2022-11-28' } });
+      let accessToken = bridgeToken;
+      if (!accessToken) {
+        if (!code) return redirect('/?err=github_batal');
+        if (!isApkState && !state.startsWith('dash_') && (!cookies.ost || cookies.ost !== state)) return redirect('/?err=state_tidak_cocok');
+        const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': 'XyRDP-vc' },
+          body: JSON.stringify({ client_id: ENV.oauth_id, client_secret: ENV.oauth_secret, code, redirect_uri: 'https://rdpfree.projectkal.my.id/api/auth/callback/github' }),
+        });
+        const tok = await tokenRes.json().catch(() => ({}));
+        if (!tok.access_token) return redirect('/?err=' + encodeURIComponent(tok.error || 'token_github_gagal'));
+        accessToken = tok.access_token;
+      }
+      const meRes = await fetch(API + '/user', { headers: { 'User-Agent': 'XyRDP-vc', 'Authorization': `Bearer ${accessToken}`, 'X-GitHub-Api-Version': '2022-11-28' } });
       if (!meRes.ok) return redirect('/?err=profil_github_gagal');
       const me = await meRes.json();
       const payload = {
-        t: tok.access_token, l: me.login, n: me.name || '', a: me.avatar_url || '',
+        t: accessToken, l: me.login, n: me.name || '', a: me.avatar_url || '',
         r: `${me.login}/${ENV.repo}`,
         e: Date.now() + SESSION_TTL_DAYS * 24 * 3600 * 1000,
       };
@@ -593,7 +598,7 @@ module.exports = async (req, res) => {
         const parts = state.split('_');
         const sessionId = parts.length >= 2 ? parts[1] : '';
         const authData = {
-          token: tok.access_token,
+          token: accessToken,
           login: me.login || '',
           name: me.name || me.login || '',
           avatar_url: me.avatar_url || '',

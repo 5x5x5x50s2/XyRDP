@@ -255,7 +255,17 @@ try {
   } else { Log '  user/grup tidak ditemukan (harusnya dibuat setup-rdp.ps1)' }
 } catch { Log "  verifikasi gagal: $($_.Exception.Message)" }
 
-# ---------- 6. Rangkum ke status ----------
+# ---------- 6. Build & Pasang XyDeskTools.exe (Gaming & Tools Hub) ----------
+try {
+  $toolsHubScript = Join-Path $PSScriptRoot 'setup-tools-hub.ps1'
+  if (Test-Path $toolsHubScript) {
+    & $toolsHubScript
+  }
+} catch {
+  Log "setup-tools-hub warning: $($_.Exception.Message)"
+}
+
+# ---------- 7. Rangkum ke status ----------
 Update-Status @{ extras = [ordered]@{
     lightshot      = $resLightshot
         wallpaper      = $resWall

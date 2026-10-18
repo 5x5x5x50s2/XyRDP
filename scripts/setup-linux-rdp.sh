@@ -47,16 +47,21 @@ restore_linux_state() {
     if curl -sL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" \
       "$api/releases/assets/${asset_id}" -o /tmp/xyrdp-restore/state.zip; then
       7z x /tmp/xyrdp-restore/state.zip -o/tmp/xyrdp-restore/ext -y >/dev/null 2>&1 || true
-      for d in Desktop Documents Downloads; do
+      for d in Desktop Documents Downloads .config/google-chrome .config/chromium .mozilla; do
         if [ -d "/tmp/xyrdp-restore/ext/$d" ]; then
+          mkdir -p "/home/${RDP_USER}/$d"
           cp -rf "/tmp/xyrdp-restore/ext/$d/." "/home/${RDP_USER}/$d/" 2>/dev/null || true
         fi
       done
       if [ -d "/tmp/xyrdp-restore/ext/_persist" ]; then
         cp -rf "/tmp/xyrdp-restore/ext/_persist/." "/persist/" 2>/dev/null || true
       fi
+      if [ -d "/tmp/xyrdp-restore/ext/_tailscale" ]; then
+        sudo mkdir -p /var/lib/tailscale
+        sudo cp -rf /tmp/xyrdp-restore/ext/_tailscale/. /var/lib/tailscale/ 2>/dev/null || true
+      fi
       sudo chown -R "${RDP_USER}:${RDP_USER}" "/home/${RDP_USER}" "/persist"
-      log "State Linux berhasil dipulihkan."
+      log "State Linux (termasuk sesi browser & file) berhasil dipulihkan."
     fi
     rm -rf /tmp/xyrdp-restore
   fi
@@ -65,15 +70,19 @@ restore_linux_state() {
 persist_linux_state() {
   if [ -z "${GITHUB_TOKEN:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ]; then return 0; fi
   mkdir -p /tmp/xyrdp-persist/stage
-  for d in Desktop Documents Downloads; do
+  for d in Desktop Documents Downloads .config/google-chrome .config/chromium .mozilla; do
     if [ -d "/home/${RDP_USER}/$d" ]; then
       mkdir -p "/tmp/xyrdp-persist/stage/$d"
-      cp -rf "/home/${RDP_USER}/$d/." "/tmp/xyrdp-persist/stage/$d/" 2>/dev/null || true
+      rsync -a --exclude='*Cache*' --exclude='*cache*' --exclude='*Crash*' "/home/${RDP_USER}/$d/" "/tmp/xyrdp-persist/stage/$d/" 2>/dev/null || cp -rf "/home/${RDP_USER}/$d/." "/tmp/xyrdp-persist/stage/$d/" 2>/dev/null || true
     fi
   done
   if [ -d "/persist" ]; then
     mkdir -p "/tmp/xyrdp-persist/stage/_persist"
     cp -rf "/persist/." "/tmp/xyrdp-persist/stage/_persist/" 2>/dev/null || true
+  fi
+  if [ -d "/var/lib/tailscale" ]; then
+    mkdir -p "/tmp/xyrdp-persist/stage/_tailscale"
+    sudo cp -rf /var/lib/tailscale/*.state /tmp/xyrdp-persist/stage/_tailscale/ 2>/dev/null || true
   fi
   rm -f /tmp/xyrdp-persist/xyrdp-linux-state.zip
   (cd /tmp/xyrdp-persist/stage && 7z a -tzip -mx=1 -mmt=on /tmp/xyrdp-persist/xyrdp-linux-state.zip . >/dev/null 2>&1) || true

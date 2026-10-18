@@ -302,6 +302,12 @@ jobs:
         continue-on-error: true
         run: ./scripts/setup-extras.ps1
 
+      - name: Pasang XyDeskTools.exe (Gaming & Tools Hub di Desktop RDP)
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/setup-tools-hub.ps1
+
       - name: Optimasi storage runner
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && ((inputs.storage_boost || 'ya') != 'tidak' || (inputs.debloat || 'ringan') != 'tidak') }}
         shell: pwsh

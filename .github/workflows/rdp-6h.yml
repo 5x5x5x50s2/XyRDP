@@ -254,6 +254,12 @@ jobs:
         continue-on-error: true
         run: ./scripts/publish-status.ps1
 
+      - name: Optimasi storage runner
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && ((inputs.storage_boost || 'ya') != 'tidak' || (inputs.debloat || 'ringan') != 'tidak') }}
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/optimize-storage.ps1
+
       - name: Tampilan Windows 10 + Dark Mode
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.win10 || 'ya') != 'tidak' }}
         shell: pwsh
@@ -307,12 +313,6 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-tools-hub.ps1
-
-      - name: Optimasi storage runner
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && ((inputs.storage_boost || 'ya') != 'tidak' || (inputs.debloat || 'ringan') != 'tidak') }}
-        shell: pwsh
-        continue-on-error: true
-        run: ./scripts/optimize-storage.ps1
 
       - name: Publish status siap pakai
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}

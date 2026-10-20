@@ -243,9 +243,10 @@ function Install-CompleteSampSuite {
   $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
   if (-not (Test-Path $sevenZip)) { $sevenZip = "${env:ProgramFiles(x86)}\7-Zip\7z.exe" }
 
-  # Pastikan tidak ada sisa dinput8.dll / ddraw.dll lama di $modsDir yang bentrok dengan vorbisFile.dll
+  # Pastikan tidak ada sisa dinput8.dll lama di $modsDir yang bentrok dengan vorbisFile.dll
+  # CATATAN PENTING: JANGAN PERNAH menghapus ddraw.dll / d3dimm.dll karena gta_sa.exe US 1.0
+  # memanggil DirectDrawCreateEx (ddraw.dll) di alamat 0x00746929 sebelum membuat D3D9 device!
   Remove-Item (Join-Path $modsDir 'dinput8.dll') -Force -ErrorAction SilentlyContinue
-  Remove-Item (Join-Path $modsDir 'ddraw.dll') -Force -ErrorAction SilentlyContinue
 
   # 1. Unduh Ultimate ASI Loader x86 dan pasang HANYA sebagai vorbisFile.dll
   #    (Ultimate ASI Loader v9.7.4 sudah memuat Ogg Vorbis 1.3.7 internal + ASI Loader dalam 1 file.
@@ -314,11 +315,12 @@ function Install-CompleteSampSuite {
     } catch {}
   }
 
-  # 5. Unduh dgVoodoo2 x86 Direct3D 9 Wrapper (MS\x86\D3D9.dll + DDraw.dll + D3D8.dll + dgVoodoo.conf)
-  #    Menerjemahkan DirectX 9 Hardware HAL ke Direct3D 11/12 WARP di Microsoft Basic Display Adapter
-  #    sehingga gta_sa.exe punya GPU virtual + daftar resolusi 800x600 s/d 1920x1080 lengkap!
+  # 5. Unduh dgVoodoo2 x86 DirectX Wrapper LENGKAP (MS\x86\D3D9.dll + DDraw.dll + D3DImm.dll + D3D8.dll + dgVoodoo.conf)
+  #    WAJIB menyertakan DDraw.dll + D3DImm.dll selain D3D9.dll untuk mencegah crash:
+  #    "SA-MP 0.3.7-R5 Exception At Address: 0x00746929 (EAX: 0x00000000, US 1.0)"
+  #    karena gta_sa.exe memanggil DirectDrawCreateEx di 0x00746920 sebelum membuat D3D9 device!
   $dgvZip = Join-Path $work 'dgVoodoo2.zip'
-  if (-not (Test-Path (Join-Path $modsDir 'd3d9.dll'))) {
+  if (-not (Test-Path (Join-Path $modsDir 'd3d9.dll')) -or -not (Test-Path (Join-Path $modsDir 'ddraw.dll')) -or -not (Test-Path (Join-Path $modsDir 'd3dimm.dll'))) {
     try {
       $dgvUrl = 'https://github.com/dege-diosg/dgVoodoo2/releases/download/v2.87.5/dgVoodoo2_87_5.zip'
       try {
@@ -332,11 +334,13 @@ function Install-CompleteSampSuite {
         New-Item -ItemType Directory -Path $dgvExt -Force | Out-Null
         if (Test-Path $sevenZip) { & $sevenZip x $dgvZip "-o$dgvExt" -y 2>&1 | Out-Null }
         else { Expand-Archive -Path $dgvZip -DestinationPath $dgvExt -Force }
-        $x86D3d9 = Join-Path $dgvExt 'MS\x86\D3D9.dll'
-        if (Test-Path $x86D3d9) {
-          Copy-Item $x86D3d9 -Destination (Join-Path $modsDir 'd3d9.dll') -Force
-          Log 'dgVoodoo2 x86 D3D9.dll (Direct3D 9 -> D3D11/12 WARP Renderer) berhasil dipasang!'
+        foreach ($dllName in @('D3D9.dll', 'DDraw.dll', 'D3DImm.dll', 'D3D8.dll')) {
+          $srcDll = Join-Path $dgvExt "MS\x86\$dllName"
+          if (Test-Path $srcDll) {
+            Copy-Item $srcDll -Destination (Join-Path $modsDir $dllName.ToLower()) -Force
+          }
         }
+        Log 'dgVoodoo2 x86 LENGKAP (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll -> D3D11 WARP) berhasil dipasang (Anti-Crash 0x00746929)!'
         Remove-Item $dgvExt -Recurse -Force -ErrorAction SilentlyContinue
       }
     } catch { Log "Unduh dgVoodoo2 warning: $($_.Exception.Message)" }
@@ -504,21 +508,28 @@ $defGame   = 'C:\Games\GTA San Andreas'
 function Apply-SilentPatchToDir([string]$Dir) {
   if (-not $Dir -or -not (Test-Path $Dir)) { return $false }
 
-  # 1. Hapus duplikat ASI loader lama (dinput8.dll / ddraw.dll) agar tidak bentrok dengan vorbisFile.dll
+  # 1. Hapus duplikat dinput8.dll agar tidak bentrok dengan vorbisFile.dll
+  #    PENTING: JANGAN menghapus ddraw.dll / d3dimm.dll karena dibutuhkan dgVoodoo2 untuk mencegah crash 0x00746929!
   $vorbisPath = Join-Path $Dir 'vorbisFile.dll'
   $dinputPath = Join-Path $Dir 'dinput8.dll'
   if ((Test-Path $vorbisPath) -and (Test-Path $dinputPath)) {
     Remove-Item $dinputPath -Force -ErrorAction SilentlyContinue
   }
-  Remove-Item (Join-Path $Dir 'ddraw.dll') -Force -ErrorAction SilentlyContinue
 
   # 2. Salin SA-MP Client (samp.exe, samp.dll, samp.saa) bila belum ada di folder target
   if ((Test-Path (Join-Path $sampCache 'samp.exe')) -and -not (Test-Path (Join-Path $Dir 'samp.exe'))) {
     Copy-Item -Path "$sampCache\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
   }
 
-  # 3. Salin paket dgVoodoo2 D3D9.dll + SilentPatchSA.asi + III.VC.SA.WindowedMode.asi + vorbisFile.dll
+  # 3. Salin paket lengkap dgVoodoo2 (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll + dgVoodoo.conf)
+  #    + SilentPatchSA.asi + III.VC.SA.WindowedMode.asi + vorbisFile.dll SETELAH game diekstrak!
   Copy-Item -Path "$modsDir\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
+
+  # 3b. Pastikan layanan Windows Audio aktif agar gta_sa.exe tidak crash saat inisialisasi DirectSound
+  try {
+    Start-Service -Name 'AudioEndpointBuilder' -ErrorAction SilentlyContinue
+    Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue
+  } catch {}
 
   # 4. Hapus atribut Read-Only dan bersihkan gta_sa.set yang korup
   try { & attrib.exe -R "$Dir\*.*" /S 2>&1 | Out-Null } catch {}
@@ -537,18 +548,21 @@ function Apply-SilentPatchToDir([string]$Dir) {
   }
 
   # 5. Atur Registry AppCompat + DEP Exception + SAMP gta_sa_exe path
+  #    CATATAN: JANGAN memasang RUNASADMIN pada gta_sa.exe karena saat samp.exe (non-elevated)
+  #    memanggil CreateProcess("gta_sa.exe"), flag RUNASADMIN membuat CreateProcess gagal dengan
+  #    ERROR_ELEVATION_REQUIRED atau memicu crash inisialisasi DirectDraw 0x00746929 di RDP!
   $gtaExe  = Join-Path $Dir 'gta_sa.exe'
   $sampExe = Join-Path $Dir 'samp.exe'
   foreach ($regBase in @(
     'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers',
-    'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+    'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
   )) {
     New-Item -Path $regBase -Force -ErrorAction SilentlyContinue | Out-Null
     if (Test-Path $gtaExe) {
-      New-ItemProperty -Path $regBase -Name $gtaExe -Value '~ RUNASADMIN HIGHDPIAWARE DISABLEDXMAXIMIZEDWINDOWEDMODE DisableNXShowUI' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+      New-ItemProperty -Path $regBase -Name $gtaExe -Value '~ HIGHDPIAWARE DISABLEDXMAXIMIZEDWINDOWEDMODE DisableNXShowUI' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
     }
     if (Test-Path $sampExe) {
-      New-ItemProperty -Path $regBase -Name $sampExe -Value '~ RUNASADMIN HIGHDPIAWARE DISABLEDXMAXIMIZEDWINDOWEDMODE DisableNXShowUI' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+      New-ItemProperty -Path $regBase -Name $sampExe -Value '~ HIGHDPIAWARE DISABLEDXMAXIMIZEDWINDOWEDMODE DisableNXShowUI' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
     }
   }
 

@@ -308,13 +308,13 @@ if ($debloat -ne 'tidak') {
     $totalFreed += Remove-Tree 'C:\OneDriveTemp' 'OneDriveTemp'
   } catch { Log "  OneDrive uninstall error: $($_.Exception.Message)" }
   Log "  Debloat Appx selesai: $removedAppx paket dihapus"
-  # ---------- 5c. HABISIN shortcut & sisa Unity, R, Edge, OneDrive, Xbox ----------
+  # ---------- 5c. HABISIN shortcut & sisa Unity, RGui, Edge, OneDrive, Xbox (TANPA menyentuh shortcut Game/App user!) ----------
   if ($debloat -eq 'full') {
-    Log '  FULL debloat: habisin shortcut & sisa Unity/R/Edge/OneDrive...'
+    Log '  FULL debloat: habisin shortcut & sisa Unity/RGui/Edge/OneDrive...'
     $shortcuts = @(
-      'C:\Users\Public\Desktop\Unity*.lnk','C:\Users\Public\Desktop\*R*.lnk','C:\Users\Public\Desktop\*Edge*.lnk','C:\Users\Public\Desktop\*OneDrive*.lnk','C:\Users\Public\Desktop\*Xbox*.lnk',
-      'C:\Users\Default\Desktop\Unity*.lnk','C:\Users\Default\Desktop\*R.lnk','C:\Users\Default\Desktop\*Edge*.lnk',
-      'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Unity*','C:\ProgramData\Microsoft\Windows\Start Menu\Programs\R*','C:\ProgramData\Microsoft\Windows\Start Menu\Programs\*Edge*','C:\ProgramData\Microsoft\Windows\Start Menu\Programs\*OneDrive*','C:\ProgramData\Microsoft\Windows\Start Menu\Programs\*Xbox*'
+      'C:\Users\Public\Desktop\Unity*.lnk','C:\Users\Public\Desktop\R x64*.lnk','C:\Users\Public\Desktop\R i386*.lnk','C:\Users\Public\Desktop\RGui*.lnk','C:\Users\Public\Desktop\*Edge*.lnk','C:\Users\Public\Desktop\*OneDrive*.lnk','C:\Users\Public\Desktop\*Xbox*.lnk',
+      'C:\Users\Default\Desktop\Unity*.lnk','C:\Users\Default\Desktop\R x64*.lnk','C:\Users\Default\Desktop\*Edge*.lnk',
+      'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Unity*','C:\ProgramData\Microsoft\Windows\Start Menu\Programs\R','C:\ProgramData\Microsoft\Windows\Start Menu\Programs\*Edge*','C:\ProgramData\Microsoft\Windows\Start Menu\Programs\*OneDrive*','C:\ProgramData\Microsoft\Windows\Start Menu\Programs\*Xbox*'
     )
     foreach ($sc in $shortcuts) { try { Remove-Item $sc -Recurse -Force -ErrorAction SilentlyContinue } catch {} }
     # Unity & R sisa registry & folder (sudah Remove-Tree di atas, tambah lagi AppData)

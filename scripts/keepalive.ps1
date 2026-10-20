@@ -19,6 +19,48 @@ $s = Read-Status
 $exp = if ($s -and $s.expires_at) { [DateTime]::Parse($s.expires_at).ToUniversalTime() } else { [DateTime]::UtcNow.AddMinutes(335) }
 Log "sesi aktif sampai $($exp.ToString('yyyy-MM-dd HH:mm:ss')) UTC (auto-checkpoint setiap 15 menit)"
 
+function Sync-And-Heal-DesktopShortcuts {
+  try {
+    $pubDesk = 'C:\Users\Public\Desktop'
+    New-Item -ItemType Directory -Path $pubDesk -Force -ErrorAction SilentlyContinue | Out-Null
+
+    # 1. Sinkronkan seluruh shortcut dari runneradmin & xyadmin ke Public\Desktop
+    #    agar baik user login ke runneradmin maupun xyadmin, semua aplikasi tampil lengkap!
+    foreach ($uDir in @('C:\Users\runneradmin\Desktop', 'C:\Users\xyadmin\Desktop')) {
+      if (Test-Path $uDir) {
+        Get-ChildItem -Path $uDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @('.lnk', '.url') } | ForEach-Object {
+          $dst = Join-Path $pubDesk $_.Name
+          if (-not (Test-Path $dst)) {
+            Copy-Item $_.FullName -Destination $dst -Force -ErrorAction SilentlyContinue
+          }
+        }
+      }
+    }
+
+    # 2. Pastikan shortcut utama yang terpasang selalu utuh di Public\Desktop
+    $wsh = New-Object -ComObject WScript.Shell
+    $expectedLinks = @(
+      @{ Name = 'Minecraft (TLauncher).lnk'; Target = 'C:\Games\Minecraft\TLauncher.exe'; Work = 'C:\Games\Minecraft' },
+      @{ Name = 'PrismLauncher.lnk';         Target = 'C:\Games\PrismLauncher\prismlauncher.exe'; Work = 'C:\Games\PrismLauncher' },
+      @{ Name = 'Google Chrome.lnk';         Target = 'C:\Program Files\Google\Chrome\Application\chrome.exe'; Work = 'C:\Program Files\Google\Chrome\Application' },
+      @{ Name = 'XyDesk Tools Hub.lnk';      Target = 'C:\Tools\XyDeskTools\XyDeskTools.exe'; Work = 'C:\Tools\XyDeskTools' },
+      @{ Name = 'XyDesk Remote Host.lnk';    Target = 'C:\Program Files\XyDeskRemote\XyDeskRemoteHost.exe'; Work = 'C:\Program Files\XyDeskRemote' },
+      @{ Name = 'Folder Permanen (Anti-Reset).lnk'; Target = 'C:\Persist'; Work = 'C:\Persist' }
+    )
+    foreach ($item in $expectedLinks) {
+      $lnkFile = Join-Path $pubDesk $item.Name
+      if (-not (Test-Path $lnkFile) -and (Test-Path $item.Target)) {
+        $sc = $wsh.CreateShortcut($lnkFile)
+        $sc.TargetPath = $item.Target
+        $sc.WorkingDirectory = $item.Work
+        $sc.Save()
+      }
+    }
+  } catch {}
+}
+
+Sync-And-Heal-DesktopShortcuts
+
 $i = 0
 $lastCheckpointUtc = [DateTime]::UtcNow
 $checkpointJob = $null
@@ -65,11 +107,16 @@ while ([DateTime]::UtcNow -lt $exp.AddMinutes(-3)) {
     } catch {}
   }
 
-  # 2. Setiap 2 menit: jika user baru mengunduh runtime Java di .minecraft atau ekstrak GTA SA, suntikkan OpenGL 4.6 & SilentPatch
+  # 2. Setiap 2 menit: jika user baru mengunduh runtime Java di .minecraft atau ekstrak GTA SA, suntikkan OpenGL 4.6 & SilentPatch + jaga keutuhan shortcut Desktop
   if (($i % 2) -eq 0) {
+    Sync-And-Heal-DesktopShortcuts
     $deployGl = 'C:\XyRDP\grafis\Deploy-OpenGL-To-Java.ps1'
     if (Test-Path $deployGl) {
       try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deployGl 2>&1 | Out-Null } catch {}
+    }
+    $patchSamp = 'C:\Games\GTA-SAMP\Patch-GTA-SAMP.ps1'
+    if (Test-Path $patchSamp) {
+      try { & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $patchSamp 2>&1 | Out-Null } catch {}
     }
   }
 

@@ -191,7 +191,18 @@ try {
   Set-Reg 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell' 'ExecutionPolicy' 'Bypass' 'String' | Out-Null
   Set-Reg 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' 'DOTNET_CLI_TELEMETRY_OPTOUT' '1' 'String' | Out-Null
   Set-Reg 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' 'DOTNET_ROLL_FORWARD' 'LatestMajor' 'String' | Out-Null
-  Log '  Kompatibilitas All-Software 2026 aktif (LongPaths, AppModelUnlock, SmartScreen Off, .NET RollForward LatestMajor)'
+  # 5) Kompatibilitas Emulator Android (LDPlayer / BlueStacks / MuMu / Nox / MEmu / PPSSPP) & OpenGL/DirectX RDP:
+  #    Matikan blokir VBS / Memory Integrity (HVCI) yang sering memicu error "Incompatible Windows settings" pada emulator,
+  #    serta aktifkan WDDM/GPU enumeration di Terminal Services & Host Compute Service (vmcompute).
+  Set-Reg 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' 'EnableVirtualizationBasedSecurity' 0 'DWord' | Out-Null
+  Set-Reg 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' 'Enabled' 0 'DWord' | Out-Null
+  Set-Reg $tsPol 'bEnumerateHWBeforeSW' 1 'DWord' | Out-Null
+  Set-Reg $tsPol 'fEnableWddmDriver'    1 'DWord' | Out-Null
+  try {
+    $vmc = Get-Service -Name 'vmcompute' -ErrorAction SilentlyContinue
+    if ($vmc) { Set-Service -Name 'vmcompute' -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name 'vmcompute' -ErrorAction SilentlyContinue }
+  } catch {}
+  Log '  Kompatibilitas All-Software & Emulator 2026 aktif (LongPaths, AppModelUnlock, SmartScreen Off, HVCI Off, WDDM RDP)'
 } catch { Log "  warning kompatibilitas 2026: $($_.Exception.Message)" }
 
 foreach ($aSvc in @('AudioEndpointBuilder', 'Audiosrv')) {

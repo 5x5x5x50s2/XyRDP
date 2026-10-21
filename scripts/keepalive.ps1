@@ -39,9 +39,17 @@ function Sync-And-Heal-DesktopShortcuts {
 
     # 2. Pastikan shortcut utama yang terpasang selalu utuh di Public\Desktop
     $wsh = New-Object -ComObject WScript.Shell
+    if (-not (Test-Path (Join-Path $pubDesk 'Minecraft (TLauncher).lnk')) -and (Test-Path 'C:\Games\Minecraft\Launch-TLauncher.vbs')) {
+      $scTl = $wsh.CreateShortcut((Join-Path $pubDesk 'Minecraft (TLauncher).lnk'))
+      $scTl.TargetPath = 'wscript.exe'
+      $scTl.Arguments = '"C:\Games\Minecraft\Launch-TLauncher.vbs"'
+      $scTl.WorkingDirectory = 'C:\Games\Minecraft'
+      if (Test-Path 'C:\Games\Minecraft\MinecraftLauncher.exe') { $scTl.IconLocation = 'C:\Games\Minecraft\MinecraftLauncher.exe,0' }
+      $scTl.Save()
+    }
     $expectedLinks = @(
-      @{ Name = 'Minecraft (TLauncher).lnk'; Target = 'C:\Games\Minecraft\TLauncher.exe'; Work = 'C:\Games\Minecraft' },
-      @{ Name = 'PrismLauncher.lnk';         Target = 'C:\Games\PrismLauncher\prismlauncher.exe'; Work = 'C:\Games\PrismLauncher' },
+      @{ Name = 'PrismLauncher (Minecraft).lnk'; Target = 'C:\Games\PrismLauncher\prismlauncher.exe'; Work = 'C:\Games\PrismLauncher' },
+      @{ Name = 'Minecraft Official Launcher.lnk'; Target = 'C:\Games\Minecraft\MinecraftLauncher.exe'; Work = 'C:\Games\Minecraft' },
       @{ Name = 'Google Chrome.lnk';         Target = 'C:\Program Files\Google\Chrome\Application\chrome.exe'; Work = 'C:\Program Files\Google\Chrome\Application' },
       @{ Name = 'XyDesk Tools Hub.lnk';      Target = 'C:\Tools\XyDeskTools\XyDeskTools.exe'; Work = 'C:\Tools\XyDeskTools' },
       @{ Name = 'XyDesk Remote Host.lnk';    Target = 'C:\Program Files\XyDeskRemote\XyDeskRemoteHost.exe'; Work = 'C:\Program Files\XyDeskRemote' },

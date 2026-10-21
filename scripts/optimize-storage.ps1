@@ -205,14 +205,14 @@ if ($debloat -ne 'tidak') {
   }
   if (-not $chromeExists) { $cc = Get-Command chrome -ErrorAction SilentlyContinue; if ($cc) { $chromeExists = $true } }
 
-  # ringan: Appx bloat
+  # ringan: Appx bloat (PENTING: JANGAN hapus Microsoft.XboxIdentityProvider / Microsoft.XboxTcui / GamingServices karena dibutuhkan Minecraft!)
   $bloatAppx = @(
-    'Microsoft.OneDriveSync','Microsoft.Xbox*','Microsoft.XboxGamingOverlay','Microsoft.XboxGameCallableUI',
+    'Microsoft.OneDriveSync','Microsoft.XboxGamingOverlay','Microsoft.XboxSpeechToTextOverlay',
     'Microsoft.ZuneMusic','Microsoft.ZuneVideo','Microsoft.BingNews','Microsoft.BingWeather',
     'Microsoft.GetHelp','Microsoft.Getstarted','Microsoft.WindowsFeedbackHub','Microsoft.MicrosoftOfficeHub',
     'Microsoft.Office.OneNote','Microsoft.SkypeApp','Microsoft.MixedReality.Portal','Microsoft.People',
     'Microsoft.WindowsMaps','Microsoft.Microsoft3DViewer','Microsoft.Print3D','Microsoft.Wallet',
-    'Microsoft.MicrosoftSolitaireCollection','Microsoft.MSPaint','Clipchamp.Clipchamp'
+    'Microsoft.MicrosoftSolitaireCollection','Clipchamp.Clipchamp'
   )
   # full tambahan Edge + Office hub — HABISIN SEMUA (Edge beneran dihapus paksa)
   $tryEdge = ($debloat -eq 'full')

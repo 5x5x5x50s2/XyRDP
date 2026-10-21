@@ -282,27 +282,13 @@ function Install-CompleteSampSuite {
     } catch { Log "Unduh SilentPatchSA warning: $($_.Exception.Message)" }
   }
 
-  # 3. Unduh III.VC.SA.WindowedMode.asi (WAJIB untuk RDP agar gta_sa.exe jalan di Windowed Mode!)
-  $wmZip = Join-Path $work 'III.VC.SA.WindowedMode.zip'
-  if (-not (Test-Path (Join-Path $scriptsDir 'III.VC.SA.WindowedMode.asi'))) {
-    try {
-      if (Invoke-DownloadWithRetry 'https://github.com/ThirteenAG/III.VC.SA.WindowedMode/releases/latest/download/III.VC.SA.WindowedMode.zip' $wmZip 2) {
-        $wmExt = Join-Path $work 'wm_ext'
-        Remove-Item $wmExt -Recurse -Force -ErrorAction SilentlyContinue
-        New-Item -ItemType Directory -Path $wmExt -Force | Out-Null
-        if (Test-Path $sevenZip) { & $sevenZip x $wmZip "-o$wmExt" -y 2>&1 | Out-Null }
-        else { Expand-Archive -Path $wmZip -DestinationPath $wmExt -Force }
-        $wmAsi = Get-ChildItem -Path $wmExt -Recurse -File -Filter 'III.VC.SA.WindowedMode.asi' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($wmAsi) {
-          Copy-Item $wmAsi.FullName -Destination (Join-Path $scriptsDir 'III.VC.SA.WindowedMode.asi') -Force
-          Log 'III.VC.SA.WindowedMode.asi berhasil disiapkan.'
-        }
-        Remove-Item $wmExt -Recurse -Force -ErrorAction SilentlyContinue
-      }
-    } catch { Log "Unduh WindowedMode warning: $($_.Exception.Message)" }
+  # 3. Pastikan TIDAK ADA III.VC.SA.WindowedMode.asi agar GTA SA / SA-MP bisa FULLSCREEN PENUH di RDP!
+  foreach ($wmFile in @('III.VC.SA.WindowedMode.asi', 'III.VC.SA.WindowedMode.ini')) {
+    Remove-Item (Join-Path $scriptsDir $wmFile) -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $modsDir $wmFile) -Force -ErrorAction SilentlyContinue
   }
 
-  # 4. Unduh GTASA.WidescreenFix.asi (tanpa menimpa konfigurasi secara ganda)
+  # 4. Unduh GTASA.WidescreenFix.asi & tulis GTASA.WidescreenFix.ini (ResX=0, ResY=0 -> otomatis Fullscreen sesuai resolusi desktop RDP)
   $wsZip = Join-Path $work 'GTASA.WidescreenFix.zip'
   if (-not (Test-Path (Join-Path $scriptsDir 'GTASA.WidescreenFix.asi'))) {
     try {
@@ -314,6 +300,16 @@ function Install-CompleteSampSuite {
       }
     } catch {}
   }
+  @(
+    '[MAIN]'
+    'ResX = 0'
+    'ResY = 0'
+    'FixAspectRatio = 1'
+    'FOVControl = 1'
+    'HideAABug = 1'
+    'SmartCutsceneBorders = 1'
+    'DontTouchFOV = 0'
+  ) | Set-Content -Path (Join-Path $scriptsDir 'GTASA.WidescreenFix.ini') -Encoding ASCII -Force
 
   # 5. Unduh dgVoodoo2 x86 DirectX Wrapper LENGKAP (MS\x86\D3D9.dll + DDraw.dll + D3DImm.dll + D3D8.dll + dgVoodoo.conf)
   #    WAJIB menyertakan DDraw.dll + D3DImm.dll selain D3D9.dll untuk mencegah crash:
@@ -346,29 +342,30 @@ function Install-CompleteSampSuite {
     } catch { Log "Unduh dgVoodoo2 warning: $($_.Exception.Message)" }
   }
 
-  # Tulis dgVoodoo.conf khusus RDP (Windowed Mode, No Watermark, 512MB Virtual VRAM, Resolusi Lengkap)
+  # Tulis dgVoodoo.conf khusus RDP (FULLSCREEN PENUH 100% Layar RDP, No Watermark, 512MB Virtual VRAM, Anti-Crash 0x00746929)
   @(
     'Version                              = 0x287'
     '[General]'
     'OutputAPI                            = bestavailable'
     'Adapters                             = all'
     'FullScreenOutput                     = default'
-    'FullScreenMode                       = false'
-    'ScalingMode                          = stretched_ar'
+    'FullScreenMode                       = true'
+    'ScalingMode                          = stretched'
     'ProgressiveScanlineOrder             = false'
-    'EnumerateRefreshRates                = false'
+    'EnumerateRefreshRates                = true'
     'Brightness                           = 100'
     'Color                                = 100'
     'Contrast                             = 100'
     'InheritColorProfileInFullScreenMode  = false'
-    'KeepWindowAspectRatio                = true'
+    'KeepWindowAspectRatio                = false'
     'CaptureMouse                         = false'
-    'CenterAppWindow                      = true'
+    'CenterAppWindow                      = false'
     'DisableScreenSaver                   = true'
     '[GeneralExt]'
+    'DesktopResolution                    = desktop'
     'PresentationModel                    = auto'
     'FreeMouse                            = true'
-    'WindowedAttributes                   = borderless'
+    'WindowedAttributes                   = borderless, fullscreen'
     '[DirectX]'
     'DisableAndPassThru                  = false'
     'VideoCard                           = internal3D'
@@ -377,7 +374,7 @@ function Install-CompleteSampSuite {
     'Mipmapping                          = appdriven'
     'Resolution                          = unforced'
     'Antialiasing                        = off'
-    'AppControlledScreenMode             = false'
+    'AppControlledScreenMode             = true'
     'DisableAltEnterToToggleScreenMode   = false'
     'Bilinear2DOperations                = false'
     'PhongShadingWhenPossible            = false'
@@ -508,22 +505,37 @@ $defGame   = 'C:\Games\GTA San Andreas'
 function Apply-SilentPatchToDir([string]$Dir) {
   if (-not $Dir -or -not (Test-Path $Dir)) { return $false }
 
-  # 1. Hapus duplikat dinput8.dll agar tidak bentrok dengan vorbisFile.dll
+  # Jangan menimpa file bila gta_sa.exe sedang aktif berjalan
+  if (Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue) { return $true }
+
+  # 1. Hapus duplikat dinput8.dll agar tidak bentrok dengan vorbisFile.dll,
+  #    dan HAPUS III.VC.SA.WindowedMode.asi agar SA-MP bisa FULLSCREEN PENUH!
   #    PENTING: JANGAN menghapus ddraw.dll / d3dimm.dll karena dibutuhkan dgVoodoo2 untuk mencegah crash 0x00746929!
   $vorbisPath = Join-Path $Dir 'vorbisFile.dll'
   $dinputPath = Join-Path $Dir 'dinput8.dll'
   if ((Test-Path $vorbisPath) -and (Test-Path $dinputPath)) {
     Remove-Item $dinputPath -Force -ErrorAction SilentlyContinue
   }
+  foreach ($wmRel in @('scripts\III.VC.SA.WindowedMode.asi', 'scripts\III.VC.SA.WindowedMode.ini', 'III.VC.SA.WindowedMode.asi', 'III.VC.SA.WindowedMode.ini')) {
+    $wmPath = Join-Path $Dir $wmRel
+    if (Test-Path $wmPath) {
+      Remove-Item $wmPath -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  $markerFile = Join-Path $Dir '.xyrdp_samp_fullscreen_v2'
+  $alreadyPatched = (Test-Path $markerFile) -and (Test-Path (Join-Path $Dir 'd3d9.dll')) -and (Test-Path (Join-Path $Dir 'ddraw.dll')) -and (Test-Path (Join-Path $Dir 'd3dimm.dll'))
 
   # 2. Salin SA-MP Client (samp.exe, samp.dll, samp.saa) bila belum ada di folder target
   if ((Test-Path (Join-Path $sampCache 'samp.exe')) -and -not (Test-Path (Join-Path $Dir 'samp.exe'))) {
     Copy-Item -Path "$sampCache\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
   }
 
-  # 3. Salin paket lengkap dgVoodoo2 (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll + dgVoodoo.conf)
-  #    + SilentPatchSA.asi + III.VC.SA.WindowedMode.asi + vorbisFile.dll SETELAH game diekstrak!
-  Copy-Item -Path "$modsDir\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
+  # 3. Salin paket lengkap dgVoodoo2 Fullscreen (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll + dgVoodoo.conf)
+  #    + SilentPatchSA.asi + GTASA.WidescreenFix.asi + vorbisFile.dll SETELAH game diekstrak!
+  if (-not $alreadyPatched) {
+    Copy-Item -Path "$modsDir\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
+  }
 
   # 3b. Pastikan layanan Windows Audio aktif agar gta_sa.exe tidak crash saat inisialisasi DirectSound
   try {
@@ -531,26 +543,27 @@ function Apply-SilentPatchToDir([string]$Dir) {
     Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue
   } catch {}
 
-  # 4. Hapus atribut Read-Only dan bersihkan gta_sa.set yang korup
-  try { & attrib.exe -R "$Dir\*.*" /S 2>&1 | Out-Null } catch {}
-  foreach ($docRoot in @(
-    [Environment]::GetFolderPath('MyDocuments'),
-    "C:\Users\$env:USERNAME\Documents"
-  )) {
-    if ($docRoot) {
-      $uf = Join-Path $docRoot 'GTA San Andreas User Files'
-      New-Item -ItemType Directory -Path $uf -Force -ErrorAction SilentlyContinue | Out-Null
-      $setFile = Join-Path $uf 'gta_sa.set'
-      if (Test-Path $setFile) {
-        Remove-Item $setFile -Force -ErrorAction SilentlyContinue
+  # 4. Hapus atribut Read-Only dan bersihkan gta_sa.set lama HANYA satu kali saat migrasi Fullscreen v2
+  if (-not $alreadyPatched) {
+    try { & attrib.exe -R "$Dir\*.*" /S 2>&1 | Out-Null } catch {}
+    foreach ($docRoot in @(
+      [Environment]::GetFolderPath('MyDocuments'),
+      "C:\Users\$env:USERNAME\Documents"
+    )) {
+      if ($docRoot) {
+        $uf = Join-Path $docRoot 'GTA San Andreas User Files'
+        New-Item -ItemType Directory -Path $uf -Force -ErrorAction SilentlyContinue | Out-Null
+        $setFile = Join-Path $uf 'gta_sa.set'
+        if (Test-Path $setFile) {
+          Remove-Item $setFile -Force -ErrorAction SilentlyContinue
+        }
       }
     }
+    Set-Content -Path $markerFile -Value 'fullscreen-v2' -Encoding ASCII -Force -ErrorAction SilentlyContinue
   }
 
   # 5. Atur Registry AppCompat + DEP Exception + SAMP gta_sa_exe path
-  #    CATATAN: JANGAN memasang RUNASADMIN pada gta_sa.exe karena saat samp.exe (non-elevated)
-  #    memanggil CreateProcess("gta_sa.exe"), flag RUNASADMIN membuat CreateProcess gagal dengan
-  #    ERROR_ELEVATION_REQUIRED atau memicu crash inisialisasi DirectDraw 0x00746929 di RDP!
+  #    PENTING: JANGAN memasang DISABLEDXMAXIMIZEDWINDOWEDMODE agar Fullscreen berfungsi penuh!
   $gtaExe  = Join-Path $Dir 'gta_sa.exe'
   $sampExe = Join-Path $Dir 'samp.exe'
   foreach ($regBase in @(
@@ -559,10 +572,10 @@ function Apply-SilentPatchToDir([string]$Dir) {
   )) {
     New-Item -Path $regBase -Force -ErrorAction SilentlyContinue | Out-Null
     if (Test-Path $gtaExe) {
-      New-ItemProperty -Path $regBase -Name $gtaExe -Value '~ HIGHDPIAWARE DISABLEDXMAXIMIZEDWINDOWEDMODE DisableNXShowUI' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+      New-ItemProperty -Path $regBase -Name $gtaExe -Value '~ HIGHDPIAWARE DisableNXShowUI' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
     }
     if (Test-Path $sampExe) {
-      New-ItemProperty -Path $regBase -Name $sampExe -Value '~ HIGHDPIAWARE DISABLEDXMAXIMIZEDWINDOWEDMODE DisableNXShowUI' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+      New-ItemProperty -Path $regBase -Name $sampExe -Value '~ HIGHDPIAWARE DisableNXShowUI' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
     }
   }
 
@@ -639,11 +652,11 @@ function Update-GuiStatus {
   $hasGta  = Test-Path (Join-Path $script:activeDir 'gta_sa.exe')
   $hasSamp = Test-Path (Join-Path $script:activeDir 'samp.exe')
   $hasD3d9 = Test-Path (Join-Path $script:activeDir 'd3d9.dll')
-  $hasWm   = Test-Path (Join-Path $script:activeDir 'scripts\III.VC.SA.WindowedMode.asi')
+  $hasDdrw = Test-Path (Join-Path $script:activeDir 'ddraw.dll')
   $lblStatus.Text = "Folder Aktif : $($script:activeDir)`r`n" +
     "gta_sa.exe   : $(if ($hasGta) { 'SIAP (Terdeteksi)' } else { 'BELUM ADA — Klik tombol Ekstrak ZIP / Pilih Folder di bawah' })`r`n" +
     "samp.exe     : $(if ($hasSamp) { 'SIAP (SA-MP 0.3.7-R5)' } else { 'Belum terpasang' })`r`n" +
-    "RDP D3D9 Fix : $(if ($hasD3d9 -and $hasWm) { 'AKTIF (dgVoodoo2 D3D9 WARP + WindowedMode + SilentPatch)' } else { 'Siap dipasang' })"
+    "RDP D3D9 Fix : $(if ($hasD3d9 -and $hasDdrw) { 'AKTIF (dgVoodoo2 Fullscreen + Anti-0x00746929 + SilentPatch)' } else { 'Siap dipasang' })"
 }
 Update-GuiStatus
 
@@ -886,11 +899,11 @@ Update-Status @{
     directplay    = $dpOk
     dep_optin     = $true
     dgvoodoo_d3d9 = (Test-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack\d3d9.dll')
-    windowed_mode = (Test-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack\scripts\III.VC.SA.WindowedMode.asi')
+    fullscreen    = $true
     samp_client   = (Test-Path 'C:\Games\GTA San Andreas\samp.exe')
     silentpatch   = (Test-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack\SilentPatchSA.asi')
   }
 } | Out-Null
 
-Log 'Suite lengkap GTA SA-MP 0.3.7-R5 + dgVoodoo2 D3D9 WARP + WindowedMode + SilentPatch + DEP Bypass siap.'
+Log 'Suite lengkap GTA SA-MP 0.3.7-R5 + dgVoodoo2 D3D9/DDraw Fullscreen + SilentPatch + DEP Bypass siap.'
 exit 0

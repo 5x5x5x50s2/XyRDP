@@ -42,14 +42,40 @@ public class WinCapture {
     [DllImport("user32.dll")]
     public static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
     public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_SHOWWINDOW = 0x0040;
+    public const uint MOUSEEVENTF_MOVE = 0x0001;
     public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
     public const uint MOUSEEVENTF_LEFTUP = 0x0004;
 }
 "@
+
+function Move-RelativeMouse([int]$dx, [int]$dy) {
+  try {
+    $steps = 10
+    $sx = [int][Math]::Round($dx / [double]$steps)
+    $sy = [int][Math]::Round($dy / [double]$steps)
+    for ($i = 0; $i -lt $steps; $i++) {
+      [WinCapture]::mouse_event([WinCapture]::MOUSEEVENTF_MOVE, [uint32]$sx, [uint32]$sy, 0, [UIntPtr]::Zero)
+      Start-Sleep -Milliseconds 30
+    }
+  } catch {}
+}
+
+function Send-DirectInputLeftClick {
+  try {
+    Start-Sleep -Milliseconds 100
+    [WinCapture]::mouse_event([WinCapture]::MOUSEEVENTF_LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 120
+    [WinCapture]::mouse_event([WinCapture]::MOUSEEVENTF_LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 100
+  } catch {}
+}
 
 function Send-KeyPress([byte]$vk) {
   try {
@@ -300,22 +326,32 @@ if ($pPatchGui) { Stop-Process -Id $pPatchGui.Id -Force -ErrorAction SilentlyCon
 Write-Host "=== 4. Menguji & Screenshot PLAY GTA San Andreas (gta_sa.exe) ==="
 Get-CimInstance Win32_SoundDevice -ErrorAction SilentlyContinue | Select-Object Name, Status | Format-Table -AutoSize
 if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
+  Remove-Item 'C:\Games\GTA San Andreas\dsound.dll' -Force -ErrorAction SilentlyContinue
+  Remove-Item 'C:\Games\GTA San Andreas\dsoal-aldrv.dll' -Force -ErrorAction SilentlyContinue
   $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
-  Start-Sleep -Seconds 9
-  Send-KeyPress 0x0D # Enter to skip splash
-  Start-Sleep -Seconds 3
-  Send-KeyPress 0x20 # Space
-  Start-Sleep -Seconds 3
+  for ($w = 0; $w -lt 16; $w++) {
+    Start-Sleep -Seconds 1
+    $gtaHwnd = [WinCapture]::FindWindow('Grand theft auto San Andreas', $null)
+    if ($gtaHwnd -ne [IntPtr]::Zero) {
+      [WinCapture]::ShowWindow($gtaHwnd, 9) | Out-Null
+      [WinCapture]::SetForegroundWindow($gtaHwnd) | Out-Null
+      if ($w -in @(7, 11, 14)) {
+        Send-KeyPress 0x0D # Enter to skip splash
+        Send-KeyPress 0x20 # Space
+      }
+    }
+  }
   $gtaProc = Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($gtaProc) {
     $pGta = $gtaProc
+    Write-Host "gta_sa is RUNNING! PID=$($gtaProc.Id) MainWindowHandle=$($gtaProc.MainWindowHandle) Title='$($gtaProc.MainWindowTitle)'"
   } else {
     Write-Host "gta_sa exited with code: $($pGta.ExitCode)"
     Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2} -MaxEvents 3 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message
   }
   Save-QaWindowScreenshot -Proc $pGta -OutName '04_GTA_SanAndreas_InGame_Play.png' `
     -Title 'QA TEST #4 - PLAY GTA San Andreas (gta_sa.exe + dgVoodoo2 D3D11 + VB-Cable Audio)' `
-    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | VB-Cable + DSOAL Sound + SilentPatch 90 FPS ACTIVE' -WaitSec 3
+    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | VB-Cable Sound + WindowedMode + SilentPatch 90 FPS ACTIVE' -WaitSec 3
   Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
@@ -329,10 +365,13 @@ if (Test-Path 'C:\Games\PrismLauncher\prismlauncher.exe') {
   Send-KeyPress 0x0D # Next
   Start-Sleep -Seconds 2
   Send-KeyPress 0x0D # Finish -> enters Main Dashboard!
-  Start-Sleep -Seconds 2
+  Start-Sleep -Seconds 3
+  # Dismiss "Update Available" modal if shown so Main Dashboard is 100% clean
+  Send-KeyPress 0x1B # Escape
+  Start-Sleep -Seconds 1
   Save-QaWindowScreenshot -Proc $pPrism -OutName '05_Minecraft_PrismLauncher.png' `
     -Title 'QA TEST #5 - Minecraft PrismLauncher Portable (Main Dashboard + Account: XyPlayer_RDP)' `
-    -Sub 'Exe: C:\Games\PrismLauncher\prismlauncher.exe | Java 21 + Mesa3D OpenGL 4.6 READY' -WaitSec 3
+    -Sub 'Exe: C:\Games\PrismLauncher\prismlauncher.exe | Java 21 + Mesa3D OpenGL 4.6 READY' -WaitSec 2
   Stop-Process -Id $pPrism.Id -Force -ErrorAction SilentlyContinue
 }
 
@@ -340,22 +379,30 @@ if (Test-Path 'C:\Games\Minecraft\TL.jar') {
   $javawList = @(Get-ChildItem -Path 'C:\Program Files\Eclipse Adoptium', 'C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk', 'C:\Program Files\Java' -Recurse -Filter 'javaw.exe' -ErrorAction SilentlyContinue | Sort-Object FullName -Descending)
   $javawExe = if ($javawList.Count -gt 0) { $javawList[0].FullName } else { 'javaw.exe' }
   $pTl = Start-Process -FilePath $javawExe -ArgumentList @('-Xmx2048M', '-Dsun.java2d.d3d=false', '-jar', 'C:\Games\Minecraft\TL.jar') -WorkingDirectory 'C:\Games\Minecraft' -PassThru
-  Start-Sleep -Seconds 10
-  try {
-    $pTl.Refresh()
-    if ($pTl.MainWindowHandle -ne [IntPtr]::Zero) {
-      [WinCapture]::SetForegroundWindow($pTl.MainWindowHandle) | Out-Null
-      $rcTl = New-Object WinCapture+RECT
-      if ([WinCapture]::GetWindowRect($pTl.MainWindowHandle, [ref]$rcTl)) {
-        # Click "Alright, I got it!" button at bottom-right of Welcome dialog
-        $btnX = $rcTl.Right - 90
-        $btnY = $rcTl.Bottom - 45
-        Send-LeftClick $btnX $btnY
+  # Wait until Legacy Launcher spawns its Welcome / Main frame
+  for ($t = 0; $t -lt 60; $t++) {
+    Start-Sleep -Seconds 2
+    $jw = Get-Process -Name 'javaw', 'java' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
+    if ($jw) {
+      $pTl = $jw
+      if ($jw.MainWindowTitle -match 'Welcome') {
+        [WinCapture]::SetForegroundWindow($jw.MainWindowHandle) | Out-Null
+        Start-Sleep -Milliseconds 500
+        $rcTl = New-Object WinCapture+RECT
+        if ([WinCapture]::GetWindowRect($jw.MainWindowHandle, [ref]$rcTl)) {
+          # Click "Alright, I got it!" button at bottom-right of Welcome dialog
+          Send-LeftClick ($rcTl.Right - 95) ($rcTl.Bottom - 42)
+          Start-Sleep -Milliseconds 300
+          Send-KeyPress 0x20 # Space
+          Send-KeyPress 0x0D # Enter
+        }
+        Start-Sleep -Seconds 8
+        break
+      } elseif ($jw.MainWindowTitle -match 'Legacy Launcher' -and $jw.MainWindowTitle -notmatch 'Starting') {
+        break
       }
     }
-  } catch {}
-  Start-Sleep -Seconds 6
-  # Re-find java/javaw window in case Legacy Launcher spawned main frame
+  }
   $javaWin = Get-Process -Name 'javaw', 'java' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
   if ($javaWin) { $pTl = $javaWin }
   Save-QaWindowScreenshot -Proc $pTl -OutName '06_Minecraft_TLauncher_Play.png' `
@@ -391,11 +438,8 @@ if ($blenderExe) {
 Write-Host "=== 7. Menguji & Screenshot PLAY Euro Truck Simulator 2 ==="
 $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
 if (Test-Path $etsExe) {
-  # Salin DSOAL juga ke folder ETS2 agar OpenAL/DirectSound di ETS2 selalu aktif
-  foreach ($f in @('dsound.dll', 'dsoal-aldrv.dll', 'alsoft.ini')) {
-    $src = Join-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack' $f
-    if (Test-Path $src) { Copy-Item -LiteralPath $src -Destination (Join-Path 'C:\Games\ETS2\bin\win_x86' $f) -Force -ErrorAction SilentlyContinue }
-  }
+  Remove-Item 'C:\Games\ETS2\bin\win_x86\dsound.dll' -Force -ErrorAction SilentlyContinue
+  Remove-Item 'C:\Games\ETS2\bin\win_x86\dsoal-aldrv.dll' -Force -ErrorAction SilentlyContinue
   $pEts = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
   Start-Sleep -Seconds 11
   try {
@@ -403,14 +447,20 @@ if (Test-Path $etsExe) {
     if ($pEts.MainWindowHandle -ne [IntPtr]::Zero) {
       [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
       Start-Sleep -Milliseconds 600
+      # Kursor kuning DirectInput8 mulai di tengah layar (512, 384).
+      # Gerakkan relatif ke bawah +30px ke kotak input Product Key (512, 414) dan klik!
+      Move-RelativeMouse 0 30
+      Send-DirectInputLeftClick
       # Ketikkan Product Key aktivasi penuh ETS 2 via Hardware Scan Code DirectInput!
       Send-DirectInputString "3342JDYJF0XEA3K5J0YS40UFY"
       Start-Sleep -Milliseconds 500
-      Send-KeyPress 0x09 # Tab -> Activate Game
+      # Gerakkan mouse ke tombol "Enter" / Activate di kanan bawah kotak (+180, +54) dan klik!
+      Move-RelativeMouse 180 54
+      Send-DirectInputLeftClick
       Send-KeyPress 0x0D # Enter
     }
   } catch {}
-  Start-Sleep -Seconds 5
+  Start-Sleep -Seconds 6
   Save-QaWindowScreenshot -Proc $pEts -OutName '08_EuroTruckSimulator2_InGame_Play.png' `
     -Title 'QA TEST #8 - PLAY Euro Truck Simulator 2 (Activated Full Version - SCS Software 3D)' `
     -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | Key: 3342J-DYJF0-XEA3K-5J0YS-40UFY + dgVoodoo2 D3D9 ACTIVE' -WaitSec 3

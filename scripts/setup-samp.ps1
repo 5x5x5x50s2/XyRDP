@@ -282,13 +282,33 @@ function Install-CompleteSampSuite {
     } catch { Log "Unduh SilentPatchSA warning: $($_.Exception.Message)" }
   }
 
-  # 3. Pastikan TIDAK ADA III.VC.SA.WindowedMode.asi agar GTA SA / SA-MP bisa FULLSCREEN PENUH di RDP!
-  foreach ($wmFile in @('III.VC.SA.WindowedMode.asi', 'III.VC.SA.WindowedMode.ini')) {
-    Remove-Item (Join-Path $scriptsDir $wmFile) -Force -ErrorAction SilentlyContinue
-    Remove-Item (Join-Path $modsDir $wmFile) -Force -ErrorAction SilentlyContinue
+  # 3. Unduh III.VC.SA.WindowedMode.asi resmi (v3.0.0) agar GTA SA & SA-MP berjalan mulus di Windowed / Borderless RDP (Alt+Enter untuk Fullscreen)
+  $wmZip = Join-Path $work 'III.VC.SA.WindowedMode.zip'
+  if (-not (Test-Path (Join-Path $scriptsDir 'III.VC.SA.WindowedMode.asi'))) {
+    try {
+      if (Invoke-DownloadWithRetry 'https://github.com/ThirteenAG/III.VC.SA.WindowedMode/releases/download/v3.0.0/III.VC.SA.WindowedMode.zip' $wmZip 2) {
+        if (Test-Path $sevenZip) { & $sevenZip x $wmZip "-o$scriptsDir" -y 2>&1 | Out-Null }
+        else { Expand-Archive -Path $wmZip -DestinationPath $scriptsDir -Force }
+        Log 'III.VC.SA.WindowedMode.asi berhasil disiapkan.'
+      }
+    } catch {}
   }
+  @(
+    '[MAIN]'
+    'WindowMode = 1'
+    'ConfineCursor = 0'
+    'PauseOnFocusLoss = 0'
+    'ResumeOnFocus = 1'
+    ''
+    '[WINDOW]'
+    'Width = 920'
+    'Height = 620'
+    'Maximized = 0'
+    'PositionX = 52'
+    'PositionY = 72'
+  ) | Set-Content -Path (Join-Path $scriptsDir 'III.VC.SA.WindowedMode.cfg') -Encoding ASCII -Force
 
-  # 4. Unduh GTASA.WidescreenFix.asi & tulis GTASA.WidescreenFix.ini (ResX=0, ResY=0 -> otomatis Fullscreen sesuai resolusi desktop RDP)
+  # 4. Unduh GTASA.WidescreenFix.asi & tulis GTASA.WidescreenFix.ini
   $wsZip = Join-Path $work 'GTASA.WidescreenFix.zip'
   if (-not (Test-Path (Join-Path $scriptsDir 'GTASA.WidescreenFix.asi'))) {
     try {
@@ -342,14 +362,11 @@ function Install-CompleteSampSuite {
     } catch { Log "Unduh dgVoodoo2 warning: $($_.Exception.Message)" }
   }
 
-  # Tulis dgVoodoo.conf khusus RDP (Borderless Fullscreen 100% Layar RDP, No Watermark, 512MB Virtual VRAM, Anti-Crash 0x00746929)
-  # PENTING: FullScreenMode WAJIB false + ApplicationControlledScreenMode = false + WindowedAttributes = borderless, fullscreen!
-  # Jika FullScreenMode = true, DXGI SetFullscreenState(TRUE) ditolak oleh Microsoft Remote Display Adapter di RDP
-  # sehingga DirectDrawCreateEx (0x64C516DF) mengembalikan EAX = 0x00000000 dan crash di 0x00746929!
+  # Tulis dgVoodoo.conf khusus RDP (Windowed / Borderless Alt+Enter, No Watermark, 512MB Virtual VRAM, Anti-Crash 0x00746929)
   @(
     'Version                              = 0x287'
     '[General]'
-    'OutputAPI                            = bestavailable'
+    'OutputAPI                            = d3d11warp'
     'Adapters                             = all'
     'FullScreenOutput                     = default'
     'FullScreenMode                       = false'
@@ -365,10 +382,8 @@ function Install-CompleteSampSuite {
     'CenterAppWindow                      = true'
     'DisableScreenSaver                   = true'
     '[GeneralExt]'
-    'DesktopResolution                    = desktop'
-    'PresentationModel                    = flip_discard'
+    'DesktopResolution                    = 1024x768'
     'FreeMouse                            = true'
-    'WindowedAttributes                   = borderless, fullscreen'
     '[DirectX]'
     'DisableAndPassThru                   = false'
     'VideoCard                            = internal3D'
@@ -388,45 +403,18 @@ function Install-CompleteSampSuite {
     'DisableD3DTnLDevice                  = false'
     '[DirectXExt]'
     'DefaultEnumeratedResolutions         = all'
-    'ExtraEnumeratedResolutions           = 800x600, 1024x768, 1280x720, 1366x768, 1600x900, 1920x1080'
+    'ExtraEnumeratedResolutions           = 800x600, 920x620, 1024x768, 1280x720, 1366x768, 1600x900, 1920x1080'
     'EnumeratedResolutionBitdepths        = all'
     'MSD3DDeviceNames                     = true'
   ) | Set-Content -Path (Join-Path $modsDir 'dgVoodoo.conf') -Encoding ASCII -Force
 
-  # 5b. Unduh DSOAL (DirectSound-to-OpenAL Soft x86: dsound.dll + dsoal-aldrv.dll + alsoft.ini)
-  #     WAJIB di Windows Server Cloud VM tanpa kartu suara fisik! Tanpa DSOAL (drivers = wasapi,winmm,null),
-  #     gta_sa.exe langsung keluar saat startup karena DirectSoundEnumerateA mengembalikan 0 sound card!
-  $dsoalZip = Join-Path $work 'DSOAL.zip'
-  if (-not (Test-Path (Join-Path $modsDir 'dsound.dll')) -or -not (Test-Path (Join-Path $modsDir 'dsoal-aldrv.dll'))) {
-    try {
-      if (Invoke-DownloadWithRetry 'https://github.com/kcat/dsoal/releases/download/latest-master/DSOAL.zip' $dsoalZip 2) {
-        $dsoalExt = Join-Path $work 'dsoal_ext'
-        Remove-Item $dsoalExt -Recurse -Force -ErrorAction SilentlyContinue
-        New-Item -ItemType Directory -Path $dsoalExt -Force | Out-Null
-        if (Test-Path $sevenZip) { & $sevenZip x $dsoalZip "-o$dsoalExt" -y 2>&1 | Out-Null }
-        else { Expand-Archive -Path $dsoalZip -DestinationPath $dsoalExt -Force }
-        $innerZip = Get-ChildItem -Path $dsoalExt -Filter 'DSOAL_*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($innerZip) {
-          if (Test-Path $sevenZip) { & $sevenZip x $innerZip.FullName "-o$dsoalExt" -y 2>&1 | Out-Null }
-          else { Expand-Archive -Path $innerZip.FullName -DestinationPath $dsoalExt -Force }
-        }
-        $win32Ds = Join-Path $dsoalExt 'DSOAL\Win32\dsound.dll'
-        $win32Al = Join-Path $dsoalExt 'DSOAL\Win32\dsoal-aldrv.dll'
-        if ((Test-Path $win32Ds) -and (Test-Path $win32Al)) {
-          Copy-Item -LiteralPath $win32Ds -Destination (Join-Path $modsDir 'dsound.dll') -Force
-          Copy-Item -LiteralPath $win32Al -Destination (Join-Path $modsDir 'dsoal-aldrv.dll') -Force
-          Log 'DSOAL x86 (dsound.dll + dsoal-aldrv.dll) berhasil disiapkan (Virtual Audio Fallback Ready)!'
-        }
-        Remove-Item $dsoalExt -Recurse -Force -ErrorAction SilentlyContinue
-      }
-    } catch { Log "Unduh DSOAL warning: $($_.Exception.Message)" }
-  }
-  @(
-    '[general]'
-    'drivers = wasapi,winmm,null'
-    'channels = stereo'
-    'sample-type = int16'
-  ) | Set-Content -Path (Join-Path $modsDir 'alsoft.ini') -Encoding ASCII -Force
+  # 5b. Simpan DSOAL di folder cadangan DSOAL-Backup (tidak menimpa SysWOW64\dsound.dll saat VB-Audio Virtual Cable aktif)
+  $dsoalBackupDir = Join-Path $kitRoot 'DSOAL-Backup'
+  New-Item -ItemType Directory -Path $dsoalBackupDir -Force | Out-Null
+  Remove-Item (Join-Path $modsDir 'dsound.dll') -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $modsDir 'dsoal-aldrv.dll') -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $gameDir 'dsound.dll') -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $gameDir 'dsoal-aldrv.dll') -Force -ErrorAction SilentlyContinue
 
   # 6. Tulis konfigurasi SilentPatchSA.ini (90 FPS + FixMouseStuck RDP)
   @(
@@ -638,58 +626,7 @@ function Enable-CloudflareWarpSafeSplitTunnel {
 }
 
 function Patch-GtaSaExeDirectDrawBypass([string]$ExePath) {
-  try {
-    if (-not $ExePath -or -not (Test-Path -LiteralPath $ExePath)) { return }
-    $fi = Get-Item -LiteralPath $ExePath -ErrorAction Stop
-    if ($fi.Length -lt 4000000 -or $fi.Length -gt 25000000) { return }
-    $bytes = [System.IO.File]::ReadAllBytes($ExePath)
-    if ($bytes.Length -lt 0x347000) { return }
-    if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { return }
-
-    # Cari raw file offset untuk RVA 0x003469A0 (VA 0x007469A0 dengan ImageBase 0x00400000)
-    $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
-    if ($peOffset -lt 0x40 -or ($peOffset + 0xF8) -ge $bytes.Length) { return }
-    $numSections = [BitConverter]::ToUInt16($bytes, $peOffset + 6)
-    $optHeaderSize = [BitConverter]::ToUInt16($bytes, $peOffset + 20)
-    $secTable = $peOffset + 24 + $optHeaderSize
-    $targetRva = 0x003469A0
-    $rawOffset = -1
-    for ($i = 0; $i -lt $numSections; $i++) {
-      $sOff = $secTable + ($i * 40)
-      if (($sOff + 40) -gt $bytes.Length) { break }
-      $vSize = [BitConverter]::ToInt32($bytes, $sOff + 8)
-      $vAddr = [BitConverter]::ToInt32($bytes, $sOff + 12)
-      $rSize = [BitConverter]::ToInt32($bytes, $sOff + 16)
-      $rPtr  = [BitConverter]::ToInt32($bytes, $sOff + 20)
-      $span  = [Math]::Max($vSize, $rSize)
-      if ($targetRva -ge $vAddr -and $targetRva -lt ($vAddr + $span)) {
-        $rawOffset = $targetRva - $vAddr + $rPtr
-        break
-      }
-    }
-    if ($rawOffset -lt 0x1000 -or ($rawOffset + 4) -ge $bytes.Length) { return }
-
-    # Jika sudah di-patch (30 C0 90 90), tidak perlu menulis ulang
-    if ($bytes[$rawOffset] -eq 0x30 -and $bytes[$rawOffset + 1] -eq 0xC0 -and $bytes[$rawOffset + 2] -eq 0x90 -and $bytes[$rawOffset + 3] -eq 0x90) {
-      return
-    }
-
-    # Pastikan hanya mem-patch gta_sa.exe US 1.0 yang valid (cek byte di sekitar 0x00746920..0x007469A0)
-    $checkOff = $rawOffset - (0x007469A0 - 0x00746929)
-    if ($checkOff -gt 0 -and ($bytes[$checkOff] -eq 0x8B -or $bytes[$checkOff] -eq 0x89 -or $bytes[$rawOffset] -eq 0xA1 -or $bytes[$rawOffset] -eq 0x38 -or $bytes[$rawOffset] -eq 0x80)) {
-      $bakPath = "$ExePath.orig_bak"
-      if (-not (Test-Path -LiteralPath $bakPath)) {
-        [System.IO.File]::WriteAllBytes($bakPath, $bytes)
-      }
-      # Patch VA 0x007469A0 -> xor al, al ; nop ; nop (30 C0 90 90)
-      # Ini mem-bypass DirectDraw multi-monitor enumeration yang memicu crash 0x00746929 (EAX=0) di RDP!
-      $bytes[$rawOffset]     = 0x30
-      $bytes[$rawOffset + 1] = 0xC0
-      $bytes[$rawOffset + 2] = 0x90
-      $bytes[$rawOffset + 3] = 0x90
-      [System.IO.File]::WriteAllBytes($ExePath, $bytes)
-    }
-  } catch {}
+  return
 }
 
 function Apply-SilentPatchToDir([string]$Dir) {
@@ -699,9 +636,8 @@ function Apply-SilentPatchToDir([string]$Dir) {
   if (Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue) { return $true }
 
   # 1. Simpan vorbisFile.dll asli (< 250 KB) sebagai vorbisHooked.dll sebelum ditimpa Ultimate ASI Loader,
-  #    hapus duplikat dinput8.dll agar tidak bentrok dengan vorbisFile.dll,
-  #    dan HAPUS III.VC.SA.WindowedMode.asi agar SA-MP bisa FULLSCREEN PENUH!
-  #    PENTING: JANGAN menghapus ddraw.dll / d3dimm.dll karena dibutuhkan dgVoodoo2 untuk mencegah crash 0x00746929!
+  #    dan hapus duplikat dinput8.dll agar tidak bentrok dengan vorbisFile.dll.
+  #    PENTING: JANGAN menghapus ddraw.dll / d3dimm.dll / III.VC.SA.WindowedMode.asi karena dibutuhkan di RDP!
   $vorbisPath = Join-Path $Dir 'vorbisFile.dll'
   $vorbisHooked = Join-Path $Dir 'vorbisHooked.dll'
   if ((Test-Path $vorbisPath) -and (Get-Item $vorbisPath).Length -lt 250000 -and -not (Test-Path $vorbisHooked)) {
@@ -711,12 +647,8 @@ function Apply-SilentPatchToDir([string]$Dir) {
   if (Test-Path $dinputPath) {
     Remove-Item $dinputPath -Force -ErrorAction SilentlyContinue
   }
-  foreach ($wmRel in @('scripts\III.VC.SA.WindowedMode.asi', 'scripts\III.VC.SA.WindowedMode.ini', 'III.VC.SA.WindowedMode.asi', 'III.VC.SA.WindowedMode.ini')) {
-    $wmPath = Join-Path $Dir $wmRel
-    if (Test-Path $wmPath) {
-      Remove-Item $wmPath -Force -ErrorAction SilentlyContinue
-    }
-  }
+  Remove-Item (Join-Path $Dir 'dsound.dll') -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $Dir 'dsoal-aldrv.dll') -Force -ErrorAction SilentlyContinue
 
   $markerFile = Join-Path $Dir '.xyrdp_samp_fullscreen_v3'
   $alreadyPatched = (Test-Path $markerFile)

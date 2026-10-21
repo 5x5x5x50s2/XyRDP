@@ -34,12 +34,12 @@ New-Item -ItemType Directory -Path 'C:\Games' -Force | Out-Null
 
 function Invoke-GameDownload([string]$Url, [string]$OutFile, [int]$MinBytes = 4096) {
   Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
-  & curl.exe -fL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 180 -sS $Url -o $OutFile
+  & curl.exe -fL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 240 -sS $Url -o $OutFile
   if ($LASTEXITCODE -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -ge $MinBytes) {
     return $true
   }
   try {
-    Invoke-WebRequest -Uri $Url -OutFile $OutFile -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -UseBasicParsing -TimeoutSec 120
+    Invoke-WebRequest -Uri $Url -OutFile $OutFile -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -UseBasicParsing -TimeoutSec 180
     return ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -ge $MinBytes)
   } catch {
     return $false
@@ -154,6 +154,8 @@ function Install-PrismLauncherPortable {
             @(
               '[General]'
               'ApplicationTheme=dark'
+              'AutoUpdate=false'
+              'UpdateCheck=false'
               'Language=en_US'
               "LastHostname=$($env:COMPUTERNAME)"
               "JavaPath=$javaw"
@@ -1136,11 +1138,17 @@ function Install-EuroTruckSimulator2FreeSuite {
   $setupExe = Join-Path $etsDir 'EuroTruckSimulator2_setup.exe'
   if (-not (Test-Path $etsExe)) {
     Log 'Mengunduh & memasang Euro Truck Simulator 2 (ETS 2 Free Edition Resmi SCS Software)...'
-    if (Invoke-GameDownload 'https://archive.org/download/ets2v1.1.1/EuroTruckSimulator2_setup.exe' $setupExe 100000000) {
-      Log 'Menjalankan silent install Euro Truck Simulator 2 ke C:\Games\ETS2...'
-      $proc = Start-Process -FilePath $setupExe -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/DIR="C:\Games\ETS2"') -PassThru -WindowStyle Hidden
-      if ($proc) { $proc.WaitForExit(180000) | Out-Null }
-      Remove-Item $setupExe -Force -ErrorAction SilentlyContinue
+    foreach ($etsUrl in @(
+      'https://web.archive.org/web/20130312033231if_/http://download.eurotrucksimulator2.com/EuroTruckSimulator2_setup.exe',
+      'https://archive.org/download/ets2v1.1.1/EuroTruckSimulator2_setup.exe'
+    )) {
+      if (Invoke-GameDownload $etsUrl $setupExe 100000000) {
+        Log 'Menjalankan silent install Euro Truck Simulator 2 ke C:\Games\ETS2...'
+        $proc = Start-Process -FilePath $setupExe -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/DIR="C:\Games\ETS2"') -PassThru -WindowStyle Hidden
+        if ($proc) { $proc.WaitForExit(180000) | Out-Null }
+        Remove-Item $setupExe -Force -ErrorAction SilentlyContinue
+        break
+      }
     }
   }
 

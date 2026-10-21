@@ -84,9 +84,8 @@ function Sync-And-Heal-DesktopShortcuts {
         }
       }
 
-      # 4. Shortcut FiveM (Ikon FiveM Oranye — Prank App)
+      # 4. Shortcut FiveM (Ikon Asli FiveM.exe)
       $fivemExe = 'C:\Games\FiveM\FiveM.exe'
-      $fivemIco = if (Test-Path 'C:\Games\FiveM\FiveM.ico') { 'C:\Games\FiveM\FiveM.ico' } else { Join-Path $icoDir 'fivem.ico' }
       if (Test-Path $fivemExe) {
         $lnkFivem = Join-Path $desk 'FiveM.lnk'
         if (-not (Test-Path $lnkFivem)) {
@@ -94,28 +93,51 @@ function Sync-And-Heal-DesktopShortcuts {
           $sc4.TargetPath = $fivemExe
           $sc4.WorkingDirectory = 'C:\Games\FiveM'
           $sc4.Description = 'FiveM — Cfx.re CitizenFX GTA V Roleplay Client'
-          if (Test-Path $fivemIco) { $sc4.IconLocation = "$fivemIco,0" }
+          $sc4.IconLocation = "$fivemExe,0"
           $sc4.Save()
         }
       }
 
-      # 5. Shortcut MEmu Emulator, Euro Truck Simulator 2 Free, & Blender 3D
-      foreach ($extraApp in @(
-        @{ Name = 'MEmu Emulator.lnk'; Ps1 = 'C:\Games\MEmu\Launch-MEmu.ps1'; Dir = 'C:\Games\MEmu'; Ico = (Join-Path $icoDir 'memu.ico'); Desc = 'MEmu Play Android Emulator' },
-        @{ Name = 'Euro Truck Simulator 2.lnk'; Ps1 = 'C:\Games\ETS2\Launch-ETS2-Free.ps1'; Dir = 'C:\Games\ETS2'; Ico = (Join-Path $icoDir 'ets2.ico'); Desc = 'Euro Truck Simulator 2 Free Edition' },
-        @{ Name = 'Blender 3D.lnk'; Ps1 = 'C:\Games\Blender\Launch-Blender.ps1'; Dir = 'C:\Games\Blender'; Ico = (Join-Path $icoDir 'blender.ico'); Desc = 'Blender 3D Studio (OpenGL 4.6 Ready)' }
-      )) {
-        if (Test-Path $extraApp.Ps1) {
-          $lnkExtra = Join-Path $desk $extraApp.Name
-          if (-not (Test-Path $lnkExtra)) {
-            $scE = $wsh.CreateShortcut($lnkExtra)
-            $scE.TargetPath = 'powershell.exe'
-            $scE.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$($extraApp.Ps1)`""
-            $scE.WorkingDirectory = $extraApp.Dir
-            $scE.Description = $extraApp.Desc
-            if (Test-Path $extraApp.Ico) { $scE.IconLocation = "$($extraApp.Ico),0" }
-            $scE.Save()
-          }
+      # 5. Shortcut MEmu Emulator, Euro Truck Simulator 2 Free, & Blender 3D (100% Ikon Asli .exe)
+      $blenderExe = (Get-ChildItem -Path 'C:\Games\Blender' -Recurse -File -Filter 'blender.exe' -ErrorAction SilentlyContinue | Select-Object -First 1)
+      $etsExe     = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
+      $memuExe    = if (Test-Path 'C:\Program Files\Microvirt\MEmu\MEmuConsole.exe') { 'C:\Program Files\Microvirt\MEmu\MEmuConsole.exe' } else { 'C:\Games\MEmu\MEmu-Setup.exe' }
+
+      if ($blenderExe) {
+        $lnkB = Join-Path $desk 'Blender 3D.lnk'
+        if (-not (Test-Path $lnkB)) {
+          $scB = $wsh.CreateShortcut($lnkB)
+          $scB.TargetPath = $blenderExe.FullName
+          $scB.WorkingDirectory = $blenderExe.DirectoryName
+          $scB.IconLocation = "$($blenderExe.FullName),0"
+          $scB.Description = 'Blender 3D Studio 4.2 LTS (Mesa3D OpenGL 4.6 Ready)'
+          $scB.Save()
+        }
+      }
+
+      if (Test-Path $etsExe) {
+        $lnkE = Join-Path $desk 'Euro Truck Simulator 2.lnk'
+        if (-not (Test-Path $lnkE)) {
+          $scE = $wsh.CreateShortcut($lnkE)
+          $scE.TargetPath = $etsExe
+          $scE.Arguments = '-nofullscreen -nointro'
+          $scE.WorkingDirectory = (Split-Path $etsExe -Parent)
+          $scE.IconLocation = "$etsExe,0"
+          $scE.Description = 'Euro Truck Simulator 2 (Ready-to-Play di XyRDP)'
+          $scE.Save()
+        }
+      }
+
+      if (Test-Path 'C:\Games\MEmu\Launch-MEmu.ps1') {
+        $lnkM = Join-Path $desk 'MEmu Emulator.lnk'
+        if (-not (Test-Path $lnkM)) {
+          $scM = $wsh.CreateShortcut($lnkM)
+          $scM.TargetPath = 'powershell.exe'
+          $scM.Arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Games\MEmu\Launch-MEmu.ps1"'
+          $scM.WorkingDirectory = 'C:\Games\MEmu'
+          if (Test-Path $memuExe) { $scM.IconLocation = "$memuExe,0" }
+          $scM.Description = 'MEmu Play Android Emulator'
+          $scM.Save()
         }
       }
     }

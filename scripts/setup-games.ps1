@@ -290,9 +290,7 @@ function Configure-MinecraftOpenGLAndOptions {
         $lnk.TargetPath = 'wscript.exe'
         $lnk.Arguments = '"C:\Games\Minecraft\Launch-TLauncher.vbs"'
         $lnk.WorkingDirectory = 'C:\Games\Minecraft'
-        $tlIco = Join-Path $icoDir 'tlauncher.ico'
-        if (Test-Path $tlIco) { $lnk.IconLocation = "$tlIco,0" }
-        elseif (Test-Path $iconExe) { $lnk.IconLocation = "$iconExe,0" }
+        if (Test-Path $iconExe) { $lnk.IconLocation = "$iconExe,0" }
         $lnk.Description = 'TLauncher Cracked / Offline Minecraft Java Edition (OpenGL 4.6 Ready)'
         $lnk.Save()
       }
@@ -301,9 +299,7 @@ function Configure-MinecraftOpenGLAndOptions {
         $lnk2 = $wsh.CreateShortcut((Join-Path $desk 'PrismLauncher (Minecraft Modpack).lnk'))
         $lnk2.TargetPath = 'C:\Games\PrismLauncher\prismlauncher.exe'
         $lnk2.WorkingDirectory = 'C:\Games\PrismLauncher'
-        $plIco = Join-Path $icoDir 'prismlauncher.ico'
-        if (Test-Path $plIco) { $lnk2.IconLocation = "$plIco,0" }
-        else { $lnk2.IconLocation = 'C:\Games\PrismLauncher\prismlauncher.exe,0' }
+        $lnk2.IconLocation = 'C:\Games\PrismLauncher\prismlauncher.exe,0'
         $lnk2.Description = 'PrismLauncher Modpack & Multi-Instance (Microsoft & Offline + OpenGL 4.6)'
         $lnk2.Save()
       }
@@ -312,9 +308,7 @@ function Configure-MinecraftOpenGLAndOptions {
         $lnk3 = $wsh.CreateShortcut((Join-Path $desk 'Minecraft Official Launcher.lnk'))
         $lnk3.TargetPath = $iconExe
         $lnk3.WorkingDirectory = 'C:\Games\Minecraft'
-        $mcIco = Join-Path $icoDir 'minecraft-official.ico'
-        if (Test-Path $mcIco) { $lnk3.IconLocation = "$mcIco,0" }
-        else { $lnk3.IconLocation = "$iconExe,0" }
+        $lnk3.IconLocation = "$iconExe,0"
         $lnk3.Description = 'Official Minecraft Launcher (Mojang / Xbox)'
         $lnk3.Save()
       }
@@ -326,7 +320,7 @@ function Install-RobloxAntiVmSuite {
   $rbxDir = 'C:\Games\Roblox'
   New-Item -ItemType Directory -Path $rbxDir -Force -ErrorAction SilentlyContinue | Out-Null
 
-  # Jalankan Anti-VM SMBIOS/Hyper-V Spoofing & Gaming Boost terlebih dahulu
+  # 1. Jalankan Anti-VM SMBIOS/Hyper-V Spoofing & Gaming Boost terlebih dahulu
   if (Test-Path 'C:\XyRDP\tools\Apply-AntiVM-Boost.ps1') {
     try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\XyRDP\tools\Apply-AntiVM-Boost.ps1' | Out-Null } catch {}
   }
@@ -336,103 +330,215 @@ function Install-RobloxAntiVmSuite {
     Invoke-GameDownload 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' $rbxExe 1000000 | Out-Null
   }
 
-  # Buat Launcher Anti-VM Roblox + Direct3D 11 120 FPS + Bypass SM_REMOTESESSION RDP
+  # 2. Ekstrak langsung paket resmi RobloxPlayerBeta.exe dari CDN Roblox (rbxPkgManifest)
+  #    agar 100% terinstal di C:\Games\Roblox\Versions\<ver> sebelum sesi RDP aktif!
+  $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
+  if (-not (Test-Path $sevenZip)) { $sevenZip = "${env:ProgramFiles(x86)}\7-Zip\7z.exe" }
+  $verFolder = $null
+  $playerBetaExe = $null
+  try {
+    $verInfo = Invoke-RestMethod -Uri 'https://clientsettingscdn.roblox.com/v2/client-version/WindowsPlayer' -TimeoutSec 15
+    $verHash = $verInfo.clientVersionUpload
+    if ($verHash) {
+      $verFolder = Join-Path $rbxDir "Versions\$verHash"
+      $playerBetaExe = Join-Path $verFolder 'RobloxPlayerBeta.exe'
+      if (-not (Test-Path $playerBetaExe)) {
+        Log "Mengunduh & mengekstrak paket resmi Roblox ($verHash) ke $verFolder..."
+        New-Item -ItemType Directory -Path $verFolder -Force | Out-Null
+        $pkgMap = @{
+          'RobloxApp.zip'                     = ''
+          'shaders.zip'                       = 'shaders'
+          'ssl.zip'                           = 'ssl'
+          'WebView2.zip'                      = ''
+          'content-avatar.zip'                = 'content\avatar'
+          'content-configs.zip'               = 'content\configs'
+          'content-fonts.zip'                 = 'content\fonts'
+          'content-sky.zip'                   = 'content\sky'
+          'content-sounds.zip'                = 'content\sounds'
+          'content-textures2.zip'             = 'content\textures'
+          'content-models.zip'                = 'content\models'
+          'content-textures3.zip'             = 'PlatformContent\pc\textures'
+          'content-terrain.zip'               = 'PlatformContent\pc\terrain'
+          'content-platform-fonts.zip'        = 'PlatformContent\pc\fonts'
+          'content-platform-dictionaries.zip' = 'PlatformContent\pc\shared_compression_dictionaries'
+          'extracontent-luapackages.zip'      = 'ExtraContent\LuaPackages'
+          'extracontent-translations.zip'     = 'ExtraContent\translations'
+          'extracontent-models.zip'           = 'ExtraContent\models'
+          'extracontent-textures.zip'         = 'ExtraContent\textures'
+          'extracontent-places.zip'           = 'ExtraContent\places'
+        }
+        foreach ($pkg in $pkgMap.Keys) {
+          $sub = $pkgMap[$pkg]
+          $dst = if ($sub) { Join-Path $verFolder $sub } else { $verFolder }
+          New-Item -ItemType Directory -Path $dst -Force | Out-Null
+          $zipTmp = Join-Path $work "rbx_$pkg"
+          if (Invoke-GameDownload "https://setup.rbxcdn.com/$verHash-$pkg" $zipTmp 1024) {
+            if (Test-Path $sevenZip) { & $sevenZip x $zipTmp "-o$dst" -y 2>&1 | Out-Null }
+            else { Expand-Archive -Path $zipTmp -DestinationPath $dst -Force }
+            Remove-Item $zipTmp -Force -ErrorAction SilentlyContinue
+          }
+        }
+        # Tulis AppSettings.xml wajib agar RobloxPlayerBeta.exe mengenali folder content
+        @(
+          '<?xml version="1.0" encoding="UTF-8"?>'
+          '<Settings>'
+          '    <ContentFolder>content</ContentFolder>'
+          '    <BaseUrl>http://www.roblox.com</BaseUrl>'
+          '</Settings>'
+        ) | Set-Content -Path (Join-Path $verFolder 'AppSettings.xml') -Encoding UTF8 -Force
+
+        # Nonaktifkan RobloxCrashHandler.exe agar tidak mematikan proses di VM
+        $crashExe = Join-Path $verFolder 'RobloxCrashHandler.exe'
+        if (Test-Path $crashExe) {
+          Rename-Item -LiteralPath $crashExe -NewName 'RobloxCrashHandler.exe.bak' -Force -ErrorAction SilentlyContinue
+        }
+      }
+    }
+  } catch {
+    Log "Ekstraksi paket Roblox CDN warning: $($_.Exception.Message)"
+  }
+
+  # 3. Suntikkan ClientAppSettings.json (Direct3D 11 WARP + 120 FPS) & hubungkan ke profil user RDP
+  $fflags = @{
+    FFlagDebugGraphicsPreferD3D11 = $true
+    FFlagDebugGraphicsDisableDirect3D11 = $false
+    FFlagDebugGraphicsDisableDirect3D12 = $true
+    DFIntTaskSchedulerTargetFps = 120
+    FFlagHandleAltEnterFullscreenManually = $false
+  } | ConvertTo-Json
+
+  if ($verFolder -and (Test-Path $verFolder)) {
+    $csDir = Join-Path $verFolder 'ClientSettings'
+    New-Item -ItemType Directory -Path $csDir -Force | Out-Null
+    Set-Content -Path (Join-Path $csDir 'ClientAppSettings.json') -Value $fflags -Encoding UTF8 -Force
+  }
+
+  $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
+  foreach ($profUser in @($u, 'runneradmin', 'xyadmin')) {
+    if (-not $profUser) { continue }
+    $uRbxVer = "C:\Users\$profUser\AppData\Local\Roblox\Versions"
+    New-Item -ItemType Directory -Path $uRbxVer -Force -ErrorAction SilentlyContinue | Out-Null
+    if ($verFolder -and (Test-Path $verFolder)) {
+      $leaf = Split-Path $verFolder -Leaf
+      $linkTarget = Join-Path $uRbxVer $leaf
+      if (-not (Test-Path $linkTarget)) {
+        & cmd.exe /c "mklink /J `"$linkTarget`" `"$verFolder`"" 2>&1 | Out-Null
+      }
+    }
+  }
+
+  # Daftarkan URL Protocol roblox-player: ke RobloxPlayerBeta.exe
+  if ($playerBetaExe -and (Test-Path $playerBetaExe)) {
+    try {
+      New-Item -Path 'HKLM:\SOFTWARE\Classes\roblox-player\shell\open\command' -Force | Out-Null
+      Set-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\roblox-player' -Name '(Default)' -Value 'URL: Roblox Protocol' -Force
+      Set-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\roblox-player' -Name 'URL Protocol' -Value '' -Force
+      Set-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\roblox-player\shell\open\command' -Name '(Default)' -Value "`"$playerBetaExe`" %1" -Force
+    } catch {}
+  }
+
+  # 4. Buat Launcher Anti-VM Roblox + Direct3D 11 120 FPS + Cloud/Emulator Bypass
   $rbxLauncherPs1 = Join-Path $rbxDir 'Launch-Roblox-AntiVM.ps1'
   $rbxLauncherCode = @'
 param(
   [switch]$CloudFallback
 )
 $ErrorActionPreference = 'SilentlyContinue'
+Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
 
-# 1. Terapkan ulang SMBIOS / BIOS / SystemInformation / Disk / Hyper-V Guest Spoofing + Ultimate Gaming Boost
 if (Test-Path 'C:\XyRDP\tools\Apply-AntiVM-Boost.ps1') {
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\XyRDP\tools\Apply-AntiVM-Boost.ps1' | Out-Null
 }
 
-# 2. Jika user memilih Cloud / Browser Mode (untuk game yang memblokir non-nested VM)
-if ($CloudFallback) {
-  Start-Process 'https://www.roblox.com/home'
-  exit 0
-}
-
-# 3. Suntikkan ClientAppSettings.json (Direct3D 11 + 120 FPS + Anti-WhiteScreen RDP) ke semua folder Roblox & Bloxstrap
-$fflags = @{
-  FFlagDebugGraphicsPreferD3D11 = $true
-  FFlagDebugGraphicsDisableDirect3D11 = $false
-  FFlagDebugGraphicsDisableDirect3D12 = $true
-  DFIntTaskSchedulerTargetFps = 120
-  FFlagHandleAltEnterFullscreenManually = $false
-  FLogNetwork = '7'
-} | ConvertTo-Json
-
-$verRoots = @(
-  (Join-Path $env:LOCALAPPDATA 'Roblox\Versions'),
-  'C:\Program Files (x86)\Roblox\Versions',
-  'C:\Program Files\Roblox\Versions',
-  (Join-Path $env:LOCALAPPDATA 'Bloxstrap\Modifications')
-)
-foreach ($vr in $verRoots) {
-  if (Test-Path $vr) {
-    Get-ChildItem -Path $vr -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-      $cs = Join-Path $_.FullName 'ClientSettings'
-      New-Item -ItemType Directory -Path $cs -Force | Out-Null
-      Set-Content -Path (Join-Path $cs 'ClientAppSettings.json') -Value $fflags -Encoding UTF8 -Force
-    }
-    $csRoot = Join-Path $vr 'ClientSettings'
-    New-Item -ItemType Directory -Path $csRoot -Force | Out-Null
-    Set-Content -Path (Join-Path $csRoot 'ClientAppSettings.json') -Value $fflags -Encoding UTF8 -Force
-  }
-}
-
-# 4. Cari RobloxPlayerBeta.exe atau RobloxPlayerLauncher.exe yang sudah terpasang
-$playerBeta = $null
-foreach ($vr in $verRoots) {
-  if (Test-Path $vr) {
-    $found = Get-ChildItem -Path $vr -Recurse -Filter 'RobloxPlayerBeta.exe' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($found) { $playerBeta = $found.FullName; break }
-  }
-}
-
-# 5. Jika belum terpasang, unduh & jalankan RobloxPlayerInstaller.exe terlebih dahulu
-$installer = 'C:\Games\Roblox\RobloxPlayerInstaller.exe'
-if (-not $playerBeta) {
-  if (-not (Test-Path $installer)) {
-    & curl.exe -fL --retry 3 -sS 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' -o $installer
-  }
-  if (Test-Path $installer) {
-    $env:__COMPAT_LAYER = 'RunAsInvoker'
-    $p = Start-Process -FilePath $installer -PassThru
-    # Tunggu sampai instalasi selesai lalu suntikkan ulang FFlags DX11
-    if ($p) { $p.WaitForExit(90000) | Out-Null }
-    foreach ($vr in $verRoots) {
-      if (Test-Path $vr) {
-        Get-ChildItem -Path $vr -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-          $cs = Join-Path $_.FullName 'ClientSettings'
-          New-Item -ItemType Directory -Path $cs -Force | Out-Null
-          Set-Content -Path (Join-Path $cs 'ClientAppSettings.json') -Value $fflags -Encoding UTF8 -Force
-        }
-        $found = Get-ChildItem -Path $vr -Recurse -Filter 'RobloxPlayerBeta.exe' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if ($found) { $playerBeta = $found.FullName }
-      }
-    }
-  }
-}
-
-# 6. Nonaktifkan Fullscreen Optimizations & DPI Scaling pada RobloxPlayerBeta.exe agar tidak crash/blank di RDP
-if ($playerBeta -and (Test-Path $playerBeta)) {
+$playerBeta = Get-ChildItem -Path @('C:\Games\Roblox\Versions', "$env:LOCALAPPDATA\Roblox\Versions") -Recurse -Filter 'RobloxPlayerBeta.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($playerBeta) {
   $layersKey = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
   if (-not (Test-Path $layersKey)) { New-Item -Path $layersKey -Force | Out-Null }
-  Set-ItemProperty -Path $layersKey -Name $playerBeta -Value '~ DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE' -Force
+  Set-ItemProperty -Path $layersKey -Name $playerBeta.FullName -Value '~ DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE' -Force
   $env:__COMPAT_LAYER = 'RunAsInvoker'
-  Start-Process -FilePath $playerBeta -ArgumentList '--app'
+  $proc = Start-Process -FilePath $playerBeta.FullName -WorkingDirectory $playerBeta.DirectoryName -ArgumentList '--app' -PassThru
+  Start-Sleep -Seconds 4
+  if ($proc -and -not $proc.HasExited) {
+    exit 0
+  }
 }
+
+# Jika RobloxPlayerBeta.exe diblokir Hyperion CPUID VM Check Azure, buka Dialog Pemilihan Mode Anti-VM
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'Roblox Player — XyRDP Anti-VM Launcher'
+$form.Size = New-Object System.Drawing.Size(520, 310)
+$form.StartPosition = 'CenterScreen'
+$form.FormBorderStyle = 'FixedDialog'
+$form.MaximizeBox = $false
+$form.BackColor = [System.Drawing.Color]::FromArgb(18, 20, 28)
+$form.ForeColor = [System.Drawing.Color]::White
+
+$lbl = New-Object System.Windows.Forms.Label
+$lbl.Text = "Anti-Cheat Hyperion (Byfron) mendeteksi CPU Virtual Machine Azure.`r`nPilih jalur bypass di bawah untuk tetap bermain Roblox dengan lancar:"
+$lbl.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+$lbl.Location = New-Object System.Drawing.Point(20, 18)
+$lbl.Size = New-Object System.Drawing.Size(470, 48)
+$form.Controls.Add($lbl)
+
+$btn1 = New-Object System.Windows.Forms.Button
+$btn1.Text = '1. Buka Roblox Web / Cloud App Mode (Bebas Blokir VM)'
+$btn1.Font = New-Object System.Drawing.Font('Segoe UI', 9.5, [System.Drawing.FontStyle]::Bold)
+$btn1.Location = New-Object System.Drawing.Point(20, 78)
+$btn1.Size = New-Object System.Drawing.Size(465, 44)
+$btn1.BackColor = [System.Drawing.Color]::FromArgb(16, 185, 129)
+$btn1.ForeColor = [System.Drawing.Color]::Black
+$btn1.FlatStyle = 'Flat'
+$btn1.Add_Click({
+  $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+  if (Test-Path $chrome) {
+    Start-Process -FilePath $chrome -ArgumentList @('--app=https://www.roblox.com/home', '--start-maximized')
+  } else {
+    Start-Process 'https://www.roblox.com/home'
+  }
+  $form.Close()
+})
+$form.Controls.Add($btn1)
+
+$btn2 = New-Object System.Windows.Forms.Button
+$btn2.Text = '2. Buka Roblox via MEmu Android Emulator (APK Mode Bebas Byfron)'
+$btn2.Font = New-Object System.Drawing.Font('Segoe UI', 9.5, [System.Drawing.FontStyle]::Bold)
+$btn2.Location = New-Object System.Drawing.Point(20, 132)
+$btn2.Size = New-Object System.Drawing.Size(465, 44)
+$btn2.BackColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
+$btn2.ForeColor = [System.Drawing.Color]::White
+$btn2.FlatStyle = 'Flat'
+$btn2.Add_Click({
+  if (Test-Path 'C:\Games\MEmu\Launch-MEmu.ps1') {
+    Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','C:\Games\MEmu\Launch-MEmu.ps1')
+  }
+  $form.Close()
+})
+$form.Controls.Add($btn2)
+
+$btn3 = New-Object System.Windows.Forms.Button
+$btn3.Text = '3. Paksa Jalankan Ulang RobloxPlayerBeta.exe (Desktop Client)'
+$btn3.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
+$btn3.Location = New-Object System.Drawing.Point(20, 186)
+$btn3.Size = New-Object System.Drawing.Size(465, 42)
+$btn3.BackColor = [System.Drawing.Color]::FromArgb(39, 39, 42)
+$btn3.ForeColor = [System.Drawing.Color]::White
+$btn3.FlatStyle = 'Flat'
+$btn3.Add_Click({
+  if ($playerBeta) {
+    Start-Process -FilePath $playerBeta.FullName -WorkingDirectory $playerBeta.DirectoryName -ArgumentList '--app'
+  } elseif (Test-Path 'C:\Games\Roblox\RobloxPlayerInstaller.exe') {
+    Start-Process -FilePath 'C:\Games\Roblox\RobloxPlayerInstaller.exe'
+  }
+  $form.Close()
+})
+$form.Controls.Add($btn3)
+
+[void]$form.ShowDialog()
 '@
   Set-Content -LiteralPath $rbxLauncherPs1 -Value $rbxLauncherCode -Encoding UTF8 -Force
 
-  # Buat shortcut Roblox Player (Anti-VM Boost).lnk dengan ikon merah khusus
-  $icoDir = Ensure-XyDesktopIcons
-  $rbxIco = Join-Path $icoDir 'roblox-antivm.ico'
-  $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
+  # 5. Buat shortcut Roblox Player dengan IKON ASLI RESMI RobloxPlayerBeta.exe / RobloxPlayerInstaller.exe!
   foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
     New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
     try {
@@ -440,18 +546,15 @@ if ($playerBeta -and (Test-Path $playerBeta)) {
       $wsh = New-Object -ComObject WScript.Shell
       $lnk = $wsh.CreateShortcut((Join-Path $desk 'Roblox Player (Anti-VM Boost).lnk'))
       $lnk.TargetPath = 'powershell.exe'
-      $lnk.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$rbxLauncherPs1`""
+      $lnk.Arguments = "-NoProfile -Sta -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$rbxLauncherPs1`""
       $lnk.WorkingDirectory = $rbxDir
-      if (Test-Path $rbxIco) { $lnk.IconLocation = "$rbxIco,0" }
-      elseif (Test-Path $rbxExe) { $lnk.IconLocation = "$rbxExe,0" }
+      if ($playerBetaExe -and (Test-Path $playerBetaExe)) {
+        $lnk.IconLocation = "$playerBetaExe,0"
+      } elseif (Test-Path $rbxExe) {
+        $lnk.IconLocation = "$rbxExe,0"
+      }
       $lnk.Description = 'Roblox Player dengan Anti-VM Spoofing + Direct3D 11 120 FPS Boost'
       $lnk.Save()
-    } catch {}
-  }
-
-  if ($wantRoblox -and (Test-Path $rbxExe)) {
-    try {
-      Start-Process -FilePath $rbxExe -ArgumentList @('-quiet') -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
     } catch {}
   }
 }
@@ -738,12 +841,17 @@ public class FiveMPrankForm : Form
 '@
   try {
     Remove-Item -LiteralPath $fivemExe -Force -ErrorAction SilentlyContinue
-    Add-Type -TypeDefinition $csCode -ReferencedAssemblies @('System.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll') -OutputAssembly $fivemExe -OutputType WindowsApplication -ErrorAction Stop
+    $compOpt = if (Test-Path $fivemIco) { "/win32icon:`"$fivemIco`"" } else { "" }
+    if ($compOpt) {
+      Add-Type -TypeDefinition $csCode -ReferencedAssemblies @('System.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll') -OutputAssembly $fivemExe -OutputType WindowsApplication -CompilerOptions $compOpt -ErrorAction Stop
+    } else {
+      Add-Type -TypeDefinition $csCode -ReferencedAssemblies @('System.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll') -OutputAssembly $fivemExe -OutputType WindowsApplication -ErrorAction Stop
+    }
   } catch {
     Log "Kompilasi FiveM.exe warning: $($_.Exception.Message)"
   }
 
-  # 4. Buat Shortcut "FiveM" dengan ikon FiveM di Desktop User & Public Desktop
+  # 4. Buat Shortcut "FiveM" dengan ikon asli FiveM di Desktop User & Public Desktop
   $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
   foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
     New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
@@ -752,16 +860,15 @@ public class FiveMPrankForm : Form
       $lnk = $wsh.CreateShortcut((Join-Path $desk 'FiveM.lnk'))
       if (Test-Path $fivemExe) {
         $lnk.TargetPath = $fivemExe
+        $lnk.IconLocation = "$fivemExe,0"
       } else {
         $psFallback = Join-Path $fivemDir 'Launch-FiveM-Prank.ps1'
         Set-Content -LiteralPath $psFallback -Value $csCode -Encoding UTF8 -Force
         $lnk.TargetPath = 'powershell.exe'
         $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"Add-Type -Path '$psFallback' -ReferencedAssemblies System.Drawing,System.Windows.Forms; [FiveMPrankForm]::Main()`""
+        if (Test-Path $fivemIco) { $lnk.IconLocation = "$fivemIco,0" }
       }
       $lnk.WorkingDirectory = $fivemDir
-      if (Test-Path $fivemIco) {
-        $lnk.IconLocation = "$fivemIco,0"
-      }
       $lnk.Description = 'FiveM — Cfx.re CitizenFX GTA V Roleplay Client'
       $lnk.Save()
     } catch {}
@@ -771,20 +878,12 @@ public class FiveMPrankForm : Form
 function Install-MEmuEmulatorSuite {
   $memuDir = 'C:\Games\MEmu'
   New-Item -ItemType Directory -Path $memuDir -Force -ErrorAction SilentlyContinue | Out-Null
-  $icoDir = Ensure-XyDesktopIcons
-  $memuIco = Join-Path $icoDir 'memu.ico'
   $setupExe = Join-Path $memuDir 'MEmu-Setup.exe'
 
-  # Unduh installer resmi MEmu Play (online bootstrapper cepat ~20 MB) bila belum ada
+  # Unduh installer resmi MEmu Play (memiliki ikon asli resmi MEmu di dalam PE resource-nya)
   if (-not (Test-Path $setupExe) -or (Get-Item $setupExe).Length -lt 50000) {
-    foreach ($u in @(
-      'https://dl.memuplay.com/download/Memu-Setup.exe',
-      'https://www.memuplay.com/download-memu-on-pc.html'
-    )) {
-      if (Invoke-GameDownload $u $setupExe 100000) {
-        Log "Installer MEmu Play siap di $setupExe"
-        break
-      }
+    if (Invoke-GameDownload 'https://dl.memuplay.com/download/Memu-Setup.exe' $setupExe 100000) {
+      Log "Installer resmi MEmu Play siap di $setupExe"
     }
   }
 
@@ -811,11 +910,6 @@ if (-not (Test-Path $setup) -or (Get-Item $setup).Length -lt 100000) {
 }
 if (Test-Path $setup) {
   Start-Process -FilePath $setup
-} else {
-  $wg = Get-Command winget.exe -ErrorAction SilentlyContinue
-  if ($wg) {
-    Start-Process -FilePath 'winget.exe' -ArgumentList @('install','--id','Microvirt.MEmu','--accept-package-agreements','--accept-source-agreements')
-  }
 }
 '@
   Set-Content -LiteralPath $launchPs1 -Value $psCode -Encoding UTF8 -Force
@@ -829,7 +923,11 @@ if (Test-Path $setup) {
       $lnk.TargetPath = 'powershell.exe'
       $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launchPs1`""
       $lnk.WorkingDirectory = $memuDir
-      if (Test-Path $memuIco) { $lnk.IconLocation = "$memuIco,0" }
+      if (Test-Path 'C:\Program Files\Microvirt\MEmu\MEmuConsole.exe') {
+        $lnk.IconLocation = 'C:\Program Files\Microvirt\MEmu\MEmuConsole.exe,0'
+      } elseif (Test-Path $setupExe) {
+        $lnk.IconLocation = "$setupExe,0"
+      }
       $lnk.Description = 'MEmu Play Android Emulator (OpenGL 4.6 + Hyper-V Ready)'
       $lnk.Save()
     } catch {}
@@ -839,10 +937,39 @@ if (Test-Path $setup) {
 function Install-EuroTruckSimulator2FreeSuite {
   $etsDir = 'C:\Games\ETS2'
   New-Item -ItemType Directory -Path $etsDir -Force -ErrorAction SilentlyContinue | Out-Null
-  $icoDir = Ensure-XyDesktopIcons
-  $etsIco = Join-Path $icoDir 'ets2.ico'
 
-  # Siapkan config.cfg bawaan ramah RDP (OpenGL 4.6 Mesa3D + Windowed Borderless agar tidak black screen di RDP)
+  # 1. Unduh & pasang langsung Euro Truck Simulator 2 Free (Inno Setup resmi SCS Software dari Internet Archive)
+  #    SAAT setup-games.ps1 berjalan supaya begitu RDP aktif, eurotrucks2.exe sudah terpasang penuh!
+  $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
+  $setupExe = Join-Path $etsDir 'EuroTruckSimulator2_setup.exe'
+  if (-not (Test-Path $etsExe)) {
+    Log 'Mengunduh & memasang Euro Truck Simulator 2 (ETS 2 Free Edition Resmi SCS Software)...'
+    if (Invoke-GameDownload 'https://archive.org/download/ets2v1.1.1/EuroTruckSimulator2_setup.exe' $setupExe 100000000) {
+      Log 'Menjalankan silent install Euro Truck Simulator 2 ke C:\Games\ETS2...'
+      $proc = Start-Process -FilePath $setupExe -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/DIR="C:\Games\ETS2"') -PassThru -WindowStyle Hidden
+      if ($proc) { $proc.WaitForExit(180000) | Out-Null }
+      Remove-Item $setupExe -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  # Salin wrapper Direct3D 9 (dgVoodoo2) ke folder bin\win_x86 agar ETS 2 berjalan mulus di RDP tanpa GPU fisik
+  $etsBin = 'C:\Games\ETS2\bin\win_x86'
+  if (Test-Path $etsBin) {
+    foreach ($dll in @('d3d9.dll', 'ddraw.dll', 'dgVoodoo.conf')) {
+      $srcDll = Join-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack' $dll
+      if (Test-Path $srcDll) {
+        Copy-Item -LiteralPath $srcDll -Destination $etsBin -Force -ErrorAction SilentlyContinue
+      }
+    }
+  }
+
+  # Simpan juga serial key aktivasi full di C:\Games\ETS2\SERIAL-KEY-FULL.txt
+  @(
+    'Euro Truck Simulator 2 — Serial Key Aktivasi Full:'
+    '3342J-DYJF0-XEA3K-5J0YS-40UFY'
+  ) | Set-Content -LiteralPath (Join-Path $etsDir 'SERIAL-KEY-FULL.txt') -Encoding UTF8 -Force
+
+  # 2. Siapkan config.cfg bawaan ramah RDP (Windowed 1280x720 agar tidak black screen di RDP)
   $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
   foreach ($profUser in @($u, 'runneradmin', 'xyadmin')) {
     if (-not $profUser) { continue }
@@ -853,7 +980,7 @@ function Install-EuroTruckSimulator2FreeSuite {
       @(
         'uset r_full_resolution_corrections "0"'
         'uset r_force_color_shadowmaps "0"'
-        'uset r_device "gl"'
+        'uset r_device "dx9"'
         'uset r_fullscreen "0"'
         'uset r_mode_height "720"'
         'uset r_mode_width "1280"'
@@ -866,72 +993,41 @@ function Install-EuroTruckSimulator2FreeSuite {
   $launchPs1 = Join-Path $etsDir 'Launch-ETS2-Free.ps1'
   $psCode = @'
 $ErrorActionPreference = 'Continue'
-Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
 $env:GALLIUM_DRIVER = 'llvmpipe'
 $env:LIBGL_ALWAYS_SOFTWARE = '1'
 $env:MESA_GL_VERSION_OVERRIDE = '4.6'
-$env:MESA_GLSL_VERSION_OVERRIDE = '460'
 
-$etsCandidates = @(
+foreach ($exe in @(
   'C:\Games\ETS2\bin\win_x64\eurotrucks2.exe',
   'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe',
-  'C:\Persist\Games\ETS2\bin\win_x64\eurotrucks2.exe',
-  'C:\Program Files (x86)\Euro Truck Simulator 2\bin\win_x64\eurotrucks2.exe',
-  'C:\Program Files (x86)\Steam\steamapps\common\Euro Truck Simulator 2\bin\win_x64\eurotrucks2.exe'
-)
-foreach ($exe in $etsCandidates) {
+  'C:\Program Files (x86)\Euro Truck Simulator 2\bin\win_x86\eurotrucks2.exe'
+)) {
   if (Test-Path $exe) {
     $binDir = Split-Path $exe -Parent
-    if (Test-Path 'C:\XyRDP\grafis\mesa-x64\opengl32.dll') {
-      Copy-Item 'C:\XyRDP\grafis\mesa-x64\*.dll' -Destination $binDir -Force -ErrorAction SilentlyContinue
-    }
-    Start-Process -FilePath $exe -WorkingDirectory $binDir -ArgumentList @('-gl', '-nofullscreen', '-nointro')
+    Start-Process -FilePath $exe -WorkingDirectory $binDir -ArgumentList @('-nofullscreen', '-nointro')
     exit 0
   }
-}
-
-$setupExe = 'C:\Games\ETS2\ets2_free_setup.exe'
-if (-not (Test-Path $setupExe) -or (Get-Item $setupExe).Length -lt 10000000) {
-  [System.Windows.Forms.MessageBox]::Show(
-    "Mengunduh Euro Truck Simulator 2 (ETS 2 Free Edition Resmi SCS Software)...`r`nProses unduhan berjalan otomatis, installer akan langsung terbuka setelah selesai!",
-    "Euro Truck Simulator 2 Free — XyRDP Auto-Installer",
-    [System.Windows.Forms.MessageBoxButtons]::OK,
-    [System.Windows.Forms.MessageBoxIcon]::Information
-  ) | Out-Null
-  foreach ($url in @(
-    'https://download.eurotrucksimulator2.com/ets2_1_48_5_setup.exe',
-    'https://download.eurotrucksimulator2.com/ets2_1_43_3_setup.exe',
-    'https://archive.org/download/euro-truck-simulator-2-v-1.35.1.1s/Euro%20Truck%20Simulator%202%20v1.35.1.1s.zip'
-  )) {
-    & curl.exe -fL -A "Mozilla/5.0" --retry 3 $url -o $setupExe
-    if ((Test-Path $setupExe) -and (Get-Item $setupExe).Length -gt 10000000) { break }
-  }
-}
-
-if (Test-Path $setupExe) {
-  Start-Process -FilePath $setupExe -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/DIR="C:\Games\ETS2"') -Wait -ErrorAction SilentlyContinue
-  if (Test-Path 'C:\Games\ETS2\bin\win_x64\eurotrucks2.exe') {
-    if (Test-Path 'C:\XyRDP\grafis\mesa-x64\opengl32.dll') {
-      Copy-Item 'C:\XyRDP\grafis\mesa-x64\*.dll' -Destination 'C:\Games\ETS2\bin\win_x64' -Force -ErrorAction SilentlyContinue
-    }
-    Start-Process -FilePath 'C:\Games\ETS2\bin\win_x64\eurotrucks2.exe' -WorkingDirectory 'C:\Games\ETS2\bin\win_x64' -ArgumentList @('-gl', '-nofullscreen', '-nointro')
-    exit 0
-  }
-  Start-Process -FilePath $setupExe
 }
 '@
   Set-Content -LiteralPath $launchPs1 -Value $psCode -Encoding UTF8 -Force
 
+  # 3. Buat shortcut dengan IKON ASLI eurotrucks2.exe!
   foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
     New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
     try {
       $wsh = New-Object -ComObject WScript.Shell
       $lnk = $wsh.CreateShortcut((Join-Path $desk 'Euro Truck Simulator 2.lnk'))
-      $lnk.TargetPath = 'powershell.exe'
-      $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launchPs1`""
-      $lnk.WorkingDirectory = $etsDir
-      if (Test-Path $etsIco) { $lnk.IconLocation = "$etsIco,0" }
-      $lnk.Description = 'Euro Truck Simulator 2 Free Edition (OpenGL 4.6 Ready)'
+      if (Test-Path $etsExe) {
+        $lnk.TargetPath = $etsExe
+        $lnk.Arguments  = '-nofullscreen -nointro'
+        $lnk.WorkingDirectory = (Split-Path $etsExe -Parent)
+        $lnk.IconLocation = "$etsExe,0"
+      } else {
+        $lnk.TargetPath = 'powershell.exe'
+        $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launchPs1`""
+        $lnk.WorkingDirectory = $etsDir
+      }
+      $lnk.Description = 'Euro Truck Simulator 2 (Ready-to-Play di XyRDP)'
       $lnk.Save()
     } catch {}
   }
@@ -940,8 +1036,35 @@ if (Test-Path $setupExe) {
 function Install-Blender3DSuite {
   $blenderDir = 'C:\Games\Blender'
   New-Item -ItemType Directory -Path $blenderDir -Force -ErrorAction SilentlyContinue | Out-Null
-  $icoDir = Ensure-XyDesktopIcons
-  $blenderIco = Join-Path $icoDir 'blender.ico'
+
+  # 1. Unduh & ekstrak langsung Blender 4.2 LTS SAAT setup-games.ps1 berjalan (sebelum RDP aktif!)
+  $foundBlender = Get-ChildItem -Path $blenderDir -Recurse -File -Filter 'blender.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $foundBlender) {
+    $zipFile = Join-Path $work 'blender-4.2.3-windows-x64.zip'
+    Log 'Mengunduh & mengekstrak Blender 4.2 LTS (x64) ke C:\Games\Blender...'
+    foreach ($u in @(
+      'https://mirror.clarkson.edu/blender/release/Blender4.2/blender-4.2.3-windows-x64.zip',
+      'https://download.blender.org/release/Blender4.2/blender-4.2.3-windows-x64.zip'
+    )) {
+      if (Invoke-GameDownload $u $zipFile 50000000) {
+        $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
+        if (Test-Path $sevenZip) { & $sevenZip x $zipFile "-o$blenderDir" -y 2>&1 | Out-Null }
+        else { Expand-Archive -Path $zipFile -DestinationPath $blenderDir -Force }
+        Remove-Item $zipFile -Force -ErrorAction SilentlyContinue
+        break
+      }
+    }
+    $foundBlender = Get-ChildItem -Path $blenderDir -Recurse -File -Filter 'blender.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+  }
+
+  # 2. Suntikkan Mesa3D OpenGL 4.6 langsung ke folder blender.exe agar langsung jalan di RDP tanpa GPU fisik
+  if ($foundBlender) {
+    $bDir = $foundBlender.DirectoryName
+    if (Test-Path 'C:\XyRDP\grafis\mesa-x64\opengl32.dll') {
+      Copy-Item 'C:\XyRDP\grafis\mesa-x64\*.dll' -Destination $bDir -Force -ErrorAction SilentlyContinue
+    }
+    Log "Blender 3D siap di $($foundBlender.FullName)"
+  }
 
   $launchPs1 = Join-Path $blenderDir 'Launch-Blender.ps1'
   $psCode = @'
@@ -950,60 +1073,30 @@ $env:GALLIUM_DRIVER = 'llvmpipe'
 $env:LIBGL_ALWAYS_SOFTWARE = '1'
 $env:MESA_GL_VERSION_OVERRIDE = '4.6'
 $env:MESA_GLSL_VERSION_OVERRIDE = '460'
-
 $found = Get-ChildItem -Path @('C:\Games\Blender', 'C:\Program Files\Blender Foundation') -Recurse -File -Filter 'blender.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($found) {
-  $bDir = $found.DirectoryName
-  if (Test-Path 'C:\XyRDP\grafis\mesa-x64\opengl32.dll') {
-    Copy-Item 'C:\XyRDP\grafis\mesa-x64\*.dll' -Destination $bDir -Force -ErrorAction SilentlyContinue
-  }
-  Start-Process -FilePath $found.FullName -WorkingDirectory $bDir
-  exit 0
-}
-
-$zipFile = 'C:\Games\Blender\blender-portable.zip'
-foreach ($u in @(
-  'https://mirror.clarkson.edu/blender/release/Blender4.2/blender-4.2.3-windows-x64.zip',
-  'https://download.blender.org/release/Blender4.2/blender-4.2.3-windows-x64.zip',
-  'https://download.blender.org/release/Blender3.6/blender-3.6.16-windows-x64.zip'
-)) {
-  & curl.exe -fL -A "Mozilla/5.0" --retry 3 $u -o $zipFile
-  if ((Test-Path $zipFile) -and (Get-Item $zipFile).Length -gt 50000000) {
-    $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
-    if (Test-Path $sevenZip) { & $sevenZip x $zipFile '-oC:\Games\Blender' -y | Out-Null }
-    else { Expand-Archive -Path $zipFile -DestinationPath 'C:\Games\Blender' -Force }
-    Remove-Item $zipFile -Force -ErrorAction SilentlyContinue
-    break
-  }
-}
-
-$foundAfter = Get-ChildItem -Path 'C:\Games\Blender' -Recurse -File -Filter 'blender.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($foundAfter) {
-  $bDir = $foundAfter.DirectoryName
-  if (Test-Path 'C:\XyRDP\grafis\mesa-x64\opengl32.dll') {
-    Copy-Item 'C:\XyRDP\grafis\mesa-x64\*.dll' -Destination $bDir -Force -ErrorAction SilentlyContinue
-  }
-  Start-Process -FilePath $foundAfter.FullName -WorkingDirectory $bDir
-} else {
-  $wg = Get-Command winget.exe -ErrorAction SilentlyContinue
-  if ($wg) {
-    Start-Process -FilePath 'winget.exe' -ArgumentList @('install','--id','BlenderFoundation.Blender','--silent','--accept-package-agreements','--accept-source-agreements') -Wait
-  }
+  Start-Process -FilePath $found.FullName -WorkingDirectory $found.DirectoryName
 }
 '@
   Set-Content -LiteralPath $launchPs1 -Value $psCode -Encoding UTF8 -Force
 
+  # 3. Buat shortcut di Desktop yang langsung menunjuk ke blender.exe dengan IKON ASLI blender.exe!
   $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
   foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
     New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
     try {
       $wsh = New-Object -ComObject WScript.Shell
       $lnk = $wsh.CreateShortcut((Join-Path $desk 'Blender 3D.lnk'))
-      $lnk.TargetPath = 'powershell.exe'
-      $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launchPs1`""
-      $lnk.WorkingDirectory = $blenderDir
-      if (Test-Path $blenderIco) { $lnk.IconLocation = "$blenderIco,0" }
-      $lnk.Description = 'Blender 3D Studio (Mesa3D OpenGL 4.6 Ready)'
+      if ($foundBlender) {
+        $lnk.TargetPath = $foundBlender.FullName
+        $lnk.WorkingDirectory = $foundBlender.DirectoryName
+        $lnk.IconLocation = "$($foundBlender.FullName),0"
+      } else {
+        $lnk.TargetPath = 'powershell.exe'
+        $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launchPs1`""
+        $lnk.WorkingDirectory = $blenderDir
+      }
+      $lnk.Description = 'Blender 3D Studio 4.2 LTS (Mesa3D OpenGL 4.6 Ready)'
       $lnk.Save()
     } catch {}
   }

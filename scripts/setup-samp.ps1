@@ -1037,25 +1037,31 @@ $form.Controls.Add($lblHint)
 
       $wsh = New-Object -ComObject WScript.Shell
 
-      # Shortcut 1: GTA SA-MP Launcher (Anti-Ban) — Ikon Oranye 'SA SA-MP'
+      # Shortcut 1: GTA SA-MP Launcher (Anti-Ban) — Prioritaskan IKON ASLI samp.exe!
       $lnk1 = $wsh.CreateShortcut((Join-Path $desk 'GTA SA-MP Launcher (Anti-Ban).lnk'))
       $lnk1.TargetPath = 'powershell.exe'
       $lnk1.Arguments = "-NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$patcherPath`" -Interactive -LaunchSamp"
       $lnk1.WorkingDirectory = $gameDir
-      if (Test-Path $sampLauncherIco) {
-        $lnk1.IconLocation = "$sampLauncherIco,0"
-      } elseif (Test-Path (Join-Path $gameDir 'samp.exe')) {
+      if (Test-Path (Join-Path $gameDir 'samp.exe')) {
         $lnk1.IconLocation = "$(Join-Path $gameDir 'samp.exe'),0"
+      } elseif (Test-Path (Join-Path $sampCache 'samp.exe')) {
+        $lnk1.IconLocation = "$(Join-Path $sampCache 'samp.exe'),0"
+      } elseif (Test-Path $sampLauncherIco) {
+        $lnk1.IconLocation = "$sampLauncherIco,0"
       }
       $lnk1.Description = 'Buka GTA SA-MP 0.3.7-R5 dengan Auto GPCI/HWID Spoofing & Anti-VPN'
       $lnk1.Save()
 
-      # Shortcut 2: Fix & Patch GTA SA-MP (SilentPatch) — Ikon Toska 'FIX ANTI-BAN'
+      # Shortcut 2: Fix & Patch GTA SA-MP (SilentPatch) — Prioritaskan IKON ASLI gta_sa.exe / samp.exe!
       $lnk2 = $wsh.CreateShortcut((Join-Path $desk 'Fix & Patch GTA SA-MP (SilentPatch).lnk'))
       $lnk2.TargetPath = 'powershell.exe'
       $lnk2.Arguments = "-NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$patcherPath`" -Interactive"
       $lnk2.WorkingDirectory = $kitRoot
-      if (Test-Path $sampFixIco) {
+      if (Test-Path (Join-Path $gameDir 'gta_sa.exe')) {
+        $lnk2.IconLocation = "$(Join-Path $gameDir 'gta_sa.exe'),0"
+      } elseif (Test-Path (Join-Path $gameDir 'samp.exe')) {
+        $lnk2.IconLocation = "$(Join-Path $gameDir 'samp.exe'),0"
+      } elseif (Test-Path $sampFixIco) {
         $lnk2.IconLocation = "$sampFixIco,0"
       }
       $lnk2.Description = 'Control Center GTA SA-MP + Patch SilentPatch 90 FPS + Reset Serial GPCI Anti-Ban'

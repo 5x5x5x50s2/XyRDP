@@ -238,22 +238,6 @@ jobs:
         continue-on-error: true
         run: ./scripts/restore-state.ps1
 
-      - name: Setup akses Tailscale
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.akses || 'tailscale') == 'tailscale' }}
-        shell: pwsh
-        run: ./scripts/setup-akses.ps1
-
-      - name: Setup akses Portmap OpenVPN
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.akses == 'portmap' }}
-        shell: pwsh
-        run: ./scripts/setup-portmap.ps1
-
-      - name: Publish status awal ke branch status
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
-        shell: pwsh
-        continue-on-error: true
-        run: ./scripts/publish-status.ps1
-
       - name: Optimasi storage runner
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && ((inputs.storage_boost || 'ya') != 'tidak' || (inputs.debloat || 'ringan') != 'tidak') }}
         shell: pwsh
@@ -278,12 +262,6 @@ jobs:
         continue-on-error: true
         run: ./scripts/setup-media.ps1
 
-      - name: Host setup XyDesk Remote
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.xydesk || 'ya') != 'tidak' }}
-        shell: pwsh
-        continue-on-error: true
-        run: ./scripts/setup-xydesk.ps1
-
       - name: Grafis OpenGL 4.6 D3D12 (Mesa3D untuk Minecraft & Game)
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.grafis || 'software') != 'tidak' }}
         shell: pwsh
@@ -296,8 +274,8 @@ jobs:
         continue-on-error: true
         run: ./scripts/setup-samp.ps1
 
-      - name: Installer game opsional (Minecraft Java/Bedrock & Roblox)
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.roblox == 'ya' || inputs.minecraft_java == 'ya' || inputs.minecraft_bedrock == 'ya') }}
+      - name: Pasang Suite Game & Studio (Minecraft, Roblox, ETS 2, Blender, MEmu, FiveM)
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-games.ps1
@@ -314,7 +292,23 @@ jobs:
         continue-on-error: true
         run: ./scripts/setup-tools-hub.ps1
 
-      - name: Publish status siap pakai
+      - name: Host setup XyDesk Remote
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.xydesk || 'ya') != 'tidak' }}
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/setup-xydesk.ps1
+
+      - name: Setup akses Tailscale (diaktifkan di akhir setelah semua siap)
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.akses || 'tailscale') == 'tailscale' }}
+        shell: pwsh
+        run: ./scripts/setup-akses.ps1
+
+      - name: Setup akses Portmap OpenVPN (diaktifkan di akhir setelah semua siap)
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.akses == 'portmap' }}
+        shell: pwsh
+        run: ./scripts/setup-portmap.ps1
+
+      - name: Publish status siap pakai (setelah seluruh aplikasi & game siap)
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         continue-on-error: true

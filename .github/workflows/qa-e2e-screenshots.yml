@@ -1,0 +1,63 @@
+name: QA E2E & Screenshot Verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa-windows:
+    name: QA E2E Windows Server 2022 + Real Screenshots
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      RDP_USER: xyadmin
+      RDP_PASSWORD: XyQaPassword123!
+      SAMP: ya
+      WIN10: ya
+      XYDESK: ya
+      EKSTRA: ya
+      GRAFIS: software
+      ROBLOX: ya
+      MINECRAFT_JAVA: ya
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 1. Setup RDP & User
+        shell: pwsh
+        run: ./scripts/setup-rdp.ps1
+
+      - name: 2. Setup Grafis Mesa3D OpenGL 4.6
+        shell: pwsh
+        run: ./scripts/setup-grafis.ps1
+
+      - name: 3. Setup Runtime & GTA SA-MP 0.3.7-R5
+        shell: pwsh
+        run: ./scripts/setup-samp.ps1
+
+      - name: 4. Setup Suite Game & Studio (Minecraft, Roblox, ETS 2, Blender, MEmu, FiveM)
+        shell: pwsh
+        run: ./scripts/setup-games.ps1
+
+      - name: 5. Setup Extras & Wallpaper
+        shell: pwsh
+        run: ./scripts/setup-extras.ps1
+
+      - name: 6. Setup XyDeskDashboard.exe & Host Agent v2.5
+        shell: pwsh
+        run: |
+          ./scripts/setup-tools-hub.ps1
+          ./scripts/setup-xydesk.ps1
+
+      - name: 7. Run Real Window Launch & Screenshot Capture Suite
+        shell: pwsh
+        run: ./scripts/run-qa-screenshots.ps1
+
+      - name: 8. Upload QA Screenshots Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xyrdp-qa-screenshots
+          path: C:\XyRDP\qa-screenshots\*
+          retention-days: 7

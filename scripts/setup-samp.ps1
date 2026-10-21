@@ -1018,43 +1018,10 @@ $form.Controls.Add($lblHint)
 '@
   Set-Content -Path $patcherPath -Value $patcherCode -Encoding UTF8 -Force
 
-  # 11. Pasang Virtual Sound Card (VB-Audio Virtual Cable) agar gta_sa.exe selalu mendeteksi Sound Card aktif (DirectSound Ready)
+  # 11. Jalankan auto-patch pada folder kandidat (tanpa dialog) dan kunci HKCU:\Software\SAMP\gta_sa_exe
   try {
-    $vbcDir = 'C:\XyRDP\audio\vbcable'
-    $vbcZip = Join-Path $work 'VBCABLE_Driver_Pack43.zip'
-    if (-not (Test-Path (Join-Path $vbcDir 'vbcable.cat'))) {
-      New-Item -ItemType Directory -Path $vbcDir -Force | Out-Null
-      if (Invoke-DownloadWithRetry 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' $vbcZip 2) {
-        if (Test-Path $sevenZip) { & $sevenZip x $vbcZip "-o$vbcDir" -y 2>&1 | Out-Null }
-        else { Expand-Archive -Path $vbcZip -DestinationPath $vbcDir -Force }
-        foreach ($sigTarget in @((Join-Path $vbcDir 'vbcable.cat'), (Join-Path $vbcDir 'VBCABLE_Setup_x64.exe'))) {
-          if (Test-Path $sigTarget) {
-            $cert = (Get-AuthenticodeSignature $sigTarget).SignerCertificate
-            if ($cert) {
-              $cerFile = Join-Path $vbcDir 'vbcert.cer'
-              [System.IO.File]::WriteAllBytes($cerFile, $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-              & certutil.exe -addstore -f "Root" $cerFile 2>&1 | Out-Null
-              & certutil.exe -addstore -f "TrustedPublisher" $cerFile 2>&1 | Out-Null
-            }
-          }
-        }
-        $infFile = Join-Path $vbcDir 'vbMmeCable64_win7.inf'
-        if (Test-Path $infFile) {
-          Start-ProcessWithTimeout 'pnputil.exe' @('/add-driver', $infFile, '/install') $vbcDir 12 | Out-Null
-        }
-        $vbcExe = Join-Path $vbcDir 'VBCABLE_Setup_x64.exe'
-        if (Test-Path $vbcExe) {
-          Start-ProcessWithTimeout $vbcExe @('-i', '-h') $vbcDir 12 | Out-Null
-        }
-        Start-Service -Name 'AudioEndpointBuilder' -ErrorAction SilentlyContinue
-        Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue
-        Log 'VB-Audio Virtual Sound Card berhasil dipasang (DirectSound GTA SA siap 100%).'
-      }
-    }
-  } catch { Log "VB-Cable setup warning: $($_.Exception.Message)" }
-
-  # 11b. Jalankan auto-patch pada folder kandidat (tanpa dialog) dan kunci HKCU:\Software\SAMP\gta_sa_exe
-  try {
+    Start-Service -Name 'AudioEndpointBuilder' -ErrorAction SilentlyContinue
+    Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $patcherPath 2>&1 | Out-Null
     New-Item -Path 'HKCU:\Software\SAMP' -Force -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path 'HKCU:\Software\SAMP' -Name 'gta_sa_exe' -Value 'C:\Games\GTA San Andreas\gta_sa.exe' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null

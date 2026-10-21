@@ -51,6 +51,11 @@ try {
   if($ValidateOnly){Log 'VALIDASI: OpenVPN tersambung; tidak membuka RDP atau mempublikasikan session.';return}
   $adapter=Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -match 'OpenVPN|TAP-Windows|Wintun'} | Select-Object -First 1
   if(-not $adapter){throw 'Interface VPN aktif tidak ditemukan; firewall tidak dibuka.'}
+  # Kunci metric adapter OpenVPN ke 5000 agar hanya menangani port forward masuk (RDP/SSH) dan tidak terdeteksi VPN saat main SA-MP
+  try {
+    Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -AutomaticMetric Disabled -InterfaceMetric 5000 -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'DefaultTTL' -Value 128 -Type DWord -ErrorAction SilentlyContinue
+  } catch {}
   if(-not(Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue)){throw 'OpenVPN tersambung tetapi RDP belum mendengarkan port 3389.'}
   Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name UserAuthentication -Value 1
   Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name SecurityLayer -Value 2

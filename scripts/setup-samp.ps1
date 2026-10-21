@@ -493,7 +493,8 @@ function Install-CompleteSampSuite {
 param(
   [string]$TargetDir = '',
   [switch]$Interactive,
-  [switch]$LaunchSamp
+  [switch]$LaunchSamp,
+  [switch]$ResetAntiBan
 )
 $ErrorActionPreference = 'Continue'
 $kitRoot   = 'C:\Games\GTA-SAMP'
@@ -501,6 +502,101 @@ $modsDir   = Join-Path $kitRoot 'SilentPatch-Pack'
 $sampCache = Join-Path $kitRoot 'SAMP-Client'
 $instDir   = Join-Path $kitRoot 'Installers'
 $defGame   = 'C:\Games\GTA San Andreas'
+
+function Invoke-SampAntiBanAndAntiVpn([string]$BaseDir, [switch]$ForceNewGpci) {
+  if (-not $BaseDir -or -not (Test-Path $BaseDir)) { $BaseDir = $defGame }
+  try {
+    # 1. Isolasi adapter VPN (Tailscale / OpenVPN / TAP-Windows / Wintun) dengan Metric 5000
+    #    agar trafik keluar UDP SA-MP (:7777) selalu lewat Ethernet langsung & tidak terdeteksi VPN tunnel
+    Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+      $_.Name -match 'Tailscale|OpenVPN|TAP' -or $_.InterfaceDescription -match 'Tailscale|OpenVPN|TAP-Windows|Wintun'
+    } | ForEach-Object {
+      Set-NetIPInterface -InterfaceIndex $_.ifIndex -AutomaticMetric Disabled -InterfaceMetric 5000 -ErrorAction SilentlyContinue
+    }
+    Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {
+      $_.Status -eq 'Up' -and $_.Name -notmatch 'Tailscale|OpenVPN|TAP' -and $_.InterfaceDescription -notmatch 'Tailscale|OpenVPN|TAP-Windows|Wintun|CloudflareWARP'
+    } | ForEach-Object {
+      Set-NetIPInterface -InterfaceIndex $_.ifIndex -AutomaticMetric Disabled -InterfaceMetric 5 -ErrorAction SilentlyContinue
+    }
+    # Standarisasi DefaultTTL = 128 (Windows PC asli, bukan 64 Linux/Proxy)
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'DefaultTTL' -Value 128 -Type DWord -ErrorAction SilentlyContinue
+  } catch {}
+
+  # 2. Spoof MachineGuid, ProductId & HwProfileGuid supaya HWID tiap sesi VM berbeda (Anti-Ban Serial/GPCI)
+  $gpciStateFile = Join-Path $kitRoot '.xyrdp_gpci_junction.txt'
+  $existingJunction = if (Test-Path $gpciStateFile) { (Get-Content $gpciStateFile -Raw -ErrorAction SilentlyContinue).Trim() } else { '' }
+  if ($ForceNewGpci -or -not $existingJunction -or -not (Test-Path $existingJunction)) {
+    try {
+      $newGuid = [guid]::NewGuid().ToString()
+      $newHwGuid = "{$([guid]::NewGuid().ToString())}"
+      $randProd = "{0:D5}-{1:D3}-{2:D7}-{3:D5}" -f (Get-Random -Min 10000 -Max 99999), (Get-Random -Min 100 -Max 999), (Get-Random -Min 1000000 -Max 9999999), (Get-Random -Min 10000 -Max 99999)
+      Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name 'MachineGuid' -Value $newGuid -ErrorAction SilentlyContinue
+      Set-ItemProperty -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Cryptography' -Name 'MachineGuid' -Value $newGuid -ErrorAction SilentlyContinue
+      Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'ProductId' -Value $randProd -ErrorAction SilentlyContinue
+      Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\IDConfigDB\Hardware Profiles\0001' -Name 'HwProfileGuid' -Value $newHwGuid -ErrorAction SilentlyContinue
+    } catch {}
+
+    # Buat junction direktori unik C:\Games\SAMP_Client_<RandomHex> -> $BaseDir
+    # SA-MP menghitung hash GPCI (GetPlayerClientID) dari full path gta_sa.exe + Volume Serial.
+    # Dengan junction unik ini, setiap VM & setiap klik Reset menghasilkan hash GPCI 100% baru!
+    try {
+      Get-ChildItem -Path 'C:\Games' -Directory -Filter 'SAMP_Client_*' -ErrorAction SilentlyContinue | ForEach-Object {
+        & cmd.exe /c "rmdir `"$($_.FullName)`"" 2>&1 | Out-Null
+      }
+      $hexTag = -join ((1..6) | ForEach-Object { '{0:X}' -f (Get-Random -Min 0 -Max 16) })
+      $juncDir = "C:\Games\SAMP_Client_$hexTag"
+      & cmd.exe /c "mklink /J `"$juncDir`" `"$BaseDir`"" 2>&1 | Out-Null
+      if (Test-Path (Join-Path $juncDir 'gta_sa.exe')) {
+        $existingJunction = $juncDir
+        Set-Content -Path $gpciStateFile -Value $existingJunction -Encoding ASCII -Force -ErrorAction SilentlyContinue
+      } else {
+        $existingJunction = $BaseDir
+      }
+    } catch {
+      $existingJunction = $BaseDir
+    }
+  }
+
+  # 3. Simpan path gta_sa.exe unik ke HKCU:\Software\SAMP dan seluruh profil HKEY_USERS
+  $targetGtaExe = Join-Path $existingJunction 'gta_sa.exe'
+  if (-not (Test-Path $targetGtaExe)) { $targetGtaExe = Join-Path $BaseDir 'gta_sa.exe' }
+  $randPlayer = "Player_$(Get-Random -Min 1000 -Max 9999)"
+  foreach ($sKey in @('HKCU:\Software\SAMP')) {
+    New-Item -Path $sKey -Force -ErrorAction SilentlyContinue | Out-Null
+    New-ItemProperty -Path $sKey -Name 'gta_sa_exe' -Value $targetGtaExe -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+    $curP = (Get-ItemProperty -Path $sKey -Name 'PlayerName' -ErrorAction SilentlyContinue).PlayerName
+    if ($ForceNewGpci -or -not $curP -or $curP -eq 'runneradmin') {
+      New-ItemProperty -Path $sKey -Name 'PlayerName' -Value $randPlayer -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+  }
+  return $existingJunction
+}
+
+function Enable-CloudflareWarpSafeSplitTunnel {
+  $warpCli = 'C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe'
+  if (-not (Test-Path $warpCli)) {
+    $warpMsi = Join-Path $instDir 'Cloudflare_WARP_Release-x64.msi'
+    & curl.exe -fL -A "Mozilla/5.0" --retry 2 --connect-timeout 15 --max-time 120 'https://1111-releases.cloudflareclient.com/win/latest' -o $warpMsi
+    if ((Test-Path $warpMsi) -and (Get-Item $warpMsi).Length -gt 5000000) {
+      Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', "`"$warpMsi`"", '/qn', '/norestart') -Wait
+      Start-Sleep -Seconds 3
+    }
+  }
+  if (-not (Test-Path $warpCli)) { return $false }
+  Start-Service -Name 'CloudflareWARP' -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+  & $warpCli --accept-tos registration new 2>&1 | Out-Null
+  & $warpCli --accept-tos mode warp 2>&1 | Out-Null
+  # WAJIB: Exclude subnet Tailscale (100.64.0.0/10), Portmap OpenVPN (10.0.0.0/8), LAN, dan Azure Host
+  # agar koneksi RDP (:3389) & SSH (:22) TIDAK PERNAH PUTUS saat WARP aktif!
+  foreach ($cidr in @('100.64.0.0/10', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '168.63.129.16/32', '169.254.169.254/32')) {
+    & $warpCli --accept-tos tunnel ip add $cidr 2>&1 | Out-Null
+    & $warpCli --accept-tos add-excluded-route $cidr 2>&1 | Out-Null
+  }
+  & $warpCli --accept-tos connect 2>&1 | Out-Null
+  Start-Sleep -Seconds 3
+  return $true
+}
 
 function Apply-SilentPatchToDir([string]$Dir) {
   if (-not $Dir -or -not (Test-Path $Dir)) { return $false }
@@ -583,11 +679,35 @@ function Apply-SilentPatchToDir([string]$Dir) {
   New-Item -Path $sampKey -Force -ErrorAction SilentlyContinue | Out-Null
   New-ItemProperty -Path $sampKey -Name 'gta_sa_exe' -Value $gtaExe -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
   $curName = (Get-ItemProperty -Path $sampKey -Name 'PlayerName' -ErrorAction SilentlyContinue).PlayerName
-  if (-not $curName) {
-    New-ItemProperty -Path $sampKey -Name 'PlayerName' -Value $env:USERNAME -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+  if (-not $curName -or $curName -eq 'runneradmin') {
+    New-ItemProperty -Path $sampKey -Name 'PlayerName' -Value "Player_$(Get-Random -Min 1000 -Max 9999)" -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
   }
 
+  # 6. Pasang proteksi Anti-Banned GPCI & Isolasi Route Anti-VPN secara otomatis
+  Invoke-SampAntiBanAndAntiVpn -BaseDir $Dir | Out-Null
+
   return $true
+}
+
+if ($ResetAntiBan) {
+  $newJunc = Invoke-SampAntiBanAndAntiVpn -BaseDir $defGame -ForceNewGpci
+  if ($Interactive) {
+    Add-Type -AssemblyName System.Windows.Forms
+    $res = [System.Windows.Forms.MessageBox]::Show(
+      "GPCI Serial & HWID SA-MP berhasil di-reset ke identitas baru!`r`nPath GPCI Baru: $newJunc`r`nMetric VPN (Tailscale/Portmap) telah dikunci agar tidak bocor ke SA-MP.`r`n`r`nApakah server tujuan masih mendeteksi IP Hosting/VPN dan Anda ingin mengaktifkan Cloudflare WARP Split-Tunnel (Aman RDP tidak putus)?",
+      "XyRDP — Anti-Banned & Anti-VPN SAMP",
+      [System.Windows.Forms.MessageBoxButtons]::YesNo,
+      [System.Windows.Forms.MessageBoxIcon]::Information
+    )
+    if ($res -eq [System.Windows.Forms.DialogResult]::Yes) {
+      Enable-CloudflareWarpSafeSplitTunnel | Out-Null
+      [System.Windows.Forms.MessageBox]::Show(
+        "Cloudflare WARP Split-Tunnel Aktif! (Subnet RDP Tailscale/Portmap dikecualikan sehingga RDP tetap aman). Silakan join server SA-MP sekarang.",
+        "Mode Anti-VPN Aktif", 0, 64
+      ) | Out-Null
+    }
+  }
+  exit 0
 }
 
 if ($TargetDir -and (Test-Path $TargetDir)) {
@@ -627,7 +747,7 @@ Add-Type -AssemblyName System.Drawing
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'XyRDP — GTA San Andreas & SA-MP 0.3.7-R5 Control Center'
-$form.Size = New-Object System.Drawing.Size(560, 430)
+$form.Size = New-Object System.Drawing.Size(560, 485)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
@@ -782,11 +902,41 @@ $btnAutoDl.Add_Click({
 })
 $form.Controls.Add($btnAutoDl)
 
+$btnAntiBan = New-Object System.Windows.Forms.Button
+$btnAntiBan.Text = '5. Atasi Server Banned / Terdeteksi Proxy & VPN (Reset GPCI + WARP)'
+$btnAntiBan.Font = New-Object System.Drawing.Font('Segoe UI', 9.5, [System.Drawing.FontStyle]::Bold)
+$btnAntiBan.Location = New-Object System.Drawing.Point(20, 332)
+$btnAntiBan.Size = New-Object System.Drawing.Size(505, 38)
+$btnAntiBan.BackColor = [System.Drawing.Color]::FromArgb(217, 119, 6)
+$btnAntiBan.ForeColor = [System.Drawing.Color]::White
+$btnAntiBan.FlatStyle = 'Flat'
+$btnAntiBan.Add_Click({
+  $lblStatus.Text = "Mereset Serial GPCI / HWID & mengisolasi route VPN Tailscale/Portmap..."
+  $form.Refresh()
+  $newJunc = Invoke-SampAntiBanAndAntiVpn -BaseDir $script:activeDir -ForceNewGpci
+  Update-GuiStatus
+  $ask = [System.Windows.Forms.MessageBox]::Show(
+    "Serial GPCI & HWID SA-MP berhasil di-reset ke identitas baru!`r`nPath GPCI Baru: $newJunc`r`nAdapter VPN (Tailscale/Portmap) telah diisolasi (Metric 5000 + TTL 128).`r`n`r`nJika server masih memblokir IP Datacenter/VPN, klik YES untuk mengaktifkan Cloudflare WARP Split-Tunnel (Aman RDP tidak putus), atau NO bila cukup Reset GPCI.",
+    "Atasi Banned & Anti-VPN SAMP",
+    [System.Windows.Forms.MessageBoxButtons]::YesNo,
+    [System.Windows.Forms.MessageBoxIcon]::Question
+  )
+  if ($ask -eq [System.Windows.Forms.DialogResult]::Yes) {
+    $lblStatus.Text = "Mengaktifkan Cloudflare WARP Split-Tunnel (Aman RDP)... Mohon tunggu..."
+    $form.Refresh()
+    if (Enable-CloudflareWarpSafeSplitTunnel) {
+      [System.Windows.Forms.MessageBox]::Show("Cloudflare WARP Split-Tunnel berhasil diaktifkan! Silakan buka SA-MP dan join server.", "Sukses", 0, 64) | Out-Null
+    }
+    Update-GuiStatus
+  }
+})
+$form.Controls.Add($btnAntiBan)
+
 $lblHint = New-Object System.Windows.Forms.Label
-$lblHint.Text = "Catatan: SA-MP 0.3.7-R5 gratis & sudah terpasang. Jika belum punya file game GTA SA v1.0 US, unduh file GTA SA milikmu lewat browser di RDP lalu klik Tombol #3 untuk ekstrak otomatis."
+$lblHint.Text = "Tips: Jika saat masuk server muncul 'You are banned' atau 'VPN/Proxy detected', klik Tombol #5 di atas untuk mereset Serial GPCI & mengaktifkan Anti-VPN Split-Tunnel."
 $lblHint.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
 $lblHint.ForeColor = [System.Drawing.Color]::FromArgb(161, 161, 170)
-$lblHint.Location = New-Object System.Drawing.Point(20, 336)
+$lblHint.Location = New-Object System.Drawing.Point(20, 380)
 $lblHint.Size = New-Object System.Drawing.Size(505, 45)
 $form.Controls.Add($lblHint)
 
@@ -834,6 +984,14 @@ $form.Controls.Add($lblHint)
       $lnk3.WorkingDirectory = $kitRoot
       $lnk3.Description = 'Control Center GTA SA-MP + Fix Anti-Blank RDP (dgVoodoo2 D3D9 + WindowedMode + SilentPatch)'
       $lnk3.Save()
+
+      # Shortcut 4: Atasi Banned & Anti-VPN SAMP (1-Klik Reset GPCI + WARP Split-Tunnel)
+      $lnk4 = $wsh.CreateShortcut((Join-Path $desk 'Atasi Banned & Anti-VPN SAMP.lnk'))
+      $lnk4.TargetPath = 'powershell.exe'
+      $lnk4.Arguments = "-NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$patcherPath`" -Interactive -ResetAntiBan"
+      $lnk4.WorkingDirectory = $kitRoot
+      $lnk4.Description = 'Reset Serial GPCI/HWID & Aktifkan Anti-VPN Split-Tunnel untuk SA-MP'
+      $lnk4.Save()
     } catch {}
   }
 }

@@ -272,29 +272,39 @@ function Configure-MinecraftOpenGLAndOptions {
     }
   }
 
-  # Buat shortcut di Desktop User & Public Desktop
+  # Buat shortcut di Desktop User & Public Desktop dengan Nama & Ikon Unik (Anti-Tertukar!)
+  $icoDir = Ensure-XyDesktopIcons
   foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
     New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
     try {
+      # Hapus shortcut lama yang namanya mirip / ikonnya kembar
+      foreach ($oldLnk in @('Minecraft (TLauncher).lnk', 'PrismLauncher (Minecraft).lnk', 'Install Roblox Player.exe')) {
+        Remove-Item -LiteralPath (Join-Path $desk $oldLnk) -Force -ErrorAction SilentlyContinue
+      }
+
       $wsh = New-Object -ComObject WScript.Shell
       $iconExe = 'C:\Games\Minecraft\MinecraftLauncher.exe'
 
       if (Test-Path 'C:\Games\Minecraft\Launch-TLauncher.vbs') {
-        $lnk = $wsh.CreateShortcut((Join-Path $desk 'Minecraft (TLauncher).lnk'))
+        $lnk = $wsh.CreateShortcut((Join-Path $desk 'TLauncher (Minecraft Cracked).lnk'))
         $lnk.TargetPath = 'wscript.exe'
         $lnk.Arguments = '"C:\Games\Minecraft\Launch-TLauncher.vbs"'
         $lnk.WorkingDirectory = 'C:\Games\Minecraft'
-        if (Test-Path $iconExe) { $lnk.IconLocation = "$iconExe,0" }
-        $lnk.Description = 'Minecraft Java Edition (TL Launcher + OpenGL 4.6 Ready)'
+        $tlIco = Join-Path $icoDir 'tlauncher.ico'
+        if (Test-Path $tlIco) { $lnk.IconLocation = "$tlIco,0" }
+        elseif (Test-Path $iconExe) { $lnk.IconLocation = "$iconExe,0" }
+        $lnk.Description = 'TLauncher Cracked / Offline Minecraft Java Edition (OpenGL 4.6 Ready)'
         $lnk.Save()
       }
 
       if (Test-Path 'C:\Games\PrismLauncher\prismlauncher.exe') {
-        $lnk2 = $wsh.CreateShortcut((Join-Path $desk 'PrismLauncher (Minecraft).lnk'))
+        $lnk2 = $wsh.CreateShortcut((Join-Path $desk 'PrismLauncher (Minecraft Modpack).lnk'))
         $lnk2.TargetPath = 'C:\Games\PrismLauncher\prismlauncher.exe'
         $lnk2.WorkingDirectory = 'C:\Games\PrismLauncher'
-        $lnk2.IconLocation = 'C:\Games\PrismLauncher\prismlauncher.exe,0'
-        $lnk2.Description = 'PrismLauncher Portable (Microsoft & Offline Accounts + OpenGL 4.6)'
+        $plIco = Join-Path $icoDir 'prismlauncher.ico'
+        if (Test-Path $plIco) { $lnk2.IconLocation = "$plIco,0" }
+        else { $lnk2.IconLocation = 'C:\Games\PrismLauncher\prismlauncher.exe,0' }
+        $lnk2.Description = 'PrismLauncher Modpack & Multi-Instance (Microsoft & Offline + OpenGL 4.6)'
         $lnk2.Save()
       }
 
@@ -302,10 +312,146 @@ function Configure-MinecraftOpenGLAndOptions {
         $lnk3 = $wsh.CreateShortcut((Join-Path $desk 'Minecraft Official Launcher.lnk'))
         $lnk3.TargetPath = $iconExe
         $lnk3.WorkingDirectory = 'C:\Games\Minecraft'
-        $lnk3.IconLocation = "$iconExe,0"
-        $lnk3.Description = 'Official Minecraft Launcher'
+        $mcIco = Join-Path $icoDir 'minecraft-official.ico'
+        if (Test-Path $mcIco) { $lnk3.IconLocation = "$mcIco,0" }
+        else { $lnk3.IconLocation = "$iconExe,0" }
+        $lnk3.Description = 'Official Minecraft Launcher (Mojang / Xbox)'
         $lnk3.Save()
       }
+    } catch {}
+  }
+}
+
+function Install-RobloxAntiVmSuite {
+  $rbxDir = 'C:\Games\Roblox'
+  New-Item -ItemType Directory -Path $rbxDir -Force -ErrorAction SilentlyContinue | Out-Null
+
+  # Jalankan Anti-VM SMBIOS/Hyper-V Spoofing & Gaming Boost terlebih dahulu
+  if (Test-Path 'C:\XyRDP\tools\Apply-AntiVM-Boost.ps1') {
+    try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\XyRDP\tools\Apply-AntiVM-Boost.ps1' | Out-Null } catch {}
+  }
+
+  $rbxExe = Join-Path $rbxDir 'RobloxPlayerInstaller.exe'
+  if (-not (Test-Path $rbxExe)) {
+    Invoke-GameDownload 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' $rbxExe 1000000 | Out-Null
+  }
+
+  # Buat Launcher Anti-VM Roblox + Direct3D 11 120 FPS + Bypass SM_REMOTESESSION RDP
+  $rbxLauncherPs1 = Join-Path $rbxDir 'Launch-Roblox-AntiVM.ps1'
+  $rbxLauncherCode = @'
+param(
+  [switch]$CloudFallback
+)
+$ErrorActionPreference = 'SilentlyContinue'
+
+# 1. Terapkan ulang SMBIOS / BIOS / SystemInformation / Disk / Hyper-V Guest Spoofing + Ultimate Gaming Boost
+if (Test-Path 'C:\XyRDP\tools\Apply-AntiVM-Boost.ps1') {
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\XyRDP\tools\Apply-AntiVM-Boost.ps1' | Out-Null
+}
+
+# 2. Jika user memilih Cloud / Browser Mode (untuk game yang memblokir non-nested VM)
+if ($CloudFallback) {
+  Start-Process 'https://www.roblox.com/home'
+  exit 0
+}
+
+# 3. Suntikkan ClientAppSettings.json (Direct3D 11 + 120 FPS + Anti-WhiteScreen RDP) ke semua folder Roblox & Bloxstrap
+$fflags = @{
+  FFlagDebugGraphicsPreferD3D11 = $true
+  FFlagDebugGraphicsDisableDirect3D11 = $false
+  FFlagDebugGraphicsDisableDirect3D12 = $true
+  DFIntTaskSchedulerTargetFps = 120
+  FFlagHandleAltEnterFullscreenManually = $false
+  FLogNetwork = '7'
+} | ConvertTo-Json
+
+$verRoots = @(
+  (Join-Path $env:LOCALAPPDATA 'Roblox\Versions'),
+  'C:\Program Files (x86)\Roblox\Versions',
+  'C:\Program Files\Roblox\Versions',
+  (Join-Path $env:LOCALAPPDATA 'Bloxstrap\Modifications')
+)
+foreach ($vr in $verRoots) {
+  if (Test-Path $vr) {
+    Get-ChildItem -Path $vr -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+      $cs = Join-Path $_.FullName 'ClientSettings'
+      New-Item -ItemType Directory -Path $cs -Force | Out-Null
+      Set-Content -Path (Join-Path $cs 'ClientAppSettings.json') -Value $fflags -Encoding UTF8 -Force
+    }
+    $csRoot = Join-Path $vr 'ClientSettings'
+    New-Item -ItemType Directory -Path $csRoot -Force | Out-Null
+    Set-Content -Path (Join-Path $csRoot 'ClientAppSettings.json') -Value $fflags -Encoding UTF8 -Force
+  }
+}
+
+# 4. Cari RobloxPlayerBeta.exe atau RobloxPlayerLauncher.exe yang sudah terpasang
+$playerBeta = $null
+foreach ($vr in $verRoots) {
+  if (Test-Path $vr) {
+    $found = Get-ChildItem -Path $vr -Recurse -Filter 'RobloxPlayerBeta.exe' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($found) { $playerBeta = $found.FullName; break }
+  }
+}
+
+# 5. Jika belum terpasang, unduh & jalankan RobloxPlayerInstaller.exe terlebih dahulu
+$installer = 'C:\Games\Roblox\RobloxPlayerInstaller.exe'
+if (-not $playerBeta) {
+  if (-not (Test-Path $installer)) {
+    & curl.exe -fL --retry 3 -sS 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' -o $installer
+  }
+  if (Test-Path $installer) {
+    $env:__COMPAT_LAYER = 'RunAsInvoker'
+    $p = Start-Process -FilePath $installer -PassThru
+    # Tunggu sampai instalasi selesai lalu suntikkan ulang FFlags DX11
+    if ($p) { $p.WaitForExit(90000) | Out-Null }
+    foreach ($vr in $verRoots) {
+      if (Test-Path $vr) {
+        Get-ChildItem -Path $vr -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+          $cs = Join-Path $_.FullName 'ClientSettings'
+          New-Item -ItemType Directory -Path $cs -Force | Out-Null
+          Set-Content -Path (Join-Path $cs 'ClientAppSettings.json') -Value $fflags -Encoding UTF8 -Force
+        }
+        $found = Get-ChildItem -Path $vr -Recurse -Filter 'RobloxPlayerBeta.exe' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($found) { $playerBeta = $found.FullName }
+      }
+    }
+  }
+}
+
+# 6. Nonaktifkan Fullscreen Optimizations & DPI Scaling pada RobloxPlayerBeta.exe agar tidak crash/blank di RDP
+if ($playerBeta -and (Test-Path $playerBeta)) {
+  $layersKey = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+  if (-not (Test-Path $layersKey)) { New-Item -Path $layersKey -Force | Out-Null }
+  Set-ItemProperty -Path $layersKey -Name $playerBeta -Value '~ DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE' -Force
+  $env:__COMPAT_LAYER = 'RunAsInvoker'
+  Start-Process -FilePath $playerBeta -ArgumentList '--app'
+}
+'@
+  Set-Content -LiteralPath $rbxLauncherPs1 -Value $rbxLauncherCode -Encoding UTF8 -Force
+
+  # Buat shortcut Roblox Player (Anti-VM Boost).lnk dengan ikon merah khusus
+  $icoDir = Ensure-XyDesktopIcons
+  $rbxIco = Join-Path $icoDir 'roblox-antivm.ico'
+  $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
+  foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
+    New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
+    try {
+      Remove-Item -LiteralPath (Join-Path $desk 'Install Roblox Player.exe') -Force -ErrorAction SilentlyContinue
+      $wsh = New-Object -ComObject WScript.Shell
+      $lnk = $wsh.CreateShortcut((Join-Path $desk 'Roblox Player (Anti-VM Boost).lnk'))
+      $lnk.TargetPath = 'powershell.exe'
+      $lnk.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$rbxLauncherPs1`""
+      $lnk.WorkingDirectory = $rbxDir
+      if (Test-Path $rbxIco) { $lnk.IconLocation = "$rbxIco,0" }
+      elseif (Test-Path $rbxExe) { $lnk.IconLocation = "$rbxExe,0" }
+      $lnk.Description = 'Roblox Player dengan Anti-VM Spoofing + Direct3D 11 120 FPS Boost'
+      $lnk.Save()
+    } catch {}
+  }
+
+  if ($wantRoblox -and (Test-Path $rbxExe)) {
+    try {
+      Start-Process -FilePath $rbxExe -ArgumentList @('-quiet') -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
     } catch {}
   }
 }
@@ -344,24 +490,12 @@ if ($wantMcBed) {
   }
 }
 
-# 3. Roblox Player (bila dipilih)
-if ($wantRoblox) {
-  Log 'Menyiapkan Roblox Player...'
-  $rbxExe = Join-Path $work 'RobloxPlayerInstaller.exe'
-  if (Invoke-GameDownload 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' $rbxExe 1000000) {
-    $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
-    foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop")) {
-      New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
-      Copy-Item $rbxExe (Join-Path $desk 'Install Roblox Player.exe') -Force -ErrorAction SilentlyContinue
-    }
-    try {
-      Start-Process -FilePath $rbxExe -ArgumentList @('-quiet') -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
-    } catch {}
-    $report['roblox'] = 'ready'
-    Log 'Roblox Player siap di Desktop.'
-  } else {
-    $report['roblox'] = 'download-failed'
-  }
+# 3. Selalu siapkan Roblox Anti-VM Suite + Shortcut Unik di Desktop
+Log 'Menyiapkan Roblox Player (Anti-VM Spoofing + Direct3D 11 120 FPS Boost)...'
+Install-RobloxAntiVmSuite
+$report['roblox'] = @{
+  status   = if (Test-Path 'C:\Games\Roblox\RobloxPlayerInstaller.exe') { 'ready-antivm' } else { 'launcher-ready' }
+  launcher = 'C:\Games\Roblox\Launch-Roblox-AntiVM.ps1'
 }
 
 Update-Status @{ games = $report } | Out-Null

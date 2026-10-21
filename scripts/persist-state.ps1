@@ -1,24 +1,20 @@
 # ============================================================================
-#  persist-state.ps1 — Simpan state sesi RDP lintas sesi (Anti-Reset v3)
+#  persist-state.ps1 — Simpan State Sesi XyRDP (Auto-Save ke GitHub Release)
 # ----------------------------------------------------------------------------
 #  Menyimpan:
-#    1) Sesi Login Browser (Google, YouTube, Gmail, GitHub, Facebook, dll.):
-#       - Google Chrome, Microsoft Edge, Brave Browser:
-#         Cookies, Login Data, Web Data, Preferences, Secure Preferences,
-#         Local Storage, Session Storage, Sessions, IndexedDB, Bookmarks,
-#         serta ekstraksi kunci AES-256 os_crypt portabel (_browser_keys)
-#         agar cookie TIDAK ter-reset oleh DPAPI saat pindah VM baru!
-#       - Mozilla Firefox (cookies.sqlite, logins.json, key4.db, places.sqlite)
-#    2) Sesi Login Aplikasi & Game:
-#       - Roblox Player (%LOCALAPPDATA%\Roblox\LocalStorage & GlobalBasicSettings)
-#       - Discord (%APPDATA%\discord\Local Storage & Session Storage)
-#       - GTA San Andreas & SA-MP (Documents\GTA San Andreas User Files + HKCU\Software\SAMP)
-#       - Minecraft (%APPDATA%\.minecraft, PrismLauncher, .tlauncher)
-#    3) Profil & Folder Permanen User RDP ($env:RDP_USER):
-#       - Desktop, Documents, Downloads, Pictures, Music, Videos
-#       - C:\Persist & C:\Games
-#    4) Identitas Node Tailscale (C:\ProgramData\Tailscale):
-#       - Agar sesi berikutnya tetap mendapatkan IP Tailscale 100.x yang sama
+#    - C:\Persist (Folder permanen pengguna)
+#    - C:\Games (Save data / instalasi game di bawah batas ukuran)
+#    - Desktop, Documents, Downloads, Pictures, Videos, Music pengguna RDP
+#      (membaca dari semua kandidat folder profil: C:\Users\$u, ProfileList, C:\Users\$u.*)
+#    - Sesi Login Browser (Google Chrome, Microsoft Edge, Brave, Firefox)
+#      beserta kunci DPAPI (AppData\Roaming\Microsoft\Protect & Credentials)
+#      dan file SQLite WAL/SHM/LevelDB menggunakan FileShare.ReadWrite
+#      sehingga login Google/YouTube/GitHub tetap tersimpan meski Chrome sedang dibuka!
+#    - AppData\Roaming\.minecraft, TLauncher, PrismLauncher, GTA San Andreas User Files,
+#      dan konfigurasi Registry HKCU\Software\SAMP + Gaming Boost + Wallpaper
+#  Lalu mengenkripsi arsip dengan AES-256-CBC (PBKDF2 dari RDP_PASSWORD /
+#  GITHUB_TOKEN) dan mengunggahnya ke Release tersembunyi `xyrdp-state-latest`
+#  di repositori pengguna sendiri.
 # ============================================================================
 param(
   [switch]$Checkpoint
@@ -27,396 +23,367 @@ param(
 $XyTag = if ($Checkpoint) { 'XyRDP:checkpoint' } else { 'XyRDP:persist' }
 . "$PSScriptRoot/lib-common.ps1"
 
-$u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
-$prof = "C:\Users\$u"
-$outDir = 'C:\XyRDP\persist'
-$stage  = Join-Path $outDir 'stage'
-$zip    = Join-Path $outDir 'xyrdp-state.zip'
-# Saat Checkpoint berkala di tengah sesi, batasi ukuran hingga 180 MB agar hemat RAM/CPU & tidak mengganggu game/browser.
-# Saat finalisasi akhir sesi, izinkan hingga 850 MB.
-$maxBytes = if ($Checkpoint) { 180L * 1024 * 1024 } else { 850L * 1024 * 1024 }
-$maxSingleFileBytes = if ($Checkpoint) { 45MB } else { 350MB }
-
-New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
-if (-not $Checkpoint) {
-  Remove-Item $zip -Force -ErrorAction SilentlyContinue
-}
-New-Item -ItemType Directory -Path $stage -Force | Out-Null
-New-Item -ItemType Directory -Path 'C:\Persist' -Force -ErrorAction SilentlyContinue | Out-Null
-
-$skipExts = @('.iso','.wim','.vhd','.vhdx','.vmdk','.dmp','.tmp','.part','.crdownload','.pma')
-$skipDirs = @('cache','caches','code cache','gpucache','shadercache','dawngraphitecache','dawnwebgpucache','grshadercache','crashpad','logs','temp','tmp','webcache','blob_storage','crash-reports','service worker','cache_data')
-
-$script:totalBytes = 0L
-$script:totalFiles = 0
-
-# Salin file meskipun sedang dikunci oleh Chrome/Edge/Game (FileShare.ReadWrite | FileShare.Delete)
-function Copy-SharedFile([string]$SrcFile, [string]$DstFile) {
-  try {
-    $parent = Split-Path $DstFile -Parent
-    if (-not (Test-Path $parent)) {
-      New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    }
-    Copy-Item -LiteralPath $SrcFile -Destination $DstFile -Force -ErrorAction Stop
-    return $true
-  } catch {
-    try {
-      $inStream = [System.IO.File]::Open($SrcFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
-      try {
-        $outStream = [System.IO.File]::Open($DstFile, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
-        try {
-          $inStream.CopyTo($outStream)
-          return $true
-        } finally {
-          $outStream.Dispose()
-        }
-      } finally {
-        $inStream.Dispose()
-      }
-    } catch {
-      return $false
-    }
-  }
-}
-
-function Copy-FilteredTree([string]$SrcRoot, [string]$DstRoot, [string]$Label) {
-  if (-not (Test-Path $SrcRoot)) { return }
-  $rootPath = (Get-Item $SrcRoot -Force).FullName.TrimEnd('\')
-  Get-ChildItem -Path $rootPath -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
-    try {
-      if ($_.Name -eq 'desktop.ini' -or $_.Name -eq 'thumbs.db' -or $_.Name -eq 'lockfile') { return }
-      $ext = $_.Extension.ToLower()
-      if ($skipExts -contains $ext) { return }
-      if ($_.Length -gt $maxSingleFileBytes) { return }
-      if (($script:totalBytes + $_.Length) -gt $maxBytes) { return }
-
-      $rel = $_.FullName.Substring($rootPath.Length).TrimStart('\')
-      $parts = $rel -split '[\\/]'
-      foreach ($p in $parts) {
-        if ($skipDirs -contains $p.ToLower()) { return }
-      }
-
-      $dest = Join-Path $DstRoot $rel
-      if (Copy-SharedFile $_.FullName $dest) {
-        $script:totalBytes += $_.Length
-        $script:totalFiles++
-      }
-    } catch {}
-  }
-}
-
-# Helper C# untuk mengekstrak kunci AES-256 os_crypt Chrome/Edge menggunakan impersonasi user RDP
-function Export-ChromiumMasterKey([string]$LocalStatePath, [string]$KeyOutPath) {
-  if (-not (Test-Path $LocalStatePath)) { return }
-  try {
-    $rawJson = Get-Content -LiteralPath $LocalStatePath -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json
-    $encB64 = $rawJson.os_crypt.encrypted_key
-    if (-not $encB64) { return }
-    $encBytes = [Convert]::FromBase64String($encB64)
-    if ($encBytes.Length -le 5) { return }
-    # Hapus prefix 5 byte "DPAPI"
-    $dpapiBlob = $encBytes[5..($encBytes.Length - 1)]
-
-    Add-Type -AssemblyName System.Security -ErrorAction SilentlyContinue
-    if (-not ('XyDpapiUnprotect' -as [type])) {
-      Add-Type -ReferencedAssemblies 'System.Security' -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-using System.Security.Principal;
-using System.Security.Cryptography;
-
-public static class XyDpapiUnprotect {
-    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern bool LogonUser(string user, string domain, string password, int logonType, int logonProvider, out IntPtr token);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr handle);
-
-    public static byte[] UnprotectForUser(byte[] blob, string user, string pass) {
-        try {
-            return ProtectedData.Unprotect(blob, null, DataProtectionScope.CurrentUser);
-        } catch {}
-        if (!string.IsNullOrEmpty(user) && !string.IsNullOrEmpty(pass)) {
-            IntPtr tok = IntPtr.Zero;
-            if (LogonUser(user, ".", pass, 2, 0, out tok) && tok != IntPtr.Zero) {
-                try {
-                    using (WindowsImpersonationContext ctx = WindowsIdentity.Impersonate(tok)) {
-                        return ProtectedData.Unprotect(blob, null, DataProtectionScope.CurrentUser);
-                    }
-                } catch {} finally {
-                    CloseHandle(tok);
-                }
-            }
-        }
-        return null;
-    }
-}
-"@ -ErrorAction SilentlyContinue
-    }
-    $rawKey = [XyDpapiUnprotect]::UnprotectForUser($dpapiBlob, $u, $env:RDP_PASSWORD)
-    if ($rawKey -and $rawKey.Length -gt 0) {
-      $parent = Split-Path $KeyOutPath -Parent
-      if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
-      [System.IO.File]::WriteAllBytes($KeyOutPath, $rawKey)
-      $script:totalFiles++
-    }
-  } catch {}
-}
-
-# Simpan profil penting Chromium (Chrome, Edge, Brave) tanpa cache raksasa
-function Save-ChromiumBrowser([string]$BrowserName, [string]$UserDataRoot) {
-  if (-not (Test-Path $UserDataRoot)) { return }
-  $dstBrowser = Join-Path $stage "_browsers\$BrowserName"
-  New-Item -ItemType Directory -Path $dstBrowser -Force | Out-Null
-
-  $localState = Join-Path $UserDataRoot 'Local State'
-  if (Test-Path $localState) {
-    if (Copy-SharedFile $localState (Join-Path $dstBrowser 'Local State')) {
-      $script:totalFiles++
-    }
-    Export-ChromiumMasterKey $localState (Join-Path $stage "_browser_keys\$BrowserName.key")
-  }
-
-  # Cari profil Default dan Profile *
-  $profDirs = Get-ChildItem -Path $UserDataRoot -Directory -ErrorAction SilentlyContinue | Where-Object {
-    $_.Name -eq 'Default' -or $_.Name -like 'Profile *'
-  }
-  foreach ($pd in $profDirs) {
-    $dstProf = Join-Path $dstBrowser $pd.Name
-    New-Item -ItemType Directory -Path $dstProf -Force | Out-Null
-
-    # File SQLite & JSON sesi login utama
-    foreach ($fName in @(
-      'Cookies','Network\Cookies','Network\Cookies-journal',
-      'Login Data','Login Data-journal','Login Data For Account','Login Data For Account-journal',
-      'Web Data','Web Data-journal','Preferences','Secure Preferences',
-      'Bookmarks','History','Favicons','Shortcuts','Visited Links'
-    )) {
-      $srcF = Join-Path $pd.FullName $fName
-      if (Test-Path $srcF) {
-        $dstF = Join-Path $dstProf $fName
-        if (Copy-SharedFile $srcF $dstF) {
-          $script:totalBytes += (Get-Item $srcF -Force -ErrorAction SilentlyContinue).Length
-          $script:totalFiles++
-        }
-      }
-    }
-
-    # Subfolder penyimpanan sesi web (Google, Discord Web, WhatsApp Web, Roblox Web, Ekstensi)
-    foreach ($subName in @('Local Storage','Session Storage','Sessions','IndexedDB','Extension State','Local Extension Settings','Sync Data')) {
-      $srcSub = Join-Path $pd.FullName $subName
-      if (Test-Path $srcSub) {
-        Copy-FilteredTree $srcSub (Join-Path $dstProf $subName) "$BrowserName\$($pd.Name)\$subName"
-      }
-    }
-  }
-}
-
-# 1. Folder profil utama user RDP + Browser + Game
-if (Test-Path $prof) {
-  foreach ($d in @('Desktop','Documents','Downloads','Pictures','Music','Videos')) {
-    Copy-FilteredTree (Join-Path $prof $d) (Join-Path $stage $d) $d
-  }
-
-  # 2. Browser Login & Cookies (Chrome, Edge, Brave, Firefox)
-  $localAppData = Join-Path $prof 'AppData\Local'
-  Save-ChromiumBrowser 'Chrome' (Join-Path $localAppData 'Google\Chrome\User Data')
-  Save-ChromiumBrowser 'Edge'   (Join-Path $localAppData 'Microsoft\Edge\User Data')
-  Save-ChromiumBrowser 'Brave'  (Join-Path $localAppData 'BraveSoftware\Brave-Browser\User Data')
-
-  $roaming = Join-Path $prof 'AppData\Roaming'
-  $ffDir = Join-Path $roaming 'Mozilla\Firefox'
-  if (Test-Path $ffDir) {
-    Copy-FilteredTree $ffDir (Join-Path $stage '_appdata_roaming\Mozilla\Firefox') 'Firefox'
-  }
-
-  # 3. Simpan DPAPI MasterKeys user (%APPDATA%\Microsoft\Protect & Credentials) sebagai cadangan berlapis
-  foreach ($dpSub in @('Microsoft\Protect','Microsoft\Credentials','Microsoft\Crypto')) {
-    $srcDp = Join-Path $roaming $dpSub
-    if (Test-Path $srcDp) {
-      Copy-FilteredTree $srcDp (Join-Path $stage "_dpapi_roaming\$dpSub") $dpSub
-    }
-    $srcDpLocal = Join-Path $localAppData $dpSub
-    if (Test-Path $srcDpLocal) {
-      Copy-FilteredTree $srcDpLocal (Join-Path $stage "_dpapi_local\$dpSub") $dpSub
-    }
-  }
-
-  # 4. Minecraft, Roblox, Discord data
-  foreach ($appDir in @('.minecraft','PrismLauncher','.tlauncher')) {
-    $srcApp = Join-Path $roaming $appDir
-    if (Test-Path $srcApp) {
-      Copy-FilteredTree $srcApp (Join-Path $stage "_appdata_roaming\$appDir") "Roaming\$appDir"
-    }
-  }
-  foreach ($discSub in @('discord\Local Storage','discord\Session Storage','discord\settings.json')) {
-    $srcDisc = Join-Path $roaming $discSub
-    if (Test-Path $srcDisc) {
-      if ((Get-Item $srcDisc).PSIsContainer) {
-        Copy-FilteredTree $srcDisc (Join-Path $stage "_appdata_roaming\$discSub") "Discord"
-      } else {
-        Copy-SharedFile $srcDisc (Join-Path $stage "_appdata_roaming\$discSub") | Out-Null
-      }
-    }
-  }
-  foreach ($rbxSub in @('Roblox\LocalStorage','Roblox\GlobalBasicSettings_13.xml','Bloxstrap')) {
-    $srcRbx = Join-Path $localAppData $rbxSub
-    if (Test-Path $srcRbx) {
-      if ((Get-Item $srcRbx).PSIsContainer) {
-        Copy-FilteredTree $srcRbx (Join-Path $stage "_appdata_local\$rbxSub") "Roblox"
-      } else {
-        Copy-SharedFile $srcRbx (Join-Path $stage "_appdata_local\$rbxSub") | Out-Null
-      }
-    }
-  }
-}
-
-# 5. Folder Permanen C:\Persist & C:\Games (C:\Games hanya disalin saat penutupan sesi, bukan saat checkpoint berkala agar bebas lag)
-if (Test-Path 'C:\Persist') {
-  Copy-FilteredTree 'C:\Persist' (Join-Path $stage '_persist') 'C:\Persist'
-}
-if ((-not $Checkpoint) -and (Test-Path 'C:\Games')) {
-  Copy-FilteredTree 'C:\Games' (Join-Path $stage '_games') 'C:\Games'
-}
-
-# 6. Ekspor Registry HKCU\Software\SAMP
-try {
-  $regDir = Join-Path $stage '_registry'
-  New-Item -ItemType Directory -Path $regDir -Force | Out-Null
-  $sampRegOut = Join-Path $regDir 'samp-hkcu.reg'
-  & reg.exe export 'HKCU\Software\SAMP' $sampRegOut /y 2>&1 | Out-Null
-
-  try {
-    $ntAccount = New-Object System.Security.Principal.NTAccount($u)
-    $sid = $ntAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
-    if ($sid -and (Test-Path "Registry::HKEY_USERS\$sid\Software\SAMP")) {
-      $sampSidOut = Join-Path $regDir 'samp-user.reg'
-      & reg.exe export "HKU\$sid\Software\SAMP" $sampSidOut /y 2>&1 | Out-Null
-      if (Test-Path $sampSidOut) {
-        $rawReg = Get-Content $sampSidOut -Raw -ErrorAction SilentlyContinue
-        if ($rawReg) {
-          ($rawReg -replace [regex]::Escape("HKEY_USERS\$sid"), 'HKEY_CURRENT_USER') | Set-Content -Path $sampRegOut -Encoding Unicode -Force
-          Remove-Item $sampSidOut -Force -ErrorAction SilentlyContinue
-        }
-      }
-      $script:totalFiles++
-    }
-  } catch {}
-} catch {}
-
-# 7. Simpan state Tailscale (server-state.conf) agar IP Tailscale 100.x tidak berubah antar sesi
-try {
-  $tsData = 'C:\ProgramData\Tailscale'
-  if (Test-Path $tsData) {
-    $tsDst = Join-Path $stage '_tailscale'
-    New-Item -ItemType Directory -Path $tsDst -Force | Out-Null
-    Get-ChildItem -Path $tsData -File -Force -ErrorAction SilentlyContinue | Where-Object {
-      $_.Name -match '\.(conf|json|key|state)$' -and $_.Length -lt 5MB
-    } | ForEach-Object {
-      Copy-SharedFile $_.FullName (Join-Path $tsDst $_.Name) | Out-Null
-      $script:totalFiles++
-    }
-  }
-} catch {}
-
-if ($script:totalFiles -eq 0) {
-  if (-not $Checkpoint) { Log 'Tidak ada file baru untuk disimpan.' }
-  Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+$cfg = Get-Cfg
+if ($env:PERSIST_DATA -and @('tidak','0','false','no','off') -contains $env:PERSIST_DATA.Trim().ToLower()) {
+  Log 'Persistensi data dinonaktifkan oleh input pengguna — lewati.'
   exit 0
 }
 
-@{
-  user       = $u
-  saved_at   = [DateTime]::UtcNow.ToString('o')
-  run_id     = $env:GITHUB_RUN_ID
-  checkpoint = [bool]$Checkpoint
-  files      = $script:totalFiles
-  bytes      = $script:totalBytes
-} | ConvertTo-Json | Set-Content (Join-Path $stage '_meta.json') -Encoding UTF8
+# Fallback baca environment dari C:\XyRDP\tools\session-env.json bila dipanggil dari background job / Dashboard
+if ((-not $env:GITHUB_TOKEN -or -not $env:GITHUB_REPOSITORY) -and (Test-Path 'C:\XyRDP\tools\session-env.json')) {
+  try {
+    $sEnv = Get-Content 'C:\XyRDP\tools\session-env.json' -Raw | ConvertFrom-Json
+    if (-not $env:RDP_USER -and $sEnv.RDP_USER) { $env:RDP_USER = $sEnv.RDP_USER }
+    if (-not $env:RDP_PASSWORD -and $sEnv.RDP_PASSWORD) { $env:RDP_PASSWORD = $sEnv.RDP_PASSWORD }
+    if (-not $env:GITHUB_TOKEN -and $sEnv.GITHUB_TOKEN) { $env:GITHUB_TOKEN = $sEnv.GITHUB_TOKEN }
+    if (-not $env:GITHUB_REPOSITORY -and $sEnv.GITHUB_REPOSITORY) { $env:GITHUB_REPOSITORY = $sEnv.GITHUB_REPOSITORY }
+  } catch {}
+}
 
-$sevenZip = 'C:\Program Files\7-Zip\7z.exe'
-$tmpZip = Join-Path $outDir 'xyrdp-state-tmp.zip'
-Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
+$ghToken = $env:GITHUB_TOKEN
+$ghRepo  = $env:GITHUB_REPOSITORY
+if (-not $ghToken -or -not $ghRepo) {
+  Log 'GITHUB_TOKEN atau GITHUB_REPOSITORY tidak tersedia — lewati persist state.'
+  exit 0
+}
+
+$u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { $cfg.rdp_user }
+$p = if ($env:RDP_PASSWORD) { $env:RDP_PASSWORD.Trim() } else { '' }
+$secretKey = if ($p.Length -ge 4) { "XyRDP-Persist-$u-$p" } else { "XyRDP-Persist-$ghRepo" }
+
+$workDir  = 'C:\XyRDP\state-work'
+$stageDir = Join-Path $workDir 'stage'
+$zipPath  = Join-Path $workDir 'xyrdp-state.7z'
+$encPath  = Join-Path $workDir 'xyrdp-state.bin'
+
+Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+
+Log "Menyiapkan penyimpanan state sesi untuk user '$u' (mode=$(if ($Checkpoint) { 'Checkpoint Live' } else { 'Final Shutdown' }))..."
+
+# Saat akhir sesi (bukan checkpoint live), tutup browser secara halus agar SQLite me-flush WAL ke Cookies & Login Data
+if (-not $Checkpoint) {
+  foreach ($brProc in @('chrome', 'msedge', 'brave', 'firefox')) {
+    try {
+      Get-Process -Name $brProc -ErrorAction SilentlyContinue | ForEach-Object {
+        $_.CloseMainWindow() | Out-Null
+      }
+    } catch {}
+  }
+  Start-Sleep -Milliseconds 1200
+}
+
+function Get-DirSizeMB([string]$Path) {
+  if (-not (Test-Path $Path)) { return 0 }
+  try {
+    $sum = (Get-ChildItem -Path $Path -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    if (-not $sum) { return 0 }
+    return [math]::Round($sum / 1MB, 1)
+  } catch { return 0 }
+}
+
+function Copy-SafeFolder([string]$Src, [string]$Dst, [int]$MaxMB = 900) {
+  if (-not (Test-Path $Src)) { return }
+  $sz = Get-DirSizeMB $Src
+  if ($sz -le 0) { return }
+  if ($sz -gt $MaxMB) {
+    Log "  Lewati $Src ($sz MB > batas $MaxMB MB)"
+    return
+  }
+  Log "  Menyalin $Src ($sz MB)..."
+  New-Item -ItemType Directory -Path $Dst -Force -ErrorAction SilentlyContinue | Out-Null
+  Copy-TreeUnlocked $Src $Dst
+}
+
+# 1. C:\Persist (Folder khusus anti-reset)
+Copy-SafeFolder 'C:\Persist' (Join-Path $stageDir 'Persist') 1200
+
+# Simpan juga Wallpaper aktif ke Persist\Config agar sesi berikutnya otomatis memakai wallpaper yang sama
+try {
+  $wpPersistenceDir = Join-Path $stageDir 'Persist\Config'
+  New-Item -ItemType Directory -Path $wpPersistenceDir -Force -ErrorAction SilentlyContinue | Out-Null
+  $pubWpDir = 'C:\Users\Public\Pictures\XyRDP'
+  if (Test-Path $pubWpDir) {
+    Get-ChildItem -Path $pubWpDir -Filter 'wallpaper.*' -File -ErrorAction SilentlyContinue | ForEach-Object {
+      Copy-FileUnlocked $_.FullName (Join-Path $wpPersistenceDir $_.Name) | Out-Null
+    }
+  }
+} catch {}
+
+# 2. Kumpulkan SEMUA folder profil tempat user mungkin menyimpan file / login browser
+#    (C:\Users\$u, ProfileImagePath dari ProfileList, C:\Users\$u.*)
+$profileDirs = @(Get-AllUserProfileDirs $u)
+Log "  Kandidat folder profil user '$u': $($profileDirs -join ', ')"
+
+# Folder standar pengguna (Downloads, Desktop, Documents, Pictures, Videos, Music)
+foreach ($profDir in $profileDirs) {
+  foreach ($sub in @('Desktop', 'Documents', 'Downloads', 'Pictures', 'Videos', 'Music')) {
+    $s = Join-Path $profDir $sub
+    if (Test-Path $s) {
+      Copy-SafeFolder $s (Join-Path $stageDir "User\$sub") 600
+    }
+  }
+}
+
+# 3. Save Game & Konfigurasi Launcher (Minecraft, TLauncher, PrismLauncher, Roblox, GTA SA-MP)
+foreach ($profDir in $profileDirs) {
+  $mcDir = Join-Path $profDir 'AppData\Roaming\.minecraft'
+  if (Test-Path $mcDir) {
+    foreach ($mcSub in @('saves', 'resourcepacks', 'shaderpacks', 'mods', 'config', 'options.txt', 'servers.dat', 'launcher_profiles.json', 'TlauncherProfiles.json')) {
+      $p = Join-Path $mcDir $mcSub
+      if (Test-Path $p) {
+        $dst = Join-Path $stageDir "Minecraft\$mcSub"
+        if ((Get-Item $p -Force).PSIsContainer) {
+          Copy-SafeFolder $p $dst 450
+        } else {
+          Copy-FileUnlocked $p $dst | Out-Null
+        }
+      }
+    }
+  }
+  $tlDir = Join-Path $profDir 'AppData\Roaming\.tlauncher'
+  if (Test-Path $tlDir) {
+    Copy-SafeFolder $tlDir (Join-Path $stageDir 'TLauncher') 250
+  }
+}
+
+if (Test-Path 'C:\Games\PrismLauncher\accounts.json') {
+  Copy-FileUnlocked 'C:\Games\PrismLauncher\accounts.json' (Join-Path $stageDir 'PrismLauncher\accounts.json') | Out-Null
+}
+if (Test-Path 'C:\Games\PrismLauncher\prismlauncher.cfg') {
+  Copy-FileUnlocked 'C:\Games\PrismLauncher\prismlauncher.cfg' (Join-Path $stageDir 'PrismLauncher\prismlauncher.cfg') | Out-Null
+}
+if (Test-Path 'C:\Games\PrismLauncher\instances') {
+  Copy-SafeFolder 'C:\Games\PrismLauncher\instances' (Join-Path $stageDir 'PrismLauncher\instances') 600
+}
+
+# 3b. Sesi Login Browser (Chrome, Edge, Brave, Firefox) + DPAPI Master Keys + SQLite WAL/SHM
+#     Menggunakan Copy-FileUnlocked (FileShare.ReadWrite) sehingga tetap ter-backup 100%
+#     walaupun browser sedang dibuka saat auto-checkpoint!
+function Copy-ChromiumSession([string]$BrowserName, [string]$UserDataDir) {
+  if (-not (Test-Path $UserDataDir)) { return }
+  $dstRoot = Join-Path $stageDir "Browsers\$BrowserName"
+  New-Item -ItemType Directory -Path $dstRoot -Force -ErrorAction SilentlyContinue | Out-Null
+
+  $localState = Join-Path $UserDataDir 'Local State'
+  if (Test-Path $localState) {
+    Copy-FileUnlocked $localState (Join-Path $dstRoot 'Local State') | Out-Null
+  }
+
+  $profiles = @('Default', 'Profile 1', 'Profile 2', 'Profile 3', 'Profile 4', 'Profile 5')
+  foreach ($prof in $profiles) {
+    $profSrc = Join-Path $UserDataDir $prof
+    if (-not (Test-Path $profSrc)) { continue }
+    $profDst = Join-Path $dstRoot $prof
+    New-Item -ItemType Directory -Path $profDst -Force -ErrorAction SilentlyContinue | Out-Null
+
+    # Daftar lengkap file SQLite utama + file jurnal/WAL (-wal, -shm, -journal)
+    $essentialFiles = @(
+      'Preferences',
+      'Secure Preferences',
+      'Bookmarks',
+      'Bookmarks.bak',
+      'Login Data',
+      'Login Data-journal',
+      'Login Data-wal',
+      'Login Data-shm',
+      'Login Data For Account',
+      'Login Data For Account-journal',
+      'Login Data For Account-wal',
+      'Login Data For Account-shm',
+      'Web Data',
+      'Web Data-journal',
+      'Web Data-wal',
+      'Web Data-shm',
+      'History',
+      'History-journal',
+      'History-wal',
+      'Favicons',
+      'Shortcuts',
+      'Visited Links',
+      'TransportSecurity',
+      'Network\Cookies',
+      'Network\Cookies-journal',
+      'Network\Cookies-wal',
+      'Network\Cookies-shm',
+      'Network\Reporting and NEL',
+      'Network\TransportSecurity',
+      'Network\Trust Tokens',
+      'Cookies',
+      'Cookies-journal',
+      'Cookies-wal',
+      'Cookies-shm'
+    )
+    foreach ($rel in $essentialFiles) {
+      $fSrc = Join-Path $profSrc $rel
+      if (Test-Path -LiteralPath $fSrc) {
+        $fDst = Join-Path $profDst $rel
+        Copy-FileUnlocked $fSrc $fDst | Out-Null
+      }
+    }
+    foreach ($subDir in @('Local Storage\leveldb', 'Session Storage', 'Extension State', 'Sync Data\LevelDB', 'Local Extension Settings', 'IndexedDB')) {
+      $dSrc = Join-Path $profSrc $subDir
+      if ((Test-Path $dSrc) -and ((Get-DirSizeMB $dSrc) -le 120)) {
+        $dDst = Join-Path $profDst $subDir
+        Copy-TreeUnlocked $dSrc $dDst
+      }
+    }
+  }
+  Log "  Sesi login browser $BrowserName (Cookies + WAL + Login Data + LevelDB) berhasil disalin."
+}
+
+foreach ($profDir in $profileDirs) {
+  Copy-ChromiumSession 'Chrome' (Join-Path $profDir 'AppData\Local\Google\Chrome\User Data')
+  Copy-ChromiumSession 'Edge'   (Join-Path $profDir 'AppData\Local\Microsoft\Edge\User Data')
+  Copy-ChromiumSession 'Brave'  (Join-Path $profDir 'AppData\Local\BraveSoftware\Brave-Browser\User Data')
+
+  $ffProfiles = Join-Path $profDir 'AppData\Roaming\Mozilla\Firefox'
+  if (Test-Path $ffProfiles) {
+    Copy-SafeFolder $ffProfiles (Join-Path $stageDir 'Browsers\Firefox') 200
+  }
+
+  # Kunci DPAPI Pengguna agar Cookie & Password Chrome tetap bisa didekripsi di VM sesi berikutnya
+  foreach ($dpapiRel in @(
+    'AppData\Roaming\Microsoft\Protect',
+    'AppData\Roaming\Microsoft\Credentials',
+    'AppData\Local\Microsoft\Credentials',
+    'AppData\Roaming\Microsoft\Crypto'
+  )) {
+    $dpSrc = Join-Path $profDir $dpapiRel
+    if (Test-Path $dpSrc) {
+      $dpDst = Join-Path $stageDir "DPAPI\$dpapiRel"
+      Copy-TreeUnlocked $dpSrc $dpDst
+    }
+  }
+
+  # Roblox LocalStorage & ClientSettings (agar login akun Roblox juga tersimpan!)
+  foreach ($rbxRel in @('AppData\Local\Roblox\LocalStorage', 'AppData\Local\Bloxstrap')) {
+    $rSrc = Join-Path $profDir $rbxRel
+    if (Test-Path $rSrc) {
+      Copy-SafeFolder $rSrc (Join-Path $stageDir "Roblox\$($rbxRel -replace '^AppData\\Local\\','')") 150
+    }
+  }
+}
+
+# Ekspor Registry HKCU\Software\SAMP (Nickname & Path gta_sa.exe)
+try {
+  $sampRegOut = Join-Path $stageDir 'Persist\samp-settings.reg'
+  New-Item -ItemType Directory -Path (Split-Path $sampRegOut -Parent) -Force -ErrorAction SilentlyContinue | Out-Null
+  & reg.exe export "HKCU\Software\SAMP" $sampRegOut /y 2>&1 | Out-Null
+} catch {}
+
+# 4. Hitung apakah ada file yang akan disimpan
+$fileCount = (Get-ChildItem -Path $stageDir -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object).Count
+if ($fileCount -eq 0) {
+  Log 'Tidak ada file baru di C:\Persist atau profil user untuk disimpan.'
+  Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
+  exit 0
+}
+
+Log "Mengompresi $fileCount file state..."
+$sevenZip = "${env:ProgramFiles}\7-Zip\7z.exe"
+if (Test-Path $sevenZip) {
+  & $sevenZip a -t7z -mx=3 $zipPath "$stageDir\*" | Out-Null
+} else {
+  $zipPath = Join-Path $workDir 'xyrdp-state.zip'
+  Compress-Archive -Path "$stageDir\*" -DestinationPath $zipPath -CompressionLevel Fastest -Force
+}
+
+if (-not (Test-Path $zipPath)) {
+  Log 'Gagal membuat arsip state.'
+  exit 0
+}
+
+$zipMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
+Log "Arsip state dibuat ($zipMB MB). Mengenkripsi AES-256..."
+if ($zipMB -gt 1900) {
+  Log "Arsip melebihi batas GitHub Release (1900 MB) — lewati upload."
+  Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
+  exit 0
+}
 
 try {
-  if (Test-Path $sevenZip) {
-    $mtArg = if ($Checkpoint) { '-mmt=1' } else { '-mmt=2' }
-    & $sevenZip a -tzip -mx=1 $mtArg -ssw $tmpZip "$stage\*" 2>&1 | Out-Null
-  } else {
-    Compress-Archive -Path "$stage\*" -DestinationPath $tmpZip -CompressionLevel Fastest -Force
-  }
-  if (Test-Path $tmpZip) {
-    Move-Item -Path $tmpZip -Destination $zip -Force
-    $szMb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
-    Log "State (Login Browser + Game + File) berhasil dikemas: $($script:totalFiles) file ($([math]::Round($script:totalBytes/1MB,1)) MB -> zip $szMb MB)"
-  }
+  $salt = New-Object byte[] 16
+  [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($salt)
+  $kdf = New-Object System.Security.Cryptography.Rfc2898DeriveBytes($secretKey, $salt, 20000)
+  $aes = [System.Security.Cryptography.Aes]::Create()
+  $aes.KeySize = 256
+  $aes.Key = $kdf.GetBytes(32)
+  $aes.IV  = $kdf.GetBytes(16)
+  $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+  $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+
+  $fsOut = [System.IO.File]::OpenWrite($encPath)
+  $header = [System.Text.Encoding]::ASCII.GetBytes('XYST01')
+  $fsOut.Write($header, 0, $header.Length)
+  $fsOut.Write($salt, 0, $salt.Length)
+
+  $cs = New-Object System.Security.Cryptography.CryptoStream($fsOut, $aes.CreateEncryptor(), [System.Security.Cryptography.CryptoStreamMode]::Write)
+  $fsIn = [System.IO.File]::OpenRead($zipPath)
+  $fsIn.CopyTo($cs)
+  $fsIn.Close()
+  $cs.FlushFinalBlock()
+  $cs.Close()
+  $fsOut.Close()
 } catch {
-  Log "Kompresi state gagal: $($_.Exception.Message)"
+  Log "Enkripsi gagal: $($_.Exception.Message)"
+  Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
+  exit 0
 }
-Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 
-# Upload ke GitHub Release Tag 'xyrdp-state-latest' (gunakan curl.exe streaming agar tidak memakan RAM PowerShell)
-if ((Test-Path $zip) -and $env:GITHUB_TOKEN -and $env:GITHUB_REPOSITORY) {
+$tag = 'xyrdp-state-latest'
+$hdrs = @{
+  'Authorization' = "Bearer $ghToken"
+  'Accept'        = 'application/vnd.github+json'
+  'User-Agent'    = 'XyRDP-State'
+}
+
+try {
+  $rel = $null
   try {
-    $apiBase = "https://api.github.com/repos/$($env:GITHUB_REPOSITORY)"
-    $hdr = @{
-      Authorization          = "Bearer $($env:GITHUB_TOKEN)"
-      Accept                 = 'application/vnd.github+json'
-      'X-GitHub-Api-Version' = '2022-11-28'
-      'User-Agent'           = 'XyRDP-Persist'
-    }
-    $tagName = 'xyrdp-state-latest'
-    $rel = $null
-    try {
-      $rel = Invoke-RestMethod -Uri "$apiBase/releases/tags/$tagName" -Headers $hdr -Method Get -TimeoutSec 20 -ErrorAction Stop
-    } catch {}
+    $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$ghRepo/releases/tags/$tag" -Headers $hdrs -TimeoutSec 30
+  } catch {}
 
-    if (-not $rel) {
-      $body = @{
-        tag_name   = $tagName
-        name       = 'XyRDP Persistent Session State (Auto-Save)'
-        body       = 'Arsip otomatis penyimpanan data sesi XyRDP lintas sesi (Login Browser Chrome/Edge/Google, Save Game SA-MP/Roblox/Minecraft, Desktop, Documents, C:\Persist).'
-        draft      = $false
-        prerelease = $true
-      } | ConvertTo-Json
-      $rel = Invoke-RestMethod -Uri "$apiBase/releases" -Headers $hdr -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 25 -ErrorAction Stop
-    }
-
-    if ($rel -and $rel.id) {
-      foreach ($asset in @($rel.assets)) {
-        if ($asset -and $asset.name -eq 'xyrdp-state.zip') {
-          try {
-            Invoke-RestMethod -Uri "$apiBase/releases/assets/$($asset.id)" -Headers $hdr -Method Delete -TimeoutSec 15 -ErrorAction SilentlyContinue | Out-Null
-          } catch {}
-        }
-      }
-      $uploadUrl = ($rel.upload_url -replace '\{\?name,label\}$', '') + '?name=xyrdp-state.zip'
-      $curlExe = "$env:SystemRoot\System32\curl.exe"
-      if (Test-Path $curlExe) {
-        & $curlExe -sS -X POST `
-          -H "Authorization: Bearer $($env:GITHUB_TOKEN)" `
-          -H "Accept: application/vnd.github+json" `
-          -H "Content-Type: application/zip" `
-          -H "X-GitHub-Api-Version: 2022-11-28" `
-          -H "User-Agent: XyRDP-Persist" `
-          --max-time 180 `
-          --data-binary "@$zip" `
-          "$uploadUrl" 2>&1 | Out-Null
-      } else {
-        $upHdr = @{
-          Authorization          = "Bearer $($env:GITHUB_TOKEN)"
-          Accept                 = 'application/vnd.github+json'
-          'Content-Type'         = 'application/zip'
-          'X-GitHub-Api-Version' = '2022-11-28'
-          'User-Agent'           = 'XyRDP-Persist'
-        }
-        Invoke-RestMethod -Uri $uploadUrl -Headers $upHdr -Method Post -InFile $zip -TimeoutSec 180 -ErrorAction Stop | Out-Null
-      }
-      Log "State berhasil di-backup ke Release '$tagName' (anti-reset lintas sesi aktif)."
-    }
-  } catch {
-    Log "Backup ke Release '$tagName' dilewati: $($_.Exception.Message)"
+  if (-not $rel) {
+    $body = @{
+      tag_name   = $tag
+      name       = 'XyRDP Persistent State (Auto-Save)'
+      body       = 'Arsip terenkripsi AES-256 untuk menyimpan file dan game antar sesi RDP.'
+      draft      = $false
+      prerelease = $true
+    } | ConvertTo-Json
+    $rel = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$ghRepo/releases" -Headers $hdrs -ContentType 'application/json' -Body $body -TimeoutSec 30
   }
+
+  $assetName = if ($zipPath.EndsWith('.7z')) { 'xyrdp-state.7z.enc' } else { 'xyrdp-state.zip.enc' }
+  foreach ($a in @($rel.assets)) {
+    if ($a.name -like 'xyrdp-state.*') {
+      try {
+        Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/$ghRepo/releases/assets/$($a.id)" -Headers $hdrs -TimeoutSec 30 | Out-Null
+      } catch {}
+    }
+  }
+
+  $uploadUrl = ($rel.upload_url -replace '\{\?name,label\}$', '') + "?name=$assetName"
+  $upHdrs = @{
+    'Authorization' = "Bearer $ghToken"
+    'Content-Type'  = 'application/octet-stream'
+    'User-Agent'    = 'XyRDP-State'
+  }
+  Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $upHdrs -InFile $encPath -TimeoutSec 300 | Out-Null
+  Log "State berhasil disimpan ke Release '$tag' ($assetName, $zipMB MB, $fileCount file)."
+
+  # Catat waktu simpan terakhir untuk ditampilkan di XyDeskRemote Dashboard
+  New-Item -ItemType Directory -Path 'C:\Persist\System' -Force -ErrorAction SilentlyContinue | Out-Null
+  @{
+    last_saved_utc = [DateTime]::UtcNow.ToString('o')
+    size_mb        = $zipMB
+    file_count     = $fileCount
+    user           = $u
+  } | ConvertTo-Json | Set-Content -Path 'C:\Persist\System\last-cloud-save.json' -Encoding UTF8 -Force
+} catch {
+  Log "Upload state gagal: $($_.Exception.Message)"
 }
+
+Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
 exit 0

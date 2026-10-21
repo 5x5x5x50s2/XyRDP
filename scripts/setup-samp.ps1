@@ -949,49 +949,43 @@ $form.Controls.Add($lblHint)
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $patcherPath 2>&1 | Out-Null
   } catch {}
 
-  # 12. Buat Shortcut di Desktop User RDP & Public Desktop (dengan -Sta supaya GUI selalu tampil!)
+  # 12. Buat Shortcut di Desktop User RDP & Public Desktop dengan Nama & Ikon Berbeda (Anti-Tertukar!)
+  $icoDir = Ensure-XyDesktopIcons
+  $sampLauncherIco = Join-Path $icoDir 'samp-launcher.ico'
+  $sampFixIco      = Join-Path $icoDir 'samp-antiban.ico'
   $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { $cfg.rdp_user }
   foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
     New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
     try {
+      foreach ($oldSampLnk in @('GTA SAMP.lnk', 'SA-MP 0.3.7-R5 Server Browser.lnk', 'Patch GTA SA-MP (SilentPatch).lnk', 'Atasi Banned & Anti-VPN SAMP.lnk', 'Cara Pasang GTA SA & SAMP.txt')) {
+        Remove-Item -LiteralPath (Join-Path $desk $oldSampLnk) -Force -ErrorAction SilentlyContinue
+      }
+
       $wsh = New-Object -ComObject WScript.Shell
 
-      # Shortcut 1: GTA SA-MP (membuka samp.exe langsung bila gta_sa.exe sudah ada, atau membuka GUI Control Center)
-      $lnk1 = $wsh.CreateShortcut((Join-Path $desk 'GTA SAMP.lnk'))
+      # Shortcut 1: GTA SA-MP Launcher (Anti-Ban) — Ikon Oranye 'SA SA-MP'
+      $lnk1 = $wsh.CreateShortcut((Join-Path $desk 'GTA SA-MP Launcher (Anti-Ban).lnk'))
       $lnk1.TargetPath = 'powershell.exe'
       $lnk1.Arguments = "-NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$patcherPath`" -Interactive -LaunchSamp"
       $lnk1.WorkingDirectory = $gameDir
-      if (Test-Path (Join-Path $gameDir 'samp.exe')) {
+      if (Test-Path $sampLauncherIco) {
+        $lnk1.IconLocation = "$sampLauncherIco,0"
+      } elseif (Test-Path (Join-Path $gameDir 'samp.exe')) {
         $lnk1.IconLocation = "$(Join-Path $gameDir 'samp.exe'),0"
       }
-      $lnk1.Description = 'Buka GTA SA-MP 0.3.7-R5 Client / Control Center'
+      $lnk1.Description = 'Buka GTA SA-MP 0.3.7-R5 dengan Auto GPCI/HWID Spoofing & Anti-VPN'
       $lnk1.Save()
 
-      # Shortcut 2: SA-MP Server Browser langsung (samp.exe)
-      if (Test-Path (Join-Path $gameDir 'samp.exe')) {
-        $lnk2 = $wsh.CreateShortcut((Join-Path $desk 'SA-MP 0.3.7-R5 Server Browser.lnk'))
-        $lnk2.TargetPath = Join-Path $gameDir 'samp.exe'
-        $lnk2.WorkingDirectory = $gameDir
-        $lnk2.IconLocation = "$(Join-Path $gameDir 'samp.exe'),0"
-        $lnk2.Description = 'SA-MP 0.3.7-R5 Server Browser'
-        $lnk2.Save()
+      # Shortcut 2: Fix & Patch GTA SA-MP (SilentPatch) — Ikon Toska 'FIX ANTI-BAN'
+      $lnk2 = $wsh.CreateShortcut((Join-Path $desk 'Fix & Patch GTA SA-MP (SilentPatch).lnk'))
+      $lnk2.TargetPath = 'powershell.exe'
+      $lnk2.Arguments = "-NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$patcherPath`" -Interactive"
+      $lnk2.WorkingDirectory = $kitRoot
+      if (Test-Path $sampFixIco) {
+        $lnk2.IconLocation = "$sampFixIco,0"
       }
-
-      # Shortcut 3: GTA SA-MP Control Center & Fix RDP
-      $lnk3 = $wsh.CreateShortcut((Join-Path $desk 'Patch GTA SA-MP (SilentPatch).lnk'))
-      $lnk3.TargetPath = 'powershell.exe'
-      $lnk3.Arguments = "-NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$patcherPath`" -Interactive"
-      $lnk3.WorkingDirectory = $kitRoot
-      $lnk3.Description = 'Control Center GTA SA-MP + Fix Anti-Blank RDP (dgVoodoo2 D3D9 + WindowedMode + SilentPatch)'
-      $lnk3.Save()
-
-      # Shortcut 4: Atasi Banned & Anti-VPN SAMP (1-Klik Reset GPCI + WARP Split-Tunnel)
-      $lnk4 = $wsh.CreateShortcut((Join-Path $desk 'Atasi Banned & Anti-VPN SAMP.lnk'))
-      $lnk4.TargetPath = 'powershell.exe'
-      $lnk4.Arguments = "-NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$patcherPath`" -Interactive -ResetAntiBan"
-      $lnk4.WorkingDirectory = $kitRoot
-      $lnk4.Description = 'Reset Serial GPCI/HWID & Aktifkan Anti-VPN Split-Tunnel untuk SA-MP'
-      $lnk4.Save()
+      $lnk2.Description = 'Control Center GTA SA-MP + Patch SilentPatch 90 FPS + Reset Serial GPCI Anti-Ban'
+      $lnk2.Save()
     } catch {}
   }
 }

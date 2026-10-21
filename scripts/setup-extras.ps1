@@ -183,7 +183,7 @@ if ($cfg.wallpaper) {
   $wpDir = 'C:\XyRDP'
   $wpFile = $null; $srcUsed = ''
 
-  # urutan sumber: input workflow -> file di repo (checkout) -> raw github
+  # urutan sumber: input workflow -> simpanan sesi sebelumnya (C:\Persist\Config) -> file di repo (checkout) -> raw github
   if ($env:WALLPAPER_URL) {
     try {
       New-Item -ItemType Directory -Path $wpDir -Force | Out-Null
@@ -194,6 +194,16 @@ if ($cfg.wallpaper) {
         else { Log '  URL bukan gambar jpg/png/bmp — diabaikan' }
       }
     } catch { Log "  unduh dari WALLPAPER_URL gagal: $($_.Exception.Message)" }
+  }
+  if (-not $wpFile -and (Test-Path 'C:\Persist\Config')) {
+    $persistedWp = Get-ChildItem -Path 'C:\Persist\Config' -Filter 'wallpaper.*' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($persistedWp) {
+      New-Item -ItemType Directory -Path $wpDir -Force | Out-Null
+      $ext = $persistedWp.Extension.TrimStart('.').ToLower()
+      $wpFile = Join-Path $wpDir "wallpaper.$ext"
+      Copy-Item $persistedWp.FullName $wpFile -Force
+      $srcUsed = "persist ($($persistedWp.Name))"
+    }
   }
   if (-not $wpFile) {
     $repoFile = $null
@@ -222,6 +232,13 @@ if ($cfg.wallpaper) {
 
   if ($wpFile -and (Test-Path $wpFile)) {
     Log "  wallpaper: $wpFile (sumber: $srcUsed)"
+    try {
+      $ext = [IO.Path]::GetExtension($wpFile)
+      New-Item -ItemType Directory -Path 'C:\Users\Public\Pictures\XyRDP' -Force -ErrorAction SilentlyContinue | Out-Null
+      New-Item -ItemType Directory -Path 'C:\Persist\Config' -Force -ErrorAction SilentlyContinue | Out-Null
+      Copy-Item -LiteralPath $wpFile -Destination "C:\Users\Public\Pictures\XyRDP\wallpaper$ext" -Force -ErrorAction SilentlyContinue
+      Copy-Item -LiteralPath $wpFile -Destination "C:\Persist\Config\wallpaper$ext" -Force -ErrorAction SilentlyContinue
+    } catch {}
     Set-RegBoth 'Control Panel\Desktop' 'Wallpaper'      $wpFile 'String' | Out-Null
     Set-RegBoth 'Control Panel\Desktop' 'WallpaperStyle' '10'     'String' | Out-Null
     Set-RegBoth 'Control Panel\Desktop' 'TileWallpaper'  '0'      'String' | Out-Null

@@ -1,67 +1,87 @@
 # ============================================================================
-#  keepalive.ps1 — Jaga sesi tetap hidup sampai waktu habis + Auto-Checkpoint
+#  keepalive.ps1 — Penjaga Sesi Hidup (Anti-Disconnect & Auto-Heal)
 # ----------------------------------------------------------------------------
-#  1) Mengecek kesehatan listener RDP :3389 dan tunnel Tailscale/Portmap setiap
-#     menit (auto-restart TermService bila listener drop).
-#  2) Menjalankan Auto-Checkpoint (persist-state.ps1 -Checkpoint) setiap 15 menit
-#     agar seluruh file user, world Minecraft (.minecraft), save/setting GTA SA-MP,
-#     dan C:\Persist selalu tersimpan ke Release 'xyrdp-state-latest' walaupun
-#     sesi dihentikan mendadak atau terkena batas waktu GitHub Actions.
-#  3) Otomatis menyuntikkan OpenGL 4.6 (Mesa D3D12) bila runtime Java Minecraft
-#     baru saja terunduh saat sesi berjalan, serta auto-patch SilentPatch bila
-#     folder GTA San Andreas baru diekstrak user di tengah sesi.
+#  1. Menjaga TermService, UmRdpService, Audiosrv & listener 3389 tetap hidup
+#  2. Memastikan shortcut Desktop memiliki Nama & Ikon Unik (Anti-Tertukar)
+#  3. Membuka otomatis XyDeskRemote Dashboard saat user pertama kali masuk RDP
+#  4. Menjalankan Auto-Checkpoint lintas sesi setiap 4 menit ke GitHub Release
+#     sehingga login Google, file di Downloads, Desktop, dan save game aman
+#     meski runner dihentikan paksa kapan saja.
 # ============================================================================
 
 $XyTag = 'XyRDP:keepalive'
 . "$PSScriptRoot/lib-common.ps1"
 
-$s = Read-Status
-$exp = if ($s -and $s.expires_at) { [DateTime]::Parse($s.expires_at).ToUniversalTime() } else { [DateTime]::UtcNow.AddMinutes(335) }
-Log "sesi aktif sampai $($exp.ToString('yyyy-MM-dd HH:mm:ss')) UTC (auto-checkpoint setiap 15 menit)"
+$s   = Read-Status
+$exp = if ($s -and $s.expires_utc) { [DateTime]::Parse($s.expires_utc).ToUniversalTime() } else { [DateTime]::UtcNow.AddMinutes(335) }
+$addr = if ($s -and $s.connect) { $s.connect } else { '(lihat langkah Ringkasan)' }
+$rdpUser = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
+
+Log "SESI AKTIF — alamat: $addr | selesai: $($exp.ToString('HH:mm')) UTC"
+$tsExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
+$icoDir = Ensure-XyDesktopIcons
 
 function Sync-And-Heal-DesktopShortcuts {
   try {
-    $pubDesk = 'C:\Users\Public\Desktop'
-    New-Item -ItemType Directory -Path $pubDesk -Force -ErrorAction SilentlyContinue | Out-Null
+    $u = $rdpUser
+    New-Item -ItemType Directory -Path 'C:\Persist' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -ItemType Directory -Path 'C:\Games' -Force -ErrorAction SilentlyContinue | Out-Null
 
-    # 1. Sinkronkan seluruh shortcut dari runneradmin & xyadmin ke Public\Desktop
-    #    agar baik user login ke runneradmin maupun xyadmin, semua aplikasi tampil lengkap!
-    foreach ($uDir in @('C:\Users\runneradmin\Desktop', 'C:\Users\xyadmin\Desktop')) {
-      if (Test-Path $uDir) {
-        Get-ChildItem -Path $uDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @('.lnk', '.url') } | ForEach-Object {
-          $dst = Join-Path $pubDesk $_.Name
-          if (-not (Test-Path $dst)) {
-            Copy-Item $_.FullName -Destination $dst -Force -ErrorAction SilentlyContinue
-          }
+    $dashExe      = 'C:\XyRDP\tools\XyDeskDashboard.exe'
+    $dashIco      = Join-Path $icoDir 'xydesk-dashboard.ico'
+    $persistIco   = Join-Path $icoDir 'persist-folder.ico'
+    $cloudSaveIco = Join-Path $icoDir 'cloud-save.ico'
+    $persistPs1   = Join-Path $PSScriptRoot 'persist-state.ps1'
+
+    $allDesks = @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop") + @(Get-AllUserProfileDirs $u | ForEach-Object { Join-Path $_ 'Desktop' }) | Select-Object -Unique
+    foreach ($desk in $allDesks) {
+      if (-not (Test-Path $desk)) {
+        New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
+      }
+      $wsh = New-Object -ComObject WScript.Shell
+
+      # Bersihkan shortcut duplikat/lama yang namanya membingungkan
+      foreach ($oldItem in @('XyDeskTools.exe', 'XyDesk Gaming & Tools Hub.lnk', 'Simpan Data & Game Sekarang.lnk', 'Minecraft (TLauncher).lnk', 'PrismLauncher (Minecraft).lnk', 'GTA SAMP.lnk', 'SA-MP 0.3.7-R5 Server Browser.lnk', 'Patch GTA SA-MP (SilentPatch).lnk', 'Atasi Banned & Anti-VPN SAMP.lnk', 'Install Roblox Player.exe')) {
+        Remove-Item -LiteralPath (Join-Path $desk $oldItem) -Force -ErrorAction SilentlyContinue
+      }
+
+      # 1. Shortcut XyDeskRemote Dashboard (Ikon Biru-Cyan 'XY DASHBOARD')
+      if (Test-Path $dashExe) {
+        $lnkDash = Join-Path $desk 'XyDeskRemote Dashboard.lnk'
+        if (-not (Test-Path $lnkDash)) {
+          $sc = $wsh.CreateShortcut($lnkDash)
+          $sc.TargetPath = $dashExe
+          $sc.WorkingDirectory = 'C:\XyRDP\tools'
+          $sc.Description = 'XyDeskRemote Dashboard — Pusat Kelola Sistem, Installer, Anti-VM & Cloud Save'
+          if (Test-Path $dashIco) { $sc.IconLocation = "$dashIco,0" }
+          $sc.Save()
         }
       }
-    }
 
-    # 2. Pastikan shortcut utama yang terpasang selalu utuh di Public\Desktop
-    $wsh = New-Object -ComObject WScript.Shell
-    if (-not (Test-Path (Join-Path $pubDesk 'Minecraft (TLauncher).lnk')) -and (Test-Path 'C:\Games\Minecraft\Launch-TLauncher.vbs')) {
-      $scTl = $wsh.CreateShortcut((Join-Path $pubDesk 'Minecraft (TLauncher).lnk'))
-      $scTl.TargetPath = 'wscript.exe'
-      $scTl.Arguments = '"C:\Games\Minecraft\Launch-TLauncher.vbs"'
-      $scTl.WorkingDirectory = 'C:\Games\Minecraft'
-      if (Test-Path 'C:\Games\Minecraft\MinecraftLauncher.exe') { $scTl.IconLocation = 'C:\Games\Minecraft\MinecraftLauncher.exe,0' }
-      $scTl.Save()
-    }
-    $expectedLinks = @(
-      @{ Name = 'PrismLauncher (Minecraft).lnk'; Target = 'C:\Games\PrismLauncher\prismlauncher.exe'; Work = 'C:\Games\PrismLauncher' },
-      @{ Name = 'Minecraft Official Launcher.lnk'; Target = 'C:\Games\Minecraft\MinecraftLauncher.exe'; Work = 'C:\Games\Minecraft' },
-      @{ Name = 'Google Chrome.lnk';         Target = 'C:\Program Files\Google\Chrome\Application\chrome.exe'; Work = 'C:\Program Files\Google\Chrome\Application' },
-      @{ Name = 'XyDesk Tools Hub.lnk';      Target = 'C:\Tools\XyDeskTools\XyDeskTools.exe'; Work = 'C:\Tools\XyDeskTools' },
-      @{ Name = 'XyDesk Remote Host.lnk';    Target = 'C:\Program Files\XyDeskRemote\XyDeskRemoteHost.exe'; Work = 'C:\Program Files\XyDeskRemote' },
-      @{ Name = 'Folder Permanen (Anti-Reset).lnk'; Target = 'C:\Persist'; Work = 'C:\Persist' }
-    )
-    foreach ($item in $expectedLinks) {
-      $lnkFile = Join-Path $pubDesk $item.Name
-      if (-not (Test-Path $lnkFile) -and (Test-Path $item.Target)) {
-        $sc = $wsh.CreateShortcut($lnkFile)
-        $sc.TargetPath = $item.Target
-        $sc.WorkingDirectory = $item.Work
-        $sc.Save()
+      # 2. Shortcut Folder Permanen (C:\Persist) (Ikon Emas 'DIR PERSIST')
+      $lnkPersist = Join-Path $desk 'Folder Permanen (Anti-Reset).lnk'
+      if (-not (Test-Path $lnkPersist)) {
+        $sc2 = $wsh.CreateShortcut($lnkPersist)
+        $sc2.TargetPath = 'C:\Persist'
+        $sc2.Description = 'Semua file di folder ini otomatis disimpan ke sesi RDP berikutnya'
+        if (Test-Path $persistIco) { $sc2.IconLocation = "$persistIco,0" }
+        else { $sc2.IconLocation = 'shell32.dll,43' }
+        $sc2.Save()
+      }
+
+      # 3. Shortcut Simpan Data Sesi Sekarang (Cloud Save) (Ikon Biru Langit 'CLD SAVE')
+      if (Test-Path $persistPs1) {
+        $lnkSave = Join-Path $desk 'Simpan Data Sesi Sekarang (Cloud Save).lnk'
+        if (-not (Test-Path $lnkSave)) {
+          $sc3 = $wsh.CreateShortcut($lnkSave)
+          $sc3.TargetPath = 'powershell.exe'
+          $sc3.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$persistPs1`" -Checkpoint"
+          $sc3.WorkingDirectory = 'C:\XyRDP\scripts'
+          $sc3.Description = 'Backup instan Login Browser (Chrome/Edge), Downloads, Desktop & Save Game ke Cloud'
+          if (Test-Path $cloudSaveIco) { $sc3.IconLocation = "$cloudSaveIco,0" }
+          else { $sc3.IconLocation = 'shell32.dll,167' }
+          $sc3.Save()
+        }
       }
     }
   } catch {}
@@ -70,12 +90,12 @@ function Sync-And-Heal-DesktopShortcuts {
 Sync-And-Heal-DesktopShortcuts
 
 $i = 0
-$lastCheckpointUtc = [DateTime]::UtcNow
+# Set $lastCheckpointUtc mundur 2 menit agar checkpoint pertama berjalan pada menit ke-2 setelah sesi aktif!
+$lastCheckpointUtc = [DateTime]::UtcNow.AddMinutes(-2)
 $checkpointJob = $null
-$tsExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
+$dashboardAutoOpened = $false
 
-while ([DateTime]::UtcNow -lt $exp.AddMinutes(-3)) {
-  if (Test-Path 'C:\stop.signal') { Log 'Sinyal stop diterima — keluar dari loop keepalive dengan aman.'; break }
+while ([DateTime]::UtcNow -lt $exp) {
   Start-Sleep -Seconds 60
   $i++
   $now = [DateTime]::UtcNow
@@ -96,7 +116,26 @@ while ([DateTime]::UtcNow -lt $exp.AddMinutes(-3)) {
     }
   } catch {}
 
-  # 1b. Auto-heal Tailscale Tunnel setiap menit agar sesi HP tidak tiba-tiba terputus saat relay DERP berganti
+  # 1b. Auto-open XyDeskRemote Dashboard begitu user masuk ke Desktop RDP untuk pertama kalinya!
+  if (-not $dashboardAutoOpened -and (Test-Path 'C:\XyRDP\tools\XyDeskDashboard.exe')) {
+    try {
+      $dashRunning = Get-Process -Name 'XyDeskDashboard' -ErrorAction SilentlyContinue
+      if ($dashRunning) {
+        $dashboardAutoOpened = $true
+      } else {
+        # Cek apakah ada explorer.exe yang berjalan di sesi interaktif user RDP
+        $expProcs = @(Get-Process -Name 'explorer' -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -ge 1 })
+        if ($expProcs.Count -gt 0) {
+          & schtasks.exe /Create /TN "XyAutoOpenDashboard" /TR "`"C:\XyRDP\tools\XyDeskDashboard.exe`"" /SC ONCE /ST 00:00 /RU $rdpUser /IT /RL HIGHEST /F 2>&1 | Out-Null
+          & schtasks.exe /Run /TN "XyAutoOpenDashboard" 2>&1 | Out-Null
+          $dashboardAutoOpened = $true
+          Log "XyDeskRemote Dashboard otomatis dibuka di sesi Desktop user '$rdpUser'."
+        }
+      }
+    } catch {}
+  }
+
+  # 1c. Auto-heal Tailscale Tunnel setiap menit agar sesi HP tidak tiba-tiba terputus saat relay DERP berganti
   if (Test-Path $tsExe) {
     try {
       $tsSvc = Get-Service -Name 'Tailscale' -ErrorAction SilentlyContinue
@@ -138,8 +177,8 @@ while ([DateTime]::UtcNow -lt $exp.AddMinutes(-3)) {
     Log "detak #$i | sisa $rem menit | RDP=$listen | tailscale=$tsIp"
   }
 
-  # 4. Setiap 15 menit: jalankan Auto-Checkpoint lintas sesi di background (non-blocking) ke Release 'xyrdp-state-latest'
-  if (($now - $lastCheckpointUtc).TotalMinutes -ge 15 -and $rem -gt 4) {
+  # 4. Setiap 4 menit: jalankan Auto-Checkpoint lintas sesi di background (non-blocking) ke Release 'xyrdp-state-latest'
+  if (($now - $lastCheckpointUtc).TotalMinutes -ge 4 -and $rem -gt 2) {
     $canRun = $true
     if ($checkpointJob) {
       if ($checkpointJob.State -eq 'Running') {
@@ -152,13 +191,17 @@ while ([DateTime]::UtcNow -lt $exp.AddMinutes(-3)) {
     if ($canRun) {
       $lastCheckpointUtc = $now
       try {
-        Log 'Menjalankan auto-checkpoint 15 menit di background (persist-state.ps1 -Checkpoint)...'
+        Log 'Menjalankan auto-checkpoint 4 menit di background (persist-state.ps1 -Checkpoint)...'
         $persistPath = Join-Path $PSScriptRoot 'persist-state.ps1'
         $checkpointJob = Start-Job -ScriptBlock {
-          param($p)
+          param($p, $tok, $repo, $usr, $pwd)
           try { [System.Threading.Thread]::CurrentThread.Priority = [System.Threading.ThreadPriority]::Lowest } catch {}
+          if ($tok)  { $env:GITHUB_TOKEN      = $tok }
+          if ($repo) { $env:GITHUB_REPOSITORY = $repo }
+          if ($usr)  { $env:RDP_USER          = $usr }
+          if ($pwd)  { $env:RDP_PASSWORD      = $pwd }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p -Checkpoint 2>&1 | Out-Null
-        } -ArgumentList $persistPath
+        } -ArgumentList $persistPath, $env:GITHUB_TOKEN, $env:GITHUB_REPOSITORY, $env:RDP_USER, $env:RDP_PASSWORD
       } catch {
         Log "Auto-checkpoint warning: $($_.Exception.Message)"
       }

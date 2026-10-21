@@ -99,7 +99,124 @@ try {
   $lua = Get-Reg 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' 'EnableLUA'
   Log "  HIGHEST ADMIN: user '$u' Administrators=$isAdmin | EnableLUA=$lua (0=UAC OFF, paling tinggi) | ConsentPrompt=0"
 } catch { Log "  highest admin setup warning: $($_.Exception.Message)" }
-if ($u.ToLower() -eq 'runneradmin') { Log "user '$u' (runneradmin bawaan) siap: HIGHEST ADMIN tanpa buat ulang" } else { Log "user '$u' siap: Administrators + Remote Desktop Users, password tidak expire (HIGHEST)" }
+
+# KRITIKAL (Anti-Hilang Data Sesi): Buat & daftarkan profil Windows resmi C:\Users\$u
+# via Win32 userenv.dll!CreateProfile SEBELUM restore-state.ps1 berjalan!
+# Tanpa ini, saat restore-state.ps1 membuat C:\Users\$u lebih dulu, login RDP pertama
+# akan menganggap folder C:\Users\$u bentrok lalu membuat C:\Users\xyadmin.<hostname>,
+# sehingga semua file Downloads, Desktop & login Google di C:\Users\$u tidak terbaca!
+$createdProfDir = Ensure-UserProfileCreated $u
+Ensure-XyDesktopIcons | Out-Null
+if ($u.ToLower() -eq 'runneradmin') { Log "user '$u' (runneradmin bawaan) siap: HIGHEST ADMIN tanpa buat ulang (profil=$createdProfDir)" } else { Log "user '$u' siap: Administrators + Remote Desktop Users, password tidak expire (HIGHEST, profil=$createdProfDir)" }
+
+# ---------- 1b. Anti-VM Hardening (Roblox / Anti-Cheat) + Extreme Gaming Boost ----------
+try {
+  $toolsDir = 'C:\XyRDP\tools'
+  New-Item -ItemType Directory -Path $toolsDir -Force -ErrorAction SilentlyContinue | Out-Null
+  $antiVmScript = Join-Path $toolsDir 'Apply-AntiVM-Boost.ps1'
+  $antiVmCode = @'
+$ErrorActionPreference = 'SilentlyContinue'
+
+# 1. Spoof SMBIOS / BIOS / SystemInformation agar tidak terdeteksi "Virtual Machine" / "Hyper-V" oleh Roblox (Byfron/Hyperion) & Anti-Cheat
+$biosKey = 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS'
+if (Test-Path $biosKey) {
+  Set-ItemProperty -Path $biosKey -Name 'SystemManufacturer' -Value 'ASUS' -Force
+  Set-ItemProperty -Path $biosKey -Name 'SystemProductName'  -Value 'ROG STRIX B650-A GAMING WIFI' -Force
+  Set-ItemProperty -Path $biosKey -Name 'SystemFamily'       -Value 'ROG STRIX' -Force
+  Set-ItemProperty -Path $biosKey -Name 'SystemSKU'          -Value 'ASUS_MB_B650' -Force
+  Set-ItemProperty -Path $biosKey -Name 'SystemVersion'      -Value 'Rev 1.xx' -Force
+  Set-ItemProperty -Path $biosKey -Name 'BaseBoardManufacturer' -Value 'ASUSTeK COMPUTER INC.' -Force
+  Set-ItemProperty -Path $biosKey -Name 'BaseBoardProduct'   -Value 'ROG STRIX B650-A GAMING WIFI' -Force
+  Set-ItemProperty -Path $biosKey -Name 'BaseBoardVersion'   -Value 'Rev 1.xx' -Force
+  Set-ItemProperty -Path $biosKey -Name 'BIOSVendor'         -Value 'American Megatrends Inc.' -Force
+  Set-ItemProperty -Path $biosKey -Name 'BIOSVersion'        -Value '2412' -Force
+  Set-ItemProperty -Path $biosKey -Name 'BIOSReleaseDate'    -Value '08/15/2025' -Force
+}
+
+$sysDescKey = 'HKLM:\HARDWARE\DESCRIPTION\System'
+if (Test-Path $sysDescKey) {
+  Set-ItemProperty -Path $sysDescKey -Name 'SystemBiosVersion' -Value @('ASUS - 2412', 'American Megatrends - 50014') -Type MultiString -Force
+  Set-ItemProperty -Path $sysDescKey -Name 'VideoBiosVersion'  -Value @('NVIDIA GeForce RTX 3060 VBIOS 94.06.25.00.63') -Type MultiString -Force
+}
+
+$sysInfoKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\SystemInformation'
+if (Test-Path $sysInfoKey) {
+  Set-ItemProperty -Path $sysInfoKey -Name 'SystemManufacturer' -Value 'ASUS' -Force
+  Set-ItemProperty -Path $sysInfoKey -Name 'SystemProductName'  -Value 'ROG STRIX B650-A GAMING WIFI' -Force
+  Set-ItemProperty -Path $sysInfoKey -Name 'BIOSVersion'        -Value '2412' -Force
+  Set-ItemProperty -Path $sysInfoKey -Name 'BIOSReleaseDate'    -Value '08/15/2025' -Force
+}
+
+# 2. Sembunyikan / bersihkan Hyper-V Guest Parameters yang dibaca oleh detektor VM user-mode
+$hvGuestKey = 'HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters'
+if (Test-Path $hvGuestKey) {
+  foreach ($valName in @('HostName', 'PhysicalHostName', 'PhysicalHostNameFullyQualified', 'VirtualMachineName', 'VirtualMachineId')) {
+    Remove-ItemProperty -Path $hvGuestKey -Name $valName -Force -ErrorAction SilentlyContinue
+  }
+}
+
+# 3. Matikan layanan Hyper-V Guest Integration non-esensial (JANGAN sentuh vmbus/netvsc/storvsc!)
+foreach ($hvSvc in @('vmicheartbeat', 'vmickvpexchange', 'vmicrdharma', 'vmicshutdown', 'vmictimesync', 'vmicvmsession', 'vmicvss')) {
+  Stop-Service -Name $hvSvc -Force -ErrorAction SilentlyContinue
+  Set-Service -Name $hvSvc -StartupType Disabled -ErrorAction SilentlyContinue
+}
+
+# 4. Spoof nama Disk Virtual menjadi NVMe fisik di Enum SCSI
+Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Enum\SCSI' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+  $fn = (Get-ItemProperty -Path $_.PSPath -Name 'FriendlyName' -ErrorAction SilentlyContinue).FriendlyName
+  if ($fn -and ($fn -match 'Virtual|Msft|VBOX|QEMU')) {
+    Set-ItemProperty -Path $_.PSPath -Name 'FriendlyName' -Value 'Samsung SSD 990 PRO 1TB' -Force -ErrorAction SilentlyContinue
+  }
+}
+
+# 5. Extreme Gaming Boost: Ultimate Performance Power Plan + MMCSS Games Priority + Foreground Quantum
+try {
+  $dup = & powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>&1
+  if ("$dup" -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
+    & powercfg -setactive $Matches[1] 2>&1 | Out-Null
+  } else {
+    & powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>&1 | Out-Null
+  }
+} catch {}
+
+# Win32PrioritySeparation = 0x26 (38): Short Quantum, Variable, High Foreground Boost untuk Game
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Name 'Win32PrioritySeparation' -Value 38 -Type DWord -Force
+
+# MMCSS SystemProfile & Tasks\Games: 90% CPU untuk game, tanpa network throttling
+$mmProfile = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile'
+if (-not (Test-Path $mmProfile)) { New-Item -Path $mmProfile -Force | Out-Null }
+Set-ItemProperty -Path $mmProfile -Name 'SystemResponsiveness' -Value 10 -Type DWord -Force
+Set-ItemProperty -Path $mmProfile -Name 'NetworkThrottlingIndex' -Value 0xFFFFFFFF -Type DWord -Force
+
+$mmGames = "$mmProfile\Tasks\Games"
+if (-not (Test-Path $mmGames)) { New-Item -Path $mmGames -Force | Out-Null }
+Set-ItemProperty -Path $mmGames -Name 'GPU Priority' -Value 8 -Type DWord -Force
+Set-ItemProperty -Path $mmGames -Name 'Priority' -Value 6 -Type DWord -Force
+Set-ItemProperty -Path $mmGames -Name 'Scheduling Category' -Value 'High' -Type String -Force
+Set-ItemProperty -Path $mmGames -Name 'SFIO Priority' -Value 'High' -Type String -Force
+Set-ItemProperty -Path $mmGames -Name 'Background Only' -Value 'False' -Type String -Force
+
+# Matikan Xbox GameDVR / Background Capture yang menguras FPS di RDP
+$gameBarPol = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\GameDVR'
+if (-not (Test-Path $gameBarPol)) { New-Item -Path $gameBarPol -Force | Out-Null }
+Set-ItemProperty -Path $gameBarPol -Name 'AllowGameDVR' -Value 0 -Type DWord -Force
+
+# Simpan penanda Gaming Boost di C:\Persist\System agar persisten lintas sesi
+New-Item -ItemType Directory -Path 'C:\Persist\System' -Force -ErrorAction SilentlyContinue | Out-Null
+@{
+  antivm_spoofed = $true
+  gaming_boost   = 'Ultimate-120FPS'
+  updated_at     = [DateTime]::UtcNow.ToString('o')
+} | ConvertTo-Json | Set-Content -Path 'C:\Persist\System\gaming-boost.json' -Encoding UTF8 -Force
+
+Write-Host '[OK] Anti-VM SMBIOS/Hyper-V Spoofing & Extreme Gaming Boost berhasil diterapkan!'
+'@
+  Set-Content -LiteralPath $antiVmScript -Value $antiVmCode -Encoding UTF8 -Force
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $antiVmScript | Out-Null
+  Log 'Anti-VM SMBIOS/Hyper-V Spoofing & Extreme Gaming Boost aktif'
+} catch {
+  Log "Anti-VM Boost warning: $($_.Exception.Message)"
+}
 
 # ---------- 2. RDP standar + Unlock On-Mic / Audio Capture + Kompatibilitas Software 2026 ----------
 # fDenyTSConnections: pakai Set-Reg (robust: Set-ItemProperty -> reg.exe -> New-ItemProperty)

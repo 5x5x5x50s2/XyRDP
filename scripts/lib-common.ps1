@@ -447,4 +447,217 @@ function Get-GhAssetUrl([string]$Repo, [string]$NameRegex) {
 $script:XyFallbackUrls = @{
 }
 
+# ---------- 10. Profil Windows Resmi & Unlocker Copy (Anti-Hilang Data Sesi) ----------
+function Ensure-UserProfileCreated([string]$UserName) {
+  if (-not $UserName) { return $null }
+  $targetDir = "C:\Users\$UserName"
+  try {
+    $acct = New-Object System.Security.Principal.NTAccount($UserName)
+    $sid = $acct.Translate([System.Security.Principal.SecurityIdentifier]).Value
+    $profKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$sid"
+    if (-not (Test-Path $profKey)) {
+      if (-not ('XyWin32Profile' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class XyWin32Profile {
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern int CreateProfile(
+        [MarshalAs(UnmanagedType.LPWStr)] string pszUserSid,
+        [MarshalAs(UnmanagedType.LPWStr)] string pszUserName,
+        [Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszProfilePath,
+        uint cchProfilePath);
+}
+"@ -ErrorAction SilentlyContinue
+      }
+      $sb = New-Object System.Text.StringBuilder 260
+      $hr = [XyWin32Profile]::CreateProfile($sid, $UserName, $sb, 260)
+      if ($hr -eq 0 -and $sb.Length -gt 0) {
+        $targetDir = $sb.ToString()
+        Log "  profil resmi Windows dibuat via CreateProfile: $targetDir (SID=$sid)"
+      }
+    } else {
+      $existingPath = (Get-ItemProperty -Path $profKey -Name 'ProfileImagePath' -ErrorAction SilentlyContinue).ProfileImagePath
+      if ($existingPath) { $targetDir = $existingPath }
+    }
+    # Pastikan ProfileList menunjuk ke folder profil yang konsisten & milik user penuh
+    if (-not (Test-Path $targetDir)) {
+      New-Item -ItemType Directory -Path $targetDir -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+    if (Test-Path $profKey) {
+      Set-ItemProperty -Path $profKey -Name 'ProfileImagePath' -Value $targetDir -ErrorAction SilentlyContinue
+      Set-ItemProperty -Path $profKey -Name 'State' -Value 0 -Type DWord -ErrorAction SilentlyContinue
+    }
+    & icacls $targetDir /grant "${UserName}:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" /grant "SYSTEM:(OI)(CI)F" /C /Q 2>&1 | Out-Null
+  } catch {
+    Log "  Ensure-UserProfileCreated warning: $($_.Exception.Message)"
+  }
+  return $targetDir
+}
+
+function Get-AllUserProfileDirs([string]$UserName) {
+  $dirs = New-Object System.Collections.Generic.List[string]
+  if ($UserName) {
+    try {
+      $acct = New-Object System.Security.Principal.NTAccount($UserName)
+      $sid = $acct.Translate([System.Security.Principal.SecurityIdentifier]).Value
+      $profKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$sid"
+      if (Test-Path $profKey) {
+        $p = (Get-ItemProperty -Path $profKey -Name 'ProfileImagePath' -ErrorAction SilentlyContinue).ProfileImagePath
+        if ($p -and (Test-Path $p) -and -not $dirs.Contains($p)) { $dirs.Add($p) }
+      }
+    } catch {}
+    $base = "C:\Users\$UserName"
+    if ((Test-Path $base) -and -not $dirs.Contains($base)) { $dirs.Add($base) }
+    Get-ChildItem -Path 'C:\Users' -Directory -Filter "$UserName.*" -ErrorAction SilentlyContinue | ForEach-Object {
+      if (-not $dirs.Contains($_.FullName)) { $dirs.Add($_.FullName) }
+    }
+  }
+  if ($dirs.Count -eq 0 -and $UserName) {
+    $dirs.Add("C:\Users\$UserName")
+  }
+  return $dirs.ToArray()
+}
+
+function Copy-FileUnlocked([string]$SourceFile, [string]$DestFile) {
+  if (-not (Test-Path -LiteralPath $SourceFile -PathType Leaf)) { return $false }
+  try {
+    $parent = Split-Path -Path $DestFile -Parent
+    if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+      New-Item -ItemType Directory -Path $parent -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+    Copy-Item -LiteralPath $SourceFile -Destination $DestFile -Force -ErrorAction Stop
+    return $true
+  } catch {
+    try {
+      $inStream = New-Object System.IO.FileStream($SourceFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+      try {
+        $outStream = New-Object System.IO.FileStream($DestFile, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        try {
+          $inStream.CopyTo($outStream)
+        } finally {
+          $outStream.Dispose()
+        }
+      } finally {
+        $inStream.Dispose()
+      }
+      return $true
+    } catch {
+      return $false
+    }
+  }
+}
+
+function Copy-TreeUnlocked([string]$SourceDir, [string]$DestDir) {
+  if (-not (Test-Path -LiteralPath $SourceDir)) { return }
+  if (Test-Path -LiteralPath $SourceDir -PathType Leaf) {
+    Copy-FileUnlocked $SourceDir $DestDir | Out-Null
+    return
+  }
+  New-Item -ItemType Directory -Path $DestDir -Force -ErrorAction SilentlyContinue | Out-Null
+  Get-ChildItem -LiteralPath $SourceDir -Force -ErrorAction SilentlyContinue | ForEach-Object {
+    $target = Join-Path $DestDir $_.Name
+    if ($_.PSIsContainer) {
+      Copy-TreeUnlocked $_.FullName $target
+    } else {
+      Copy-FileUnlocked $_.FullName $target | Out-Null
+    }
+  }
+}
+
+# ---------- 11. Generator Ikon Unik Desktop (.ico 64x64 ARGB Berwarna) ----------
+function New-XyAppIcon([string]$OutIcoPath, [string]$BadgeText, [int]$R1, [int]$G1, [int]$B1, [int]$R2, [int]$G2, [int]$B2, [string]$SubText = '') {
+  try {
+    if (Test-Path -LiteralPath $OutIcoPath) { return $OutIcoPath }
+    $dir = Split-Path -Path $OutIcoPath -Parent
+    if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+    $bmp = New-Object System.Drawing.Bitmap(64, 64, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+    $g.Clear([System.Drawing.Color]::Transparent)
+
+    $rect = New-Object System.Drawing.Rectangle(2, 2, 60, 60)
+    $c1 = [System.Drawing.Color]::FromArgb(255, $R1, $G1, $B1)
+    $c2 = [System.Drawing.Color]::FromArgb(255, $R2, $G2, $B2)
+    $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $c1, $c2, 45.0)
+
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $d = 16
+    $path.AddArc(2, 2, $d, $d, 180, 90)
+    $path.AddArc(62 - $d, 2, $d, $d, 270, 90)
+    $path.AddArc(62 - $d, 62 - $d, $d, $d, 0, 90)
+    $path.AddArc(2, 62 - $d, $d, $d, 90, 90)
+    $path.CloseFigure()
+
+    $g.FillPath($brush, $path)
+    $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(140, 255, 255, 255), 2.0)
+    $g.DrawPath($pen, $path)
+
+    $sf = New-Object System.Drawing.StringFormat
+    $sf.Alignment = [System.Drawing.StringAlignment]::Center
+    $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+
+    $fontSize = if ($BadgeText.Length -ge 3) { 16.5 } else { 21.0 }
+    $font = New-Object System.Drawing.Font('Segoe UI', [float]$fontSize, [System.Drawing.FontStyle]::Bold)
+    $textY = if ($SubText) { 26 } else { 32 }
+    $g.DrawString($BadgeText, $font, [System.Drawing.Brushes]::White, [System.Drawing.PointF]::new(32.0, [float]$textY), $sf)
+
+    if ($SubText) {
+      $subFont = New-Object System.Drawing.Font('Segoe UI', 7.5, [System.Drawing.FontStyle]::Bold)
+      $subBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(230, 255, 255, 255))
+      $g.DrawString($SubText, $subFont, $subBrush, [System.Drawing.PointF]::new(32.0, 49.0), $sf)
+      $subBrush.Dispose()
+      $subFont.Dispose()
+    }
+
+    $msPng = New-Object System.IO.MemoryStream
+    $bmp.Save($msPng, [System.Drawing.Imaging.ImageFormat]::Png)
+    $pngBytes = $msPng.ToArray()
+    $msPng.Dispose()
+    $font.Dispose(); $pen.Dispose(); $path.Dispose(); $brush.Dispose(); $g.Dispose(); $bmp.Dispose()
+
+    $fs = New-Object System.IO.FileStream($OutIcoPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+    $bw = New-Object System.IO.BinaryWriter($fs)
+    # ICONDIR header (6 bytes) + ICONDIRENTRY (16 bytes) + PNG payload
+    $bw.Write([uint16]0)
+    $bw.Write([uint16]1)
+    $bw.Write([uint16]1)
+    $bw.Write([byte]64)
+    $bw.Write([byte]64)
+    $bw.Write([byte]0)
+    $bw.Write([byte]0)
+    $bw.Write([uint16]1)
+    $bw.Write([uint16]32)
+    $bw.Write([uint32]$pngBytes.Length)
+    $bw.Write([uint32]22)
+    $bw.Write($pngBytes)
+    $bw.Flush()
+    $bw.Dispose()
+    $fs.Dispose()
+    return $OutIcoPath
+  } catch {
+    return $null
+  }
+}
+
+function Ensure-XyDesktopIcons {
+  $icoDir = 'C:\XyRDP\icons'
+  New-Item -ItemType Directory -Path $icoDir -Force -ErrorAction SilentlyContinue | Out-Null
+  New-XyAppIcon "$icoDir\xydesk-dashboard.ico"   'XY'  2   132 199 15  23  42  'DASHBOARD' | Out-Null
+  New-XyAppIcon "$icoDir\tlauncher.ico"          'TL'  16  185 129 4   120 87  'CRACKED'   | Out-Null
+  New-XyAppIcon "$icoDir\prismlauncher.ico"      'PL'  139 92  246 76  29  149 'MODPACK'   | Out-Null
+  New-XyAppIcon "$icoDir\minecraft-official.ico" 'MC'  245 158 11  180 83  9   'OFFICIAL'  | Out-Null
+  New-XyAppIcon "$icoDir\roblox-antivm.ico"      'RBX' 239 68  68  153 27  27  'ANTI-VM'   | Out-Null
+  New-XyAppIcon "$icoDir\samp-launcher.ico"      'SA'  249 115 22  194 65  12  'SA-MP'     | Out-Null
+  New-XyAppIcon "$icoDir\samp-antiban.ico"       'FIX' 20  184 166 15  118 110 'ANTI-BAN'  | Out-Null
+  New-XyAppIcon "$icoDir\cloud-save.ico"         'CLD' 56  189 248 3   105 161 'SAVE'      | Out-Null
+  New-XyAppIcon "$icoDir\persist-folder.ico"     'DIR' 234 179 8   161 98  7   'PERSIST'   | Out-Null
+  New-XyAppIcon "$icoDir\bluestacks.ico"         'BS5' 59  130 246 29  78  216 'ANDROID'   | Out-Null
+  New-XyAppIcon "$icoDir\mumu.ico"               'MM'  236 72  153 157 23  77  'ANDROID'   | Out-Null
+  return $icoDir
+}
+
 Log 'lib-common dimuat'

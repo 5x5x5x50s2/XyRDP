@@ -1,5 +1,5 @@
 # ============================================================================
-#  keepalive.ps1 — Penjaga Sesi Hidup (Anti-Disconnect & Auto-Heal)
+#  keepalive.ps1 - Penjaga Sesi Hidup (Anti-Disconnect & Auto-Heal)
 # ----------------------------------------------------------------------------
 #  1. Menjaga TermService, UmRdpService, Audiosrv & listener 3389 tetap hidup
 #  2. Memastikan shortcut Desktop memiliki Nama & Ikon Unik (Anti-Tertukar)
@@ -17,7 +17,7 @@ $exp = if ($s -and $s.expires_utc) { [DateTime]::Parse($s.expires_utc).ToUnivers
 $addr = if ($s -and $s.connect) { $s.connect } else { '(lihat langkah Ringkasan)' }
 $rdpUser = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
 
-Log "SESI AKTIF — alamat: $addr | selesai: $($exp.ToString('HH:mm')) UTC"
+Log "SESI AKTIF - alamat: $addr | selesai: $($exp.ToString('HH:mm')) UTC"
 $tsExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
 $icoDir = Ensure-XyDesktopIcons
 
@@ -52,7 +52,7 @@ function Sync-And-Heal-DesktopShortcuts {
           $sc = $wsh.CreateShortcut($lnkDash)
           $sc.TargetPath = $dashExe
           $sc.WorkingDirectory = 'C:\XyRDP\tools'
-          $sc.Description = 'XyDeskRemote Dashboard — Pusat Kelola Sistem, Installer, Anti-VM & Cloud Save'
+          $sc.Description = 'XyDeskRemote Dashboard - Pusat Kelola Sistem, Installer, Anti-VM & Cloud Save'
           if (Test-Path $dashIco) { $sc.IconLocation = "$dashIco,0" }
           $sc.Save()
         }
@@ -93,7 +93,7 @@ function Sync-And-Heal-DesktopShortcuts {
           $sc4 = $wsh.CreateShortcut($lnkFivem)
           $sc4.TargetPath = $fivemExe
           $sc4.WorkingDirectory = 'C:\Games\FiveM'
-          $sc4.Description = 'FiveM — Cfx.re CitizenFX GTA V Roleplay Client'
+          $sc4.Description = 'FiveM - Cfx.re CitizenFX GTA V Roleplay Client'
           if (Test-Path $fivemIconDonor) { $sc4.IconLocation = "$fivemIconDonor,0" }
           else { $sc4.IconLocation = "$fivemExe,0" }
           $sc4.Save()
@@ -206,7 +206,7 @@ while ([DateTime]::UtcNow -lt $exp) {
       $tsObj = if ($tsRaw) { $tsRaw | ConvertFrom-Json -ErrorAction SilentlyContinue } else { $null }
       $tsState = if ($tsObj) { [string]$tsObj.BackendState } else { '' }
       if ($tsState -and $tsState -ne 'Running' -and $env:TAILSCALE_AUTH_KEY) {
-        Log "Tailscale state '$tsState' terdeteksi — memulihkan koneksi tunnel secara otomatis..."
+        Log "Tailscale state '$tsState' terdeteksi - memulihkan koneksi tunnel secara otomatis..."
         $hn = if ($s -and $s.hostname) { [string]$s.hostname } else { "xyrdp-$env:GITHUB_RUN_NUMBER" }
         & $tsExe up --authkey="$($env:TAILSCALE_AUTH_KEY.Trim())" --hostname=$hn --unattended --accept-routes --accept-dns=false --reset 2>&1 | Out-Null
       }
@@ -273,5 +273,5 @@ if ($checkpointJob) {
   Remove-Job -Job $checkpointJob -Force -ErrorAction SilentlyContinue
 }
 
-Log 'Waktu sesi selesai dengan aman — lanjut ke penyimpanan akhir & estafet sesi berikutnya.'
+Log 'Waktu sesi selesai dengan aman - lanjut ke penyimpanan akhir & estafet sesi berikutnya.'
 exit 0

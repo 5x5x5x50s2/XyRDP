@@ -1,5 +1,5 @@
 # ============================================================================
-#  setup-games.ps1 — Penyedia Game & Emulator Ready-to-Play di XyRDP:
+#  setup-games.ps1 - Penyedia Game & Emulator Ready-to-Play di XyRDP:
 #    1) Minecraft Java Edition (Otomatis Siap Pakai):
 #       - Menghubungkan & menyuntikkan Mesa3D OpenGL 4.6 (llvmpipe) ke seluruh
 #         runtime Java (Temurin JDK 21 & JRE 8 di C:\hostedtoolcache & Program Files)
@@ -154,13 +154,41 @@ function Install-PrismLauncherPortable {
             @(
               '[General]'
               'ApplicationTheme=dark'
+              'Language=en_US'
+              "LastHostname=$($env:COMPUTERNAME)"
               "JavaPath=$javaw"
               'MaxMemAlloc=4096'
               'MinMemAlloc=1024'
               'SkipJavaCompatibilityCheck=true'
               'SkipJavaWizard=true'
-            ) | Set-Content -Path (Join-Path $prismDir 'prismlauncher.cfg') -Encoding UTF8 -Force
-            Log "PrismLauncher Portable siap di $prismDir"
+            ) | Set-Content -Path (Join-Path $prismDir 'prismlauncher.cfg') -Encoding ASCII -Force
+            $acctJson = @'
+{
+    "accounts": [
+        {
+            "active": true,
+            "entitlement": {
+                "canPlayMinecraft": true,
+                "ownsMinecraft": true
+            },
+            "profile": {
+                "capes": [],
+                "id": "8667ba71b85a4004af54457a9734eed7",
+                "name": "XyPlayer_RDP",
+                "skin": {
+                    "id": "",
+                    "url": "",
+                    "variant": "CLASSIC"
+                }
+            },
+            "type": "Offline"
+        }
+    ],
+    "formatVersion": 3
+}
+'@
+            Set-Content -Path (Join-Path $prismDir 'accounts.json') -Value $acctJson -Encoding ASCII -Force
+            Log "PrismLauncher Portable siap di $prismDir (Language=en_US + Akun Offline XyPlayer_RDP siap)"
             return $true
           }
         }
@@ -466,7 +494,7 @@ if ($playerBeta) {
 
 # Jika RobloxPlayerBeta.exe diblokir Hyperion CPUID VM Check Azure, buka Dialog Pemilihan Mode Anti-VM
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'Roblox Player — XyRDP Anti-VM Launcher'
+$form.Text = 'Roblox Player - XyRDP Anti-VM Launcher'
 $form.Size = New-Object System.Drawing.Size(520, 310)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedDialog'
@@ -803,7 +831,7 @@ public class FiveMPrankForm : Form
 
     public FiveMPrankForm()
     {
-        this.Text = "FiveM — Cfx.re CitizenFX Launcher";
+        this.Text = "FiveM - Cfx.re CitizenFX Launcher";
         this.Size = new Size(560, 370);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -824,7 +852,7 @@ public class FiveMPrankForm : Form
         this.Controls.Add(header);
 
         lblTitle = new Label();
-        lblTitle.Text = "FiveM · CitizenFX Roleplay Client";
+        lblTitle.Text = "FiveM | CitizenFX Roleplay Client";
         lblTitle.Font = new Font("Segoe UI", 15f, FontStyle.Bold);
         lblTitle.ForeColor = Color.White;
         lblTitle.Location = new Point(18, 16);
@@ -892,7 +920,7 @@ public class FiveMPrankForm : Form
                 PlayPrankSound();
                 MessageBox.Show(
                     "Eits ga semudah itu ditutup bosku! 🤣🔊\r\nDengerin dulu sound FiveM spesial ini sekali lagi ya!",
-                    "FiveM Prank — Cfx.re Soundboard",
+                    "FiveM Prank - Cfx.re Soundboard",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning
                 );
@@ -955,7 +983,7 @@ public class FiveMPrankForm : Form
                 lblSub.ForeColor = Color.FromArgb(254, 240, 138);
                 progressBar.Visible = false;
                 eqPanel.Visible = true;
-                lblStatus.Text = "🔊 PLAYING: Voicemod Tuna Soundboard — Volume 1000% MAX (LOOP)";
+                lblStatus.Text = "🔊 PLAYING: Voicemod Tuna Soundboard - Volume 1000% MAX (LOOP)";
                 btnStop.Text = "Ampun Bang, Matikan Suara & Mengaku Kena Prank 🙏";
                 btnStop.BackColor = Color.FromArgb(220, 38, 38);
                 btnStop.Enabled = true;
@@ -1033,7 +1061,7 @@ public class FiveMPrankForm : Form
         $lnk.IconLocation = "$fivemIco,0"
       }
       $lnk.WorkingDirectory = $fivemDir
-      $lnk.Description = 'FiveM — Cfx.re CitizenFX GTA V Roleplay Client'
+      $lnk.Description = 'FiveM - Cfx.re CitizenFX GTA V Roleplay Client'
       $lnk.Save()
     } catch {}
   }
@@ -1129,7 +1157,7 @@ function Install-EuroTruckSimulator2FreeSuite {
 
   # Simpan juga serial key aktivasi full di C:\Games\ETS2\SERIAL-KEY-FULL.txt
   @(
-    'Euro Truck Simulator 2 — Serial Key Aktivasi Full:'
+    'Euro Truck Simulator 2 - Serial Key Aktivasi Full:'
     '3342J-DYJF0-XEA3K-5J0YS-40UFY'
   ) | Set-Content -LiteralPath (Join-Path $etsDir 'SERIAL-KEY-FULL.txt') -Encoding UTF8 -Force
 

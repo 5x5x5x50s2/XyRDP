@@ -1,5 +1,5 @@
 # ============================================================================
-#  restore-state.ps1 — Pulihkan State Sesi XyRDP dari GitHub Release
+#  restore-state.ps1 - Pulihkan State Sesi XyRDP dari GitHub Release
 # ----------------------------------------------------------------------------
 #  Mengunduh arsip terenkripsi dari Release `xyrdp-state-latest` di repo
 #  pengguna, mendekripsi dengan AES-256-CBC (PBKDF2 dari RDP_PASSWORD /
@@ -16,7 +16,7 @@ $XyTag = 'XyRDP:restore'
 
 $cfg = Get-Cfg
 if ($env:PERSIST_DATA -and @('tidak','0','false','no','off') -contains $env:PERSIST_DATA.Trim().ToLower()) {
-  Log 'Pemulihan state dinonaktifkan oleh input pengguna — lewati.'
+  Log 'Pemulihan state dinonaktifkan oleh input pengguna - lewati.'
   exit 0
 }
 
@@ -48,7 +48,7 @@ $readmePersist = 'C:\Persist\BACA-SAYA-ANTI-RESET.txt'
 if (-not (Test-Path $readmePersist)) {
   @(
     '===================================================================='
-    '  FOLDER PERMANEN XyRDP (C:\Persist) — ANTI RESET'
+    '  FOLDER PERMANEN XyRDP (C:\Persist) - ANTI RESET'
     '===================================================================='
     'Semua file, installer, akun browser, atau dokumen yang Anda simpan di:'
     '  1. C:\Persist'
@@ -64,7 +64,7 @@ if (-not (Test-Path $readmePersist)) {
 }
 
 if (-not $ghToken -or -not $ghRepo) {
-  Log 'GITHUB_TOKEN atau GITHUB_REPOSITORY tidak tersedia — lewati restore state.'
+  Log 'GITHUB_TOKEN atau GITHUB_REPOSITORY tidak tersedia - lewati restore state.'
   exit 0
 }
 

@@ -1,16 +1,16 @@
 # ============================================================================
-#  setup-xydesk.ps1 — HOST SETUP untuk XyDesk Remote (APK Android kamu)
+#  setup-xydesk.ps1 - HOST SETUP untuk XyDesk Remote (APK Android kamu)
 # ----------------------------------------------------------------------------
 #  Ini versi inline dari rdp.xydesk.my.id/host.ps1 (v0.5.34) + perbaikan font
 #  smoothing dari commit XyDesk-Remote v0.5.30, dijalankan langsung dari repo
 #  (tidak mengambil script dari internet).
 #
-#  Isi (idempoten, best-effort — semua hasil dilaporkan apa adanya):
+#  Isi (idempoten, best-effort - semua hasil dilaporkan apa adanya):
 #    1) RDP: multi-session (fSingleSessionPerUser=0) + audio out & mic hidup
 #    2) Kebijakan grafis: AVC444 4:4:4 (preferred) + hardware encode + VGAdapter
 #    3) Font smoothing: fNoFontSmoothing=0 + AllowFontAntiAlias=1 di
 #       WinStations\RDP-Tcp  (kunci ini yang BENAR-benar dibaca Windows;
-#       fAllowFontAntiAlias di Policy no-op — temuan commit XyDesk-Remote v0.5.30)
+#       fAllowFontAntiAlias di Policy no-op - temuan commit XyDesk-Remote v0.5.30)
 #    4) Firewall: TCP/UDP 3389 + UDP 4433 (audio bridge QUIC XyDesk)
 #    5) Layanan: TermService + Audiosrv dipastikan jalan
 #
@@ -18,7 +18,7 @@
 #    - XyDesk Remote -> "Koneksi RDP Penuh": isi Host + Port dari dashboard
 #      (host = bore.pub / x.tcp.ngrok.io, port = angka tunnel). Semua fitur RDP
 #      (AVC444, ClearType, audio rdpsnd, clipboard, keyboard) jalan lewat tunnel TCP.
-#    - Audio bridge QUIC XyDesk (UDP 4433) TIDAK bisa lewat tunnel TCP — port UDP
+#    - Audio bridge QUIC XyDesk (UDP 4433) TIDAK bisa lewat tunnel TCP - port UDP
 #      dibuka di sini supaya siap kalau HP bisa reach UDP langsung (LAN/tailnet).
 #      Lewat tunnel, klien otomatis fallback ke audio RDP.
 #    - Klien XyDesk akan probe QUIC 4433 lalu gagal (wajar) -> lanjut mode RDP.
@@ -444,11 +444,11 @@ Log 'Hubungkan HP dan Windows ke tailnet yang sama. RDP playback dan audio captu
 # ---------- 6b. Verifikasi RDP masih hidup setelah tweak ----------
 # CATATAN PENTING (validasi 2026-10-03): setelah tweak, listener 3389 di runner
 # ini sempat mati ~2 menit. Kita TIDAK me-restart TermService lagi (restart tidak
-# membantu, malah memperlama mati) — kita cukup mengukur dan melaporkan apa
+# membantu, malah memperlama mati) - kita cukup mengukur dan melaporkan apa
 # adanya supaya setup-akses tahu harus menunggu berapa lama.
 $rdpReadyAt = Wait-RdpReady -TimeoutSec 150
 if ($rdpReadyAt) { Log "  RDP masih sehat setelah tweak: $rdpReadyAt`:3389 (handshake X.224 OK)" }
-else { Log '  PERINGATAN: RDP belum menjawab handshake setelah tweak — setup-akses akan menunggu lagi' }
+else { Log '  PERINGATAN: RDP belum menjawab handshake setelah tweak - setup-akses akan menunggu lagi' }
 
 # ---------- 7. Status (apa adanya, bukan asumsi) ----------
 $allOk = $okDeny -and $okMulti -and $okAudio -and $okMic -and $okWall -and $okAvc -and $okAvc2 -and ($fontTxt -like 'ok*')
@@ -460,7 +460,7 @@ Update-Status @{ xydesk = [ordered]@{
     fontsmoothing = $fontTxt
     audio_out     = if ($okAudio) { "ok (policy fDisableAudio=$polAudio, WinStations=$curAudio)" } else { "gagal (policy=$polAudio WinStations=$curAudio)" }
     audio_mic     = if ($okMic) { "ok (policy fDisableAudioCapture=$polMic, WinStations=$curMic) - mic HP redirect aktif, Allow di HP" } else { "gagal (policy=$polMic WinStations=$curMic)" }
-    wallpaper_rdp = if ($okWall) { "ok (policy fNoRemoteDesktopWallpaper=$polWall) - wallpaper RDP tampil, cek client Experience→Wallpaper ON" } else { "gagal (policy=$polWall WinStations=$curWall) - RDP blok wallpaper" }
+    wallpaper_rdp = if ($okWall) { "ok (policy fNoRemoteDesktopWallpaper=$polWall) - wallpaper RDP tampil, cek client Experience->Wallpaper ON" } else { "gagal (policy=$polWall WinStations=$curWall) - RDP blok wallpaper" }
     firewall      = "tcp3389=$fwTcp udp3389=$fwUdp udp4433=$fw4433"
     services      = $svcTxt
     rdp_ready     = if ($rdpReadyAt) { "$rdpReadyAt (handshake OK)" } else { 'belum' }
@@ -468,12 +468,12 @@ Update-Status @{ xydesk = [ordered]@{
     quic_udp4433  = 'dibuka di VM (tidak lewat tunnel TCP)'
     akses         = if ($addr) { $addr } else { '(menyusul)' }
     note          = if ($allOk) { 'Host siap dipakai klien XyDesk Remote mode Koneksi RDP (Host+Port tunnel). Kunci WinStations\RDP-Tcp sengaja TIDAK ditulis supaya listener 3389 tidak mati di runner GitHub.' }
-                    else { 'Sebagian setelan host gagal — sesi tetap jalan lewat RDP biasa; cek log step Host setup XyDesk' }
+                    else { 'Sebagian setelan host gagal - sesi tetap jalan lewat RDP biasa; cek log step Host setup XyDesk' }
 } } | Out-Null
 
 if ($allOk) {
-  Log 'SELESAI — XyDesk host siap: AVC444 + ClearType + multi-session + audio/mic'
+  Log 'SELESAI - XyDesk host siap: AVC444 + ClearType + multi-session + audio/mic'
 } else {
-  Log "SELESAI (sebagian) — cek baris 'gagal' di atas; sesi tetap bisa dipakai lewat RDP biasa"
+  Log "SELESAI (sebagian) - cek baris 'gagal' di atas; sesi tetap bisa dipakai lewat RDP biasa"
 }
 exit 0

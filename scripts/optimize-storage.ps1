@@ -1,5 +1,5 @@
 # ============================================================================
-#  optimize-storage.ps1 — BOOST PENYIMPANAN XyRDP-SAMP
+#  optimize-storage.ps1 - BOOST PENYIMPANAN XyRDP-SAMP
 # ----------------------------------------------------------------------------
 #  Masalah: Runner windows-2022 terlihat "Disk C: 225 GB" tapi free cuma ~70GB
 #  karena image GitHub sudah penuh toolcache (Android, Haskell, CodeQL,
@@ -22,7 +22,7 @@
 #   10) Temp + Log + Recycle Bin + Delivery Optimization
 #
 #  Catatan: JANGAN hapus C:\Windows\WinSxS dengan DISM agresif di runner
-#  ephemeral 6 jam — bisa merusak RDP/Win32. Kita hanya hapus cache & sdk
+#  ephemeral 6 jam - bisa merusak RDP/Win32. Kita hanya hapus cache & sdk
 #  yang aman.
 #
 #  Env:
@@ -48,7 +48,7 @@ if (-not $boost) {
   exit 0
 }
 
-Log '=== OPTIMIZE STORAGE — mulai bebaskan ruang ==='
+Log '=== OPTIMIZE STORAGE - mulai bebaskan ruang ==='
 
 function Get-FreeGB {
   try {
@@ -59,7 +59,7 @@ function Get-FreeGB {
   }
 }
 function Get-SizeGB([string]$path) {
-  # FAST: jangan hitung rekursif (bikin stuck 10 menit di C:\Android) — return 0 biar Remove-Tree langsung hapus
+  # FAST: jangan hitung rekursif (bikin stuck 10 menit di C:\Android) - return 0 biar Remove-Tree langsung hapus
   return 0
 }
 function Remove-Tree([string]$path, [string]$label) {
@@ -146,7 +146,7 @@ if (Test-BoostTimeout) { Log '  boost timeout -> skip dotnet' } else { try {
     $sdks = Get-ChildItem $dotnetRoot -Directory | Sort-Object Name -Descending
     if ($sdks.Count -gt 1) {
       $keep = $sdks[0]
-      Log "  dotnet SDK keep: $($keep.Name) — hapus $($sdks.Count-1) versi lama"
+      Log "  dotnet SDK keep: $($keep.Name) - hapus $($sdks.Count-1) versi lama"
       foreach ($s in $sdks | Select-Object -Skip 1) {
         $totalFreed += Remove-Tree $s.FullName "dotnet SDK $($s.Name)"
       }
@@ -181,11 +181,11 @@ $totalFreed += Remove-Tree 'C:\Windows\SoftwareDistribution\Download' 'Windows U
 try { Get-ChildItem "$env:SystemRoot\Temp" -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue; Log '  Windows Temp dibersihkan tanpa menghapus folder/ACL' } catch {}
 try { if (Test-Path $env:TEMP) { Get-ChildItem $env:TEMP -Force -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; Log '  %TEMP% dibersihkan' } } catch {}
 try { if (Test-Path 'C:\Temp') { Remove-Tree 'C:\Temp' 'C:\Temp' | Out-Null } } catch {}
-# SKIP heavy DISM/cleanmgr (bikin stuck 5-10 menit di runner) — cukup log
-try { Log '  DISM/cleanmgr dilewati (fast mode) — biar tidak stuck' } catch {}
+# SKIP heavy DISM/cleanmgr (bikin stuck 5-10 menit di runner) - cukup log
+try { Log '  DISM/cleanmgr dilewati (fast mode) - biar tidak stuck' } catch {}
 try { Clear-RecycleBin -Force -ErrorAction SilentlyContinue; Log '  RecycleBin dikosongkan' } catch {}
 
-# ---------- 5b. DEBLOAT — hapus app bawaan gede (Edge + OneDrive + Xbox dll) ----------
+# ---------- 5b. DEBLOAT - hapus app bawaan gede (Edge + OneDrive + Xbox dll) ----------
 # Env DEBLOAT: tidak / ringan / full (default FULL kalau STORAGE_BOOST=ya, user mau habisin semua)
 $debloat = if ($env:DEBLOAT) { $env:DEBLOAT.Trim().ToLower() } else { 'full' }
 if ($env:DEBLOAT -eq 'tidak' -or $env:DEBLOAT -eq '0' -or $env:DEBLOAT -eq 'false') { $debloat = 'tidak' }
@@ -214,11 +214,11 @@ if ($debloat -ne 'tidak') {
     'Microsoft.WindowsMaps','Microsoft.Microsoft3DViewer','Microsoft.Print3D','Microsoft.Wallet',
     'Microsoft.MicrosoftSolitaireCollection','Clipchamp.Clipchamp'
   )
-  # full tambahan Edge + Office hub — HABISIN SEMUA (Edge beneran dihapus paksa)
+  # full tambahan Edge + Office hub - HABISIN SEMUA (Edge beneran dihapus paksa)
   $tryEdge = ($debloat -eq 'full')
   if ($debloat -eq 'ringan' -and $chromeExists) { $tryEdge = $true }
   if ($tryEdge) {
-    Log "  Debloat EDGE: HABISIN $(if ($debloat -eq 'full') {'FULL paksa'} else {'ringan'}) — WebView2 dipertahankan"
+    Log "  Debloat EDGE: HABISIN $(if ($debloat -eq 'full') {'FULL paksa'} else {'ringan'}) - WebView2 dipertahankan"
     try {
       $edgePaths = @(
         'C:\Program Files (x86)\Microsoft\Edge\Application',
@@ -235,9 +235,9 @@ if ($debloat -ne 'tidak') {
       if ($edgeVer) { $edgeSize = Get-SizeGB $edgeVer }
       Log "  Edge terdeteksi: $edgeVer (~${edgeSize}GB)"
       if (-not $chromeExists -and $debloat -ne 'full') {
-        Log '  Chrome TIDAK ada — Edge TIDAK dihapus (biar browser tetap ada)'
+        Log '  Chrome TIDAK ada - Edge TIDAK dihapus (biar browser tetap ada)'
       } else {
-        if (-not $chromeExists) { Log '  Chrome tidak ada tapi FULL paksa — Edge tetap dihapus' }
+        if (-not $chromeExists) { Log '  Chrome tidak ada tapi FULL paksa - Edge tetap dihapus' }
         # coba winget dulu (paling bersih)
         $wg = Get-Command winget -ErrorAction SilentlyContinue
         if ($wg) {
@@ -268,9 +268,9 @@ if ($debloat -ne 'tidak') {
         $edgeGone = -not (Test-Path 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe')
         $freedEdge = if ($edgeGone) { 1 } else { 0 }
         $totalFreed += $freedEdge
-        Log "  Edge: $(if ($edgeGone) { 'BERHASIL dihapus HABIS' } else { 'GAGAL — sisa folder dipaksa hapus' })"
+        Log "  Edge: $(if ($edgeGone) { 'BERHASIL dihapus HABIS' } else { 'GAGAL - sisa folder dipaksa hapus' })"
         if (-not (Test-Path 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application\msedgewebview2.exe')) {
-          Log '  WebView2 tidak ada — install WebView2 Runtime'
+          Log '  WebView2 tidak ada - install WebView2 Runtime'
           try { & winget install --id Microsoft.EdgeWebView2Runtime --exact --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null } catch {}
         }
       }
@@ -333,7 +333,7 @@ if ($debloat -ne 'tidak') {
   Log '  Debloat dilewati (DEBLOAT=tidak)'
 }
 
-# ---------- 6. Non-aktifkan pagefile sementara? TIDAK — RDP butuh pagefile.
+# ---------- 6. Non-aktifkan pagefile sementara? TIDAK - RDP butuh pagefile.
 # Tapi kita bisa pindahkan pagefile ke D: jika D: ada & lebih lega
 try {
   $dFree = Get-FreeGB
@@ -341,7 +341,7 @@ try {
   $dDrive = Get-PSDrive -Name D -ErrorAction SilentlyContinue
   if ($dDrive) {
     $dF = [math]::Round($dDrive.Free/1GB,2)
-    Log "  Drive D: ${dF}GB free — dipakai untuk Games & temp SAMP"
+    Log "  Drive D: ${dF}GB free - dipakai untuk Games & temp SAMP"
     New-Item -ItemType Directory -Path 'D:\Games' -Force | Out-Null
   }
 } catch {}
@@ -350,7 +350,7 @@ try {
 try {
   $compactStat = & compact.exe /CompactOS:query 2>&1 | Out-String
   Log "  CompactOS status: $(Log-Tail $compactStat 1)"
-  # Jangan paksa compact jika sudah compacted — cukup query
+  # Jangan paksa compact jika sudah compacted - cukup query
 } catch {}
 
 $freeAfter = Get-FreeGB
@@ -375,5 +375,5 @@ try {
   } } | Out-Null
 } catch { Log "  tulis status storage gagal: $($_.Exception.Message)" }
 
-Log "SELESAI — Storage boost: ${freeBefore}GB -> ${freeAfter}GB (+${freedNow}GB)"
+Log "SELESAI - Storage boost: ${freeBefore}GB -> ${freeAfter}GB (+${freedNow}GB)"
 exit 0

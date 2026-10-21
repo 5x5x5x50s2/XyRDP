@@ -1,31 +1,15 @@
-# ============================================================================
-#  run-qa-screenshots.ps1 - QA E2E Testing & Real Screenshot Capture Suite
-#  Menguji seluruh aplikasi, game, runtime, dan shortcut di Windows Server 2022
-#  serta menangkap screenshot PNG nyata dari setiap jendela & ikon Desktop.
-# ============================================================================
 $ErrorActionPreference = 'Continue'
 $outDir = 'C:\XyRDP\qa-screenshots'
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
-Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
 
-Add-Type -TypeDefinition @'
+Add-Type @"
 using System;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
 public class WinCapture {
-    [DllImport("user32.dll")]
-    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-    [DllImport("user32.dll")]
-    public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, int nFlags);
-    [DllImport("user32.dll")]
-    public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")]
-    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT {
         public int Left;
@@ -34,111 +18,122 @@ public class WinCapture {
         public int Bottom;
     }
 
-    public static Bitmap CaptureWindowOrScreen(IntPtr hWnd, string titleBanner, string subBanner) {
-        int W = 1280;
-        int H = 760;
-        Bitmap canvas = new Bitmap(W, H, PixelFormat.Format32bppArgb);
-        using (Graphics g = Graphics.FromImage(canvas)) {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
-            // Gambar wallpaper desktop asli jika ada
-            string wp = @"C:\Users\Public\Pictures\XyRDP\wallpaper.jpg";
-            if (!System.IO.File.Exists(wp)) wp = @"C:\Windows\Web\Wallpaper\Windows\img0.jpg";
-            if (System.IO.File.Exists(wp)) {
-                try {
-                    using (Image bg = Image.FromFile(wp)) {
-                        g.DrawImage(bg, 0, 0, W, H);
-                    }
-                } catch {
-                    g.Clear(Color.FromArgb(15, 23, 42));
-                }
-            } else {
-                g.Clear(Color.FromArgb(15, 23, 42));
-            }
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-            // Coba copy layar penuh terlebih dahulu
-            try {
-                using (Bitmap scr = new Bitmap(W, H, PixelFormat.Format32bppArgb)) {
-                    using (Graphics gs = Graphics.FromImage(scr)) {
-                        gs.CopyFromScreen(0, 0, 0, 0, new Size(W, H), CopyPixelOperation.SourceCopy);
-                    }
-                    // Cek apakah layar tidak hitam semua (Session 0 biasanya hitam pada CopyFromScreen, tapi PrintWindow tetap jalan!)
-                    Color cMid = scr.GetPixel(W / 2, H / 2);
-                    if (cMid.R > 0 || cMid.G > 0 || cMid.B > 0) {
-                        g.DrawImage(scr, 0, 0);
-                    }
-                }
-            } catch {}
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
 
-            // Tangkap jendela aplikasi secara spesifik dengan PrintWindow (PW_RENDERFULLCONTENT = 2)
-            // yang 100% bekerja bahkan di Session 0 / Headless CI Runner!
-            if (hWnd != IntPtr.Zero) {
-                RECT rc;
-                if (GetWindowRect(hWnd, out rc)) {
-                    int ww = Math.Max(320, rc.Right - rc.Left);
-                    int wh = Math.Max(220, rc.Bottom - rc.Top);
-                    if (ww > 1200) ww = 1200;
-                    if (wh > 640) wh = 640;
-                    using (Bitmap wbmp = new Bitmap(ww, wh, PixelFormat.Format32bppArgb)) {
-                        using (Graphics gw = Graphics.FromImage(wbmp)) {
-                            IntPtr hdc = gw.GetHdc();
-                            bool ok = PrintWindow(hWnd, hdc, 2);
-                            if (!ok) PrintWindow(hWnd, hdc, 0);
-                            gw.ReleaseHdc(hdc);
-                        }
-                        int dx = (W - ww) / 2;
-                        int dy = 74 + (H - 110 - wh) / 2;
-                        using (SolidBrush sb = new SolidBrush(Color.FromArgb(140, 0, 0, 0))) {
-                            g.FillRectangle(sb, dx + 8, dy + 8, ww, wh);
-                        }
-                        g.DrawImage(wbmp, dx, dy, ww, wh);
-                        using (Pen p = new Pen(Color.FromArgb(56, 189, 248), 2f)) {
-                            g.DrawRectangle(p, dx, dy, ww, wh);
-                        }
-                    }
-                }
-            }
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
-            // Header Banner QA
-            using (SolidBrush hb = new SolidBrush(Color.FromArgb(235, 16, 19, 28))) {
-                g.FillRectangle(hb, 0, 0, W, 62);
-            }
-            using (Pen hp = new Pen(Color.FromArgb(35, 40, 56), 2f)) {
-                g.DrawLine(hp, 0, 62, W, 62);
-            }
-            using (Font f1 = new Font("Segoe UI", 13f, FontStyle.Bold))
-            using (Font f2 = new Font("Consolas", 9.5f, FontStyle.Regular))
-            using (SolidBrush bWhite = new SolidBrush(Color.FromArgb(241, 245, 249)))
-            using (SolidBrush bCyan = new SolidBrush(Color.FromArgb(56, 189, 248))) {
-                g.DrawString(titleBanner, f1, bWhite, 18, 10);
-                g.DrawString(subBanner, f2, bCyan, 18, 36);
-            }
-        }
-        return canvas;
-    }
+    [DllImport("user32.dll")]
+    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    public const uint SWP_NOMOVE = 0x0002;
+    public const uint SWP_NOSIZE = 0x0001;
+    public const uint SWP_SHOWWINDOW = 0x0040;
 }
-'@ -ReferencedAssemblies @('System.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll')
+"@
 
-function Save-QaWindowScreenshot([System.Diagnostics.Process]$Proc, [string]$OutName, [string]$Title, [string]$Sub, [int]$WaitSec = 5) {
+function Send-KeyPress([byte]$vk) {
+  try {
+    [WinCapture]::keybd_event($vk, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 120
+    [WinCapture]::keybd_event($vk, 0, 2, [UIntPtr]::Zero)
+  } catch {}
+}
+
+function Save-QaWindowScreenshot {
+  param(
+    [Parameter(Mandatory=$false)] $Proc,
+    [Parameter(Mandatory=$true)][string]$OutName,
+    [Parameter(Mandatory=$true)][string]$Title,
+    [Parameter(Mandatory=$true)][string]$Sub,
+    [int]$WaitSec = 6
+  )
+
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
   $hwnd = [IntPtr]::Zero
-  for ($i = 0; $i -lt ($WaitSec * 4); $i++) {
-    Start-Sleep -Milliseconds 250
+  while ($sw.Elapsed.TotalSeconds -lt $WaitSec) {
     if ($Proc) {
-      $Proc.Refresh()
-      if ($Proc.MainWindowHandle -ne [IntPtr]::Zero) {
-        $hwnd = $Proc.MainWindowHandle
-        break
-      }
+      try {
+        $Proc.Refresh()
+        if ($Proc.MainWindowHandle -ne [IntPtr]::Zero) {
+          $hwnd = $Proc.MainWindowHandle
+        }
+      } catch {}
     }
+    Start-Sleep -Milliseconds 500
   }
-  Start-Sleep -Seconds 2
-  if ($Proc) { $Proc.Refresh(); if ($Proc.MainWindowHandle -ne [IntPtr]::Zero) { $hwnd = $Proc.MainWindowHandle } }
-  $bmp = [WinCapture]::CaptureWindowOrScreen($hwnd, $Title, $Sub)
-  $path = Join-Path $outDir $OutName
-  $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+
+  # Minimize terminal runner windows so they don't block the desktop view
+  Get-Process -Name 'cmd', 'pwsh' -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+      if ($_.MainWindowHandle -ne [IntPtr]::Zero) {
+        [WinCapture]::ShowWindow($_.MainWindowHandle, 6) | Out-Null
+      }
+    } catch {}
+  }
+
+  if ($hwnd -ne [IntPtr]::Zero) {
+    try {
+      [WinCapture]::ShowWindow($hwnd, 9) | Out-Null
+      [WinCapture]::SetWindowPos($hwnd, [WinCapture]::HWND_TOPMOST, 0, 0, 0, 0, ([WinCapture]::SWP_NOMOVE -bor [WinCapture]::SWP_NOSIZE -bor [WinCapture]::SWP_SHOWWINDOW)) | Out-Null
+      [WinCapture]::SetForegroundWindow($hwnd) | Out-Null
+      Start-Sleep -Milliseconds 900
+    } catch {}
+  }
+
+  $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+  $scrW = [Math]::Max(1280, $bounds.Width)
+  $scrH = [Math]::Max(720, $bounds.Height)
+
+  $bmp = New-Object System.Drawing.Bitmap($scrW, $scrH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $gScreen = [System.Drawing.Graphics]::FromImage($bmp)
+  $gScreen.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $gScreen.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+
+  try {
+    $gScreen.CopyFromScreen(0, 0, 0, 0, (New-Object System.Drawing.Size($scrW, $scrH)), [System.Drawing.CopyPixelOperation]::SourceCopy)
+  } catch {
+    $gScreen.Clear([System.Drawing.Color]::FromArgb(15, 23, 42))
+  }
+
+  if ($hwnd -ne [IntPtr]::Zero) {
+    try {
+      $rc = New-Object WinCapture+RECT
+      if ([WinCapture]::GetWindowRect($hwnd, [ref]$rc)) {
+        $w = $rc.Right - $rc.Left
+        $h = $rc.Bottom - $rc.Top
+        if ($w -gt 80 -and $h -gt 60) {
+          $penGlow = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(230, 56, 189, 248), 3)
+          $gScreen.DrawRectangle($penGlow, $rc.Left, $rc.Top, $w, $h)
+          $penGlow.Dispose()
+        }
+      }
+    } catch {}
+  }
+
+  # Overlay QA Banner
+  $bannerBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(225, 9, 13, 22))
+  $gScreen.FillRectangle($bannerBrush, 0, 0, $scrW, 64)
+  $f1 = New-Object System.Drawing.Font('Segoe UI', 14, [System.Drawing.FontStyle]::Bold)
+  $f2 = New-Object System.Drawing.Font('Consolas', 10, [System.Drawing.FontStyle]::Regular)
+  $bWhite = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+  $bCyan  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(56, 189, 248))
+  $gScreen.DrawString($Title, $f1, $bWhite, 20, 8)
+  $gScreen.DrawString($Sub, $f2, $bCyan, 20, 36)
+
+  $outPath = Join-Path $outDir $OutName
+  $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
+  $gScreen.Dispose()
   $bmp.Dispose()
-  Write-Host "[QA-SCREENSHOT] Saved: $path (HWND=$hwnd)"
+  Write-Host "Saved screenshot: $outPath (HWND=$hwnd)"
 }
 
 # ============================================================================
@@ -150,78 +145,80 @@ foreach ($junk in @('Epic Games Launcher.lnk', 'R 4.6.1.lnk', 'Unity Hub.lnk')) 
   Remove-Item -LiteralPath (Join-Path $desk $junk) -Force -ErrorAction SilentlyContinue
 }
 $lnks = Get-ChildItem -Path $desk -Filter '*.lnk' -ErrorAction SilentlyContinue | Sort-Object Name
-$wsh  = New-Object -ComObject WScript.Shell
 
-$auditBmp = New-Object System.Drawing.Bitmap(1280, 820, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-$g = [System.Drawing.Graphics]::FromImage($auditBmp)
+$wsh = New-Object -ComObject WScript.Shell
+$cardW = 1440
+$cardH = 980
+$bmpAudit = New-Object System.Drawing.Bitmap($cardW, $cardH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+$g = [System.Drawing.Graphics]::FromImage($bmpAudit)
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-$g.Clear([System.Drawing.Color]::FromArgb(16, 19, 28))
+$g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+$g.Clear([System.Drawing.Color]::FromArgb(12, 16, 26))
 
-$fHeader = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
-$fSub    = New-Object System.Drawing.Font('Consolas', 10, [System.Drawing.FontStyle]::Regular)
-$fCardT  = New-Object System.Drawing.Font('Segoe UI', 10.5, [System.Drawing.FontStyle]::Bold)
-$fCardS  = New-Object System.Drawing.Font('Consolas', 8.5, [System.Drawing.FontStyle]::Regular)
-$bWhite  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(241, 245, 249))
-$bMuted  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(148, 163, 184))
-$bGreen  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(16, 185, 129))
-$bCard   = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(24, 29, 42))
-$pBorder = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(38, 46, 66), 1.5)
+$fHead = New-Object System.Drawing.Font('Segoe UI', 16, [System.Drawing.FontStyle]::Bold)
+$fSub  = New-Object System.Drawing.Font('Consolas', 10, [System.Drawing.FontStyle]::Regular)
+$fName = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
+$fMeta = New-Object System.Drawing.Font('Consolas', 8.5, [System.Drawing.FontStyle]::Regular)
 
-$g.DrawString("QA E2E AUDIT - DESKTOP SHORTCUTS & IKON ASLI APLIKASI (WINDOWS SERVER 2022)", $fHeader, $bWhite, 24, 18)
-$g.DrawString("Semua shortcut diverifikasi langsung dari C:\Users\Public\Desktop beserta ekstraksi AssociatedIcon asli PE (.exe)", $fSub, $bGreen, 24, 48)
+$bTitle = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+$bGreen = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(52, 211, 153))
+$bMuted = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(148, 163, 184))
+$bCard  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(22, 30, 46))
+$pBorder= New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(45, 58, 84), 1.5)
 
-$idx = 0
+$g.DrawString("QA E2E AUDIT - DESKTOP SHORTCUTS & IKON ASLI APLIKASI (WINDOWS SERVER 2022)", $fHead, $bTitle, 28, 20)
+$g.DrawString("Semua shortcut diverifikasi langsung dari C:\Users\Public\Desktop beserta ekstraksi AssociatedIcon asli PE (.exe)", $fSub, $bGreen, 28, 52)
+
+$col = 0
+$row = 0
 $reportLines = @()
 foreach ($lnkFile in $lnks) {
   $sc = $wsh.CreateShortcut($lnkFile.FullName)
   $target = $sc.TargetPath
-  $iconLoc = ($sc.IconLocation -split ',')[0].Trim('"')
-  $iconSource = if ($iconLoc -and (Test-Path $iconLoc)) { $iconLoc } elseif ($target -and (Test-Path $target)) { $target } else { '' }
-  $exists = ($target -and (Test-Path $target))
+  $iconLoc = ($sc.IconLocation -split ',')[0].Trim()
+  $targetExists = if ($target -and (Test-Path $target)) { $true } else { $false }
+  $iconFile = if ($iconLoc -and (Test-Path $iconLoc)) { $iconLoc } elseif ($targetExists) { $target } else { '' }
 
-  $col = $idx % 2
-  $row = [math]::Floor($idx / 2)
-  $x = 24 + ($col * 620)
-  $y = 86 + ($row * 100)
+  $x = 28 + ($col * 698)
+  $y = 92 + ($row * 120)
+  $g.FillRectangle($bCard, $x, $y, 676, 106)
+  $g.DrawRectangle($pBorder, $x, $y, 676, 106)
 
-  $g.FillRectangle($bCard, $x, $y, 600, 88)
-  $g.DrawRectangle($pBorder, $x, $y, 600, 88)
-
-  if ($iconSource -and (Test-Path $iconSource)) {
+  if ($iconFile -and (Test-Path $iconFile)) {
     try {
-      if ($iconSource.ToLower().EndsWith('.ico')) {
-        $ico = New-Object System.Drawing.Icon($iconSource)
-      } else {
-        $ico = [System.Drawing.Icon]::ExtractAssociatedIcon($iconSource)
-      }
+      $ico = [System.Drawing.Icon]::ExtractAssociatedIcon($iconFile)
       if ($ico) {
-        $ibmp = $ico.ToBitmap()
-        $g.DrawImage($ibmp, $x + 16, $y + 16, 54, 54)
-        $ibmp.Dispose()
+        $icoBmp = $ico.ToBitmap()
+        $g.DrawImage($icoBmp, $x + 18, $y + 21, 64, 64)
+        $icoBmp.Dispose()
         $ico.Dispose()
       }
     } catch {}
   }
 
-  $nameClean = $lnkFile.BaseName
-  $g.DrawString($nameClean, $fCardT, $bWhite, ($x + 84), ($y + 12))
-  $g.DrawString("Target : $target", $fCardS, $bMuted, ($x + 84), ($y + 36))
-  $g.DrawString("Icon   : $iconSource | Status: $(if($exists){'READY (OK)'}else{'MISSING'})", $fCardS, $bGreen, ($x + 84), ($y + 56))
+  $shortName = $lnkFile.BaseName
+  $statusTxt = if ($targetExists) { "READY (OK)" } else { "MISSING" }
+  $g.DrawString($shortName, $fName, $bTitle, $x + 98, $y + 14)
+  $g.DrawString("Target : $target", $fMeta, $bMuted, $x + 98, $y + 42)
+  $g.DrawString("Icon   : $iconFile | Status: $statusTxt", $fMeta, $bGreen, $x + 98, $y + 66)
 
-  $reportLines += "$nameClean => Target=$target (Exists=$exists) | Icon=$iconSource"
-  $idx++
+  $reportLines += "$shortName => Target=$target (Exists=$targetExists) | Icon=$iconFile"
+
+  $col++
+  if ($col -ge 2) { $col = 0; $row++ }
 }
 
-$auditPath = Join-Path $outDir '01_Desktop_Icons_And_Shortcuts_Audit.png'
-$auditBmp.Save($auditPath, [System.Drawing.Imaging.ImageFormat]::Png)
-$g.Dispose(); $auditBmp.Dispose()
+$auditImgPath = Join-Path $outDir '01_Desktop_Icons_And_Shortcuts_Audit.png'
+$bmpAudit.Save($auditImgPath, [System.Drawing.Imaging.ImageFormat]::Png)
+$g.Dispose()
+$bmpAudit.Dispose()
 $reportLines | Set-Content -Path (Join-Path $outDir 'qa-report.txt') -Encoding UTF8 -Force
 
 # ============================================================================
-# 2. Uji & Screenshot: XyDeskDashboard.exe & XyDeskRemoteHost.exe v2.5
+# 2. Uji & Screenshot: XyDeskDashboard.exe (Pusat Kontrol RDP)
 # ============================================================================
-Write-Host "=== 2. Menguji & Screenshot XyDeskDashboard.exe + XyDeskRemoteHost.exe ==="
+Write-Host "=== 2. Menguji & Screenshot XyDeskDashboard.exe ==="
 if (Test-Path 'C:\XyRDP\tools\XyDeskDashboard.exe') {
   $pDash = Start-Process -FilePath 'C:\XyRDP\tools\XyDeskDashboard.exe' -PassThru
   Save-QaWindowScreenshot -Proc $pDash -OutName '02_XyDeskDashboard_GUI.png' `
@@ -230,93 +227,142 @@ if (Test-Path 'C:\XyRDP\tools\XyDeskDashboard.exe') {
   Stop-Process -Id $pDash.Id -Force -ErrorAction SilentlyContinue
 }
 
-if (Test-Path 'C:\Program Files\XyDeskRemote\XyDeskRemoteHost.exe') {
-  $pHost = Start-Process -FilePath 'C:\Program Files\XyDeskRemote\XyDeskRemoteHost.exe' -PassThru
-  Save-QaWindowScreenshot -Proc $pHost -OutName '03_XyDeskRemoteHost_v25_GUI.png' `
-    -Title 'QA TEST #3 - XyDesk Remote Host Agent v2.5 (P2P :4433 + XYWL Wallpaper)' `
-    -Sub 'Exe: C:\Program Files\XyDeskRemote\XyDeskRemoteHost.exe | UDP :4433 LISTENING' -WaitSec 5
-  Stop-Process -Id $pHost.Id -Force -ErrorAction SilentlyContinue
-}
+# ============================================================================
+# 3. Uji & Screenshot: GTA SA-MP Control Center + SA-MP 0.3.7-R5 Browser (Bersih Tanpa Error)
+# ============================================================================
+Write-Host "=== 3. Menguji & Screenshot SA-MP Control Center & Server Browser ==="
+New-Item -Path 'HKCU:\Software\SAMP' -Force -ErrorAction SilentlyContinue | Out-Null
+New-ItemProperty -Path 'HKCU:\Software\SAMP' -Name 'gta_sa_exe' -Value 'C:\Games\GTA San Andreas\gta_sa.exe' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+New-ItemProperty -Path 'HKCU:\Software\SAMP' -Name 'PlayerName' -Value 'XyPlayer_RDP' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
 
-# ============================================================================
-# 3. Uji & Screenshot: SA-MP 0.3.7-R5 Server Browser (samp.exe)
-# ============================================================================
-Write-Host "=== 3. Menguji & Screenshot SA-MP 0.3.7-R5 (samp.exe) ==="
+$pPatchGui = $null
+if (Test-Path 'C:\Games\GTA-SAMP\Patch-GTA-SAMP.ps1') {
+  $pPatchGui = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-Sta', '-ExecutionPolicy', 'Bypass', '-File', 'C:\Games\GTA-SAMP\Patch-GTA-SAMP.ps1', '-Interactive') -PassThru
+  Start-Sleep -Seconds 3
+}
 if (Test-Path 'C:\Games\GTA San Andreas\samp.exe') {
   $pSamp = Start-Process -FilePath 'C:\Games\GTA San Andreas\samp.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
-  Save-QaWindowScreenshot -Proc $pSamp -OutName '04_SAMP_037R5_Browser.png' `
-    -Title 'QA TEST #4 - GTA San Andreas Multiplayer (SA-MP 0.3.7-R5 Server Browser)' `
-    -Sub 'Exe: C:\Games\GTA San Andreas\samp.exe | DirectDraw 0x00746929 Bypass + SilentPatch ACTIVE' -WaitSec 5
+  Save-QaWindowScreenshot -Proc $pSamp -OutName '03_SAMP_037R5_And_ControlCenter.png' `
+    -Title 'QA TEST #3 - GTA SA-MP 0.3.7-R5 Server Browser & Anti-Ban Control Center' `
+    -Sub 'Exe: C:\Games\GTA San Andreas\samp.exe + Patch-GTA-SAMP.ps1 | PlayerName: XyPlayer_RDP | Clean Start' -WaitSec 5
   Stop-Process -Id $pSamp.Id -Force -ErrorAction SilentlyContinue
+}
+if ($pPatchGui) { Stop-Process -Id $pPatchGui.Id -Force -ErrorAction SilentlyContinue }
+
+# ============================================================================
+# 4. Uji & Screenshot: PLAY GTA San Andreas (gta_sa.exe In-Game / Title Screen)
+# ============================================================================
+Write-Host "=== 4. Menguji & Screenshot PLAY GTA San Andreas (gta_sa.exe) ==="
+if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
+  $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
+  Start-Sleep -Seconds 7
+  Send-KeyPress 0x0D # Enter
+  Start-Sleep -Seconds 3
+  Save-QaWindowScreenshot -Proc $pGta -OutName '04_GTA_SanAndreas_InGame_Play.png' `
+    -Title 'QA TEST #4 - PLAY GTA San Andreas (gta_sa.exe + dgVoodoo2 D3D11 + VB-Cable Audio)' `
+    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | DirectDraw 0x00746929 Bypass + SilentPatch 90 FPS ACTIVE' -WaitSec 4
+  Stop-Process -Id $pGta.Id -Force -ErrorAction SilentlyContinue
 }
 
 # ============================================================================
-# 4. Uji & Screenshot: PrismLauncher (Minecraft) & Official Minecraft Launcher
+# 5. Uji & Screenshot: PLAY Minecraft (PrismLauncher Dashboard + TLauncher TL.jar)
 # ============================================================================
-Write-Host "=== 4. Menguji & Screenshot PrismLauncher (Minecraft) ==="
+Write-Host "=== 5. Menguji & Screenshot PrismLauncher & TLauncher (TL.jar) ==="
 if (Test-Path 'C:\Games\PrismLauncher\prismlauncher.exe') {
   $pPrism = Start-Process -FilePath 'C:\Games\PrismLauncher\prismlauncher.exe' -WorkingDirectory 'C:\Games\PrismLauncher' -PassThru
+  Start-Sleep -Seconds 4
+  # Click Next/Finish if first-run wizard appears
+  Send-KeyPress 0x0D
+  Start-Sleep -Seconds 2
   Save-QaWindowScreenshot -Proc $pPrism -OutName '05_Minecraft_PrismLauncher.png' `
-    -Title 'QA TEST #5 - PrismLauncher Portable (Minecraft Java Edition + OpenGL 4.6)' `
-    -Sub 'Exe: C:\Games\PrismLauncher\prismlauncher.exe | Java 21 + Mesa3D OpenGL 4.6 READY' -WaitSec 6
+    -Title 'QA TEST #5 - Minecraft PrismLauncher Portable (Account: XyPlayer_RDP + OpenGL 4.6)' `
+    -Sub 'Exe: C:\Games\PrismLauncher\prismlauncher.exe | Java 21 + Mesa3D OpenGL 4.6 READY' -WaitSec 4
   Stop-Process -Id $pPrism.Id -Force -ErrorAction SilentlyContinue
 }
 
+if (Test-Path 'C:\Games\Minecraft\TL.jar') {
+  $javawList = @(Get-ChildItem -Path 'C:\Program Files\Eclipse Adoptium', 'C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk', 'C:\Program Files\Java' -Recurse -Filter 'javaw.exe' -ErrorAction SilentlyContinue | Sort-Object FullName -Descending)
+  $javawExe = if ($javawList.Count -gt 0) { $javawList[0].FullName } else { 'javaw.exe' }
+  $pTl = Start-Process -FilePath $javawExe -ArgumentList @('-Xmx2048M', '-Dsun.java2d.d3d=false', '-jar', 'C:\Games\Minecraft\TL.jar') -WorkingDirectory 'C:\Games\Minecraft' -PassThru
+  Save-QaWindowScreenshot -Proc $pTl -OutName '06_Minecraft_TLauncher_Play.png' `
+    -Title 'QA TEST #6 - PLAY Minecraft TLauncher (TL.jar + Java 21 + Mesa3D OpenGL 4.6)' `
+    -Sub "Exe: $javawExe -jar C:\Games\Minecraft\TL.jar | Status: RUNNING OK" -WaitSec 12
+  Stop-Process -Id $pTl.Id -Force -ErrorAction SilentlyContinue
+}
+
 # ============================================================================
-# 5. Uji & Screenshot: Blender 3D Studio 4.2 LTS (OpenGL 4.6 Mesa3D)
+# 6. Uji & Screenshot: Blender 3D Studio 4.2 LTS (3D Viewport + Cube Rendered)
 # ============================================================================
-Write-Host "=== 5. Menguji & Screenshot Blender 3D 4.2 LTS ==="
+Write-Host "=== 6. Menguji & Screenshot Blender 3D 4.2 LTS (Full 3D Viewport) ==="
 $blenderExe = Get-ChildItem -Path 'C:\Games\Blender' -Recurse -File -Filter 'blender.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($blenderExe) {
   $env:GALLIUM_DRIVER = 'llvmpipe'
   $env:LIBGL_ALWAYS_SOFTWARE = '1'
   $env:MESA_GL_VERSION_OVERRIDE = '4.6'
   $pBlend = Start-Process -FilePath $blenderExe.FullName -WorkingDirectory $blenderExe.DirectoryName -PassThru
-  Save-QaWindowScreenshot -Proc $pBlend -OutName '06_Blender3D_42_Studio.png' `
-    -Title 'QA TEST #6 - Blender 3D Studio 4.2 LTS (Mesa3D OpenGL 4.6 Software Accelerated)' `
-    -Sub "Exe: $($blenderExe.FullName) | OpenGL 4.6 llvmpipe ACTIVE" -WaitSec 8
+  Save-QaWindowScreenshot -Proc $pBlend -OutName '07_Blender3D_42_Viewport.png' `
+    -Title 'QA TEST #7 - Blender 3D Studio 4.2.3 LTS (3D Viewport + Mesa3D OpenGL 4.6)' `
+    -Sub "Exe: $($blenderExe.FullName) | OpenGL 4.6 llvmpipe 3D Viewport ACTIVE" -WaitSec 16
   Stop-Process -Id $pBlend.Id -Force -ErrorAction SilentlyContinue
 }
 
 # ============================================================================
-# 6. Uji & Screenshot: Euro Truck Simulator 2 Free (eurotrucks2.exe)
+# 7. Uji & Screenshot: PLAY Euro Truck Simulator 2 (eurotrucks2.exe In-Game Menu)
 # ============================================================================
-Write-Host "=== 6. Menguji & Screenshot Euro Truck Simulator 2 ==="
+Write-Host "=== 7. Menguji & Screenshot PLAY Euro Truck Simulator 2 ==="
 $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
 if (Test-Path $etsExe) {
   $pEts = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
-  Save-QaWindowScreenshot -Proc $pEts -OutName '07_EuroTruckSimulator2_Free.png' `
-    -Title 'QA TEST #7 - Euro Truck Simulator 2 Free Edition (SCS Software)' `
-    -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | dgVoodoo2 Direct3D 9 Windowed ACTIVE' -WaitSec 7
+  Start-Sleep -Seconds 6
+  Send-KeyPress 0x1B # ESC to skip intro
+  Start-Sleep -Seconds 2
+  Send-KeyPress 0x0D # Enter
+  Save-QaWindowScreenshot -Proc $pEts -OutName '08_EuroTruckSimulator2_InGame_Play.png' `
+    -Title 'QA TEST #8 - PLAY Euro Truck Simulator 2 (SCS Software 3D Engine)' `
+    -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | dgVoodoo2 Direct3D 9 Windowed ACTIVE' -WaitSec 6
   Stop-Process -Id $pEts.Id -Force -ErrorAction SilentlyContinue
 }
 
 # ============================================================================
-# 7. Uji & Screenshot: FiveM Prank App & Roblox Anti-VM Launcher
+# 8. Uji & Screenshot: PLAY Roblox (RobloxPlayerLauncher.exe + WebGL App Mode + RobloxPlayerBeta.exe)
 # ============================================================================
-Write-Host "=== 7. Menguji & Screenshot FiveM.exe + Roblox Anti-VM Suite ==="
+Write-Host "=== 8. Menguji & Screenshot PLAY Roblox (WebGL App Mode + Native Client + Anti-VM Hub) ==="
+$chromeExe = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+$edgeExe   = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+$browserExe = if (Test-Path $chromeExe) { $chromeExe } else { $edgeExe }
+$pWebRbx = $null
+if (Test-Path $browserExe) {
+  $pWebRbx = Start-Process -FilePath $browserExe -ArgumentList @('--app=https://www.roblox.com/charts', '--window-size=1180,680', '--window-position=40,70', '--no-first-run', '--no-default-browser-check', '--ignore-gpu-blocklist', '--enable-webgl') -PassThru
+  Start-Sleep -Seconds 6
+}
+$pRbxBeta = $null
+$betaExe = Get-ChildItem -Path 'C:\Games\Roblox\Versions' -Recurse -File -Filter 'RobloxPlayerBeta.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($betaExe) {
+  $pRbxBeta = Start-Process -FilePath $betaExe.FullName -WorkingDirectory $betaExe.DirectoryName -ArgumentList '--app' -PassThru
+  Start-Sleep -Seconds 3
+}
+if (Test-Path 'C:\Games\Roblox\RobloxPlayerLauncher.exe') {
+  $pRbxHub = Start-Process -FilePath 'C:\Games\Roblox\RobloxPlayerLauncher.exe' -WorkingDirectory 'C:\Games\Roblox' -PassThru
+  Save-QaWindowScreenshot -Proc $pRbxHub -OutName '09_Roblox_Play_And_AntiVM_Suite.png' `
+    -Title 'QA TEST #9 - PLAY Roblox (Cloud/WebGL Charts + RobloxPlayerBeta.exe + Anti-VM Hub)' `
+    -Sub 'Exe: RobloxPlayerLauncher.exe + RobloxPlayerBeta.exe (version-9ac8595712b447a7) + WebGL App Mode ACTIVE' -WaitSec 4
+  Stop-Process -Id $pRbxHub.Id -Force -ErrorAction SilentlyContinue
+}
+if ($pRbxBeta) { Stop-Process -Id $pRbxBeta.Id -Force -ErrorAction SilentlyContinue }
+if ($pWebRbx) { Stop-Process -Id $pWebRbx.Id -Force -ErrorAction SilentlyContinue }
+Get-Process -Name 'RobloxPlayerBeta', 'chrome', 'msedge' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+# ============================================================================
+# 9. Uji & Screenshot: FiveM Prank App + MEmu Android Emulator
+# ============================================================================
+Write-Host "=== 9. Menguji & Screenshot FiveM.exe + MEmu Android Emulator ==="
 if (Test-Path 'C:\Games\FiveM\FiveM.exe') {
   $pFive = Start-Process -FilePath 'C:\Games\FiveM\FiveM.exe' -WorkingDirectory 'C:\Games\FiveM' -PassThru
-  Save-QaWindowScreenshot -Proc $pFive -OutName '08_FiveM_Prank_App.png' `
-    -Title 'QA TEST #8 - FiveM CitizenFX Prank App + Voicemod Tuna Audio Loop' `
-    -Sub 'Exe: C:\Games\FiveM\FiveM.exe | Sound: fivem_prank.mp3 READY' -WaitSec 4
+  Save-QaWindowScreenshot -Proc $pFive -OutName '10_FiveM_Prank_App.png' `
+    -Title 'QA TEST #10 - FiveM CitizenFX Prank App + Voicemod Tuna Audio Loop' `
+    -Sub 'Exe: C:\Games\FiveM\FiveM.exe | Official FiveM Icon + Sound Loop ACTIVE' -WaitSec 4
   Stop-Process -Id $pFive.Id -Force -ErrorAction SilentlyContinue
 }
 
-if (Test-Path 'C:\Games\Roblox\RobloxPlayerLauncher.exe') {
-  $pRbx = Start-Process -FilePath 'C:\Games\Roblox\RobloxPlayerLauncher.exe' -WorkingDirectory 'C:\Games\Roblox' -PassThru
-  Save-QaWindowScreenshot -Proc $pRbx -OutName '09_Roblox_AntiVM_Launcher.png' `
-    -Title 'QA TEST #9 - Roblox Player & Anti-VM Launcher Suite (RobloxPlayerLauncher.exe)' `
-    -Sub 'Exe: C:\Games\Roblox\RobloxPlayerLauncher.exe | RobloxPlayerBeta.exe + Cloud/Emulator Bypass READY' -WaitSec 4
-  Stop-Process -Id $pRbx.Id -Force -ErrorAction SilentlyContinue
-} elseif (Test-Path 'C:\Games\Roblox\Launch-Roblox-AntiVM.ps1') {
-  $pRbx = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-Sta', '-ExecutionPolicy', 'Bypass', '-File', 'C:\Games\Roblox\Launch-Roblox-AntiVM.ps1') -PassThru
-  Save-QaWindowScreenshot -Proc $pRbx -OutName '09_Roblox_AntiVM_Launcher.png' `
-    -Title 'QA TEST #9 - Roblox Player & Anti-VM Launcher Suite' `
-    -Sub 'Extracted CDN Package: C:\Games\Roblox\Versions\*\RobloxPlayerBeta.exe + Cloud/Emulator Bypass' -WaitSec 6
-  Stop-Process -Id $pRbx.Id -Force -ErrorAction SilentlyContinue
-}
-Get-Process -Name 'RobloxPlayerBeta' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-
-Write-Host "=== QA E2E & Screenshot Suite Selesai ==="
+Write-Host "=== QA E2E & Deep In-Game Play Screenshot Suite Selesai ==="
 Get-ChildItem -Path $outDir | Select-Object Name, Length

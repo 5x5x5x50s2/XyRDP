@@ -1,4 +1,4 @@
-# KallAncrit — Explorer preferences. No Explorer termination or RDP disconnect.
+# KallAncrit - Explorer preferences. No Explorer termination or RDP disconnect.
 param([switch]$CurrentUserOnly)
 $ErrorActionPreference = 'Stop'
 $preferences = @(

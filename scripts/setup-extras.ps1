@@ -1,14 +1,14 @@
 # ============================================================================
-#  setup-extras.ps1 — MODE EKSTRA (v2: Win10-style, tanpa Tailscale/XyDesk)
+#  setup-extras.ps1 - MODE EKSTRA (v2: Win10-style, tanpa Tailscale/XyDesk)
 # ----------------------------------------------------------------------------
 #  Dijalankan SETELAH setup-rdp.ps1 (+ setup-win10.ps1). Semua langkah
 #  BEST-EFFORT: satu gagal tidak mematikan sesi.
 #
 #    1) baca konfigurasi dari repo: assets/rdp-extras.json (ubah dari dashboard)
-#    2) LIGHTSHOT   — install otomatis (winget -> installer vendor), auto-run
+#    2) LIGHTSHOT   - install otomatis (winget -> installer vendor), auto-run
 #    3) TranslucentTB disabled
-#    4) WALLPAPER   — assets/wallpaper.* di repo (atau WALLPAPER_URL)
-#    5) VERIFIKASI  — user RDP dipastikan anggota grup Administrators
+#    4) WALLPAPER   - assets/wallpaper.* di repo (atau WALLPAPER_URL)
+#    5) VERIFIKASI  - user RDP dipastikan anggota grup Administrators
 #    6) rangkum hasil -> out/rdp-status.json (dibaca dashboard web)
 #
 #  Catatan: VM sekali-pakai. Setting per-user ditulis ke profil Default
@@ -27,14 +27,14 @@ if ($env:EXTRAS) {
   if (@('tidak', '0', 'false', 'no', 'off', 'skip', 'none') -contains $e) { $master = $false }
 }
 if (-not $master) {
-  Log "EXTRAS='$env:EXTRAS' — semua langkah ekstra dilewati."
+  Log "EXTRAS='$env:EXTRAS' - semua langkah ekstra dilewati."
   Update-Status @{ extras = @{ lightshot = 'skip'; wallpaper = 'skip'; wallpaper_file = ''; vscode = 'skip'; notepadpp = 'skip'; admin = $true } } | Out-Null
   exit 0
 }
 
 # ---------- 1. Konfigurasi ----------
 $cfg = Get-Cfg
-if ($env:WALLPAPER_URL) { Log 'WALLPAPER_URL diisi dari input workflow — override file di repo' }
+if ($env:WALLPAPER_URL) { Log 'WALLPAPER_URL diisi dari input workflow - override file di repo' }
 Log "lightshot=$($cfg.lightshot) | wallpaper=$($cfg.wallpaper) | win10_look=$($cfg.win10_look) | VSCode=$($cfg.vscode) | Notepad++=$($cfg.notepadpp)"
 
 # Terapkan tema juga bila pengguna mematikan langkah visual Win10.
@@ -191,7 +191,7 @@ if ($cfg.wallpaper) {
       if (Get-File $env:WALLPAPER_URL $tmp 180) {
         $ext = Get-ImageExt ([IO.File]::ReadAllBytes($tmp))
         if ($ext) { $wpFile = Join-Path $wpDir "wallpaper.$ext"; Move-Item $tmp $wpFile -Force; $srcUsed = 'WALLPAPER_URL' }
-        else { Log '  URL bukan gambar jpg/png/bmp — diabaikan' }
+        else { Log '  URL bukan gambar jpg/png/bmp - diabaikan' }
       }
     } catch { Log "  unduh dari WALLPAPER_URL gagal: $($_.Exception.Message)" }
   }
@@ -294,7 +294,7 @@ Update-Status @{ extras = [ordered]@{
 Close-DefaultHive
 
 $adminTxt = $(if ($adminOk) { 'YA' } else { 'TIDAK' })
-Log ("SELESAI — lightshot={0} wallpaper={1} admin={2}" -f $resLightshot, $resWall, $adminTxt)
+Log ("SELESAI - lightshot={0} wallpaper={1} admin={2}" -f $resLightshot, $resWall, $adminTxt)
 try { Probe-Rdp 'akhir step' | Out-Null } catch {}
 
 exit 0

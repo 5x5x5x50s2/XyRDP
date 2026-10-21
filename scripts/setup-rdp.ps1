@@ -1,5 +1,5 @@
 # ============================================================================
-#  setup-rdp.ps1 — MODE DASAR (v2: tanpa Tailscale)
+#  setup-rdp.ps1 - MODE DASAR (v2: tanpa Tailscale)
 #  1) buat user admin (Administrators + Remote Desktop Users, password tetap)
 #  2) aktifkan Remote Desktop port 3389 (setting standar Windows)
 #  3) catat info sesi ke out/rdp-status.json (tanpa password)
@@ -22,7 +22,7 @@ $dur = [int]($env:DUR -replace '\D', ''); if ($dur -lt 10) { $dur = 342 }; if ($
 $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { 'xyadmin' }
 $reservedUsers = @('administrator','guest','defaultaccount','wdagutilityaccount','system','localservice','networkservice','con','prn','aux','nul')
 if ($u -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{2,19}$' -or $reservedUsers -contains $u.ToLower()) {
-  Log 'ERROR: RDP_USER tidak valid. Gunakan 3–20 karakter (huruf/angka, _ atau -); hindari nama bawaan Windows.'
+  Log 'ERROR: RDP_USER tidak valid. Gunakan 3-20 karakter (huruf/angka, _ atau -); hindari nama bawaan Windows.'
   exit 1
 }
 $cfg = Get-Cfg
@@ -71,7 +71,7 @@ if ($cfg.lightweight_mode) {
 
 # token admin penuh untuk login jaringan/RDP (bagian dari "akses admin", bukan tweak)
 reg add 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' /v LocalAccountTokenFilterPolicy /t REG_DWORD /d 1 /f | Out-Null
-# === HIGHEST ADMIN (paling tinggi) — disable UAC & elevate token ===
+# === HIGHEST ADMIN (paling tinggi) - disable UAC & elevate token ===
 try {
   # Disable UAC total + no prompt (paling tinggi)
   Set-Reg 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' 'EnableLUA' 0 'DWord' | Out-Null
@@ -356,7 +356,7 @@ try {
   $ns = (netstat -ano | Select-String ':3389' | Select-Object -First 3) -join ' | '
   Log "  netstat :3389 -> $ns"
 } catch {}
-Log "RDP di port 3389: denyTS=$okDeny | listener=$listen (NLA default Windows). Tidak ada port publik di VM ini — akses lewat tunnel/Tailscale."
+Log "RDP di port 3389: denyTS=$okDeny | listener=$listen (NLA default Windows). Tidak ada port publik di VM ini - akses lewat tunnel/Tailscale."
 
 
 # ---------- 3. Status (tanpa password) ----------
@@ -388,5 +388,5 @@ $status | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 -Path (Join-Path 
 $now.ToString('s') | Set-Content -Path (Join-Path $outDir 'started.txt')
 $status | ConvertTo-Json -Depth 8 | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
 
-Log "SESI DASAR SIAP — user $u, port 3389. Lanjut: setup akses (tunnel/Tailscale)."
+Log "SESI DASAR SIAP - user $u, port 3389. Lanjut: setup akses (tunnel/Tailscale)."
 exit 0

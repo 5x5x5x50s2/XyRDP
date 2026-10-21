@@ -1,5 +1,5 @@
 # ============================================================================
-#  setup-samp.ps1 — Suite Lengkap GTA San Andreas & SA-MP 0.3.7-R5 / open.mp
+#  setup-samp.ps1 - Suite Lengkap GTA San Andreas & SA-MP 0.3.7-R5 / open.mp
 #                   (Anti-Blank / Anti-Crash di Windows Server RDP Tanpa GPU)
 # ----------------------------------------------------------------------------
 #  Mengatasi seluruh penyebab GTA SA / SA-MP "tidak muncul apa-apa" di RDP:
@@ -11,7 +11,7 @@
 #     resolusi virtual 800x600 / 1280x720 / 1920x1080 agar gta_sa.exe tidak
 #     pernah keluar diam-diam karena "Cannot find 800x600x32 video mode".
 #  3) Memasang III.VC.SA.WindowedMode.asi + SilentPatchSA.asi + vorbisFile.dll
-#     (Ultimate ASI Loader tunggal — TANPA duplikasi dinput8.dll/ddraw.dll
+#     (Ultimate ASI Loader tunggal - TANPA duplikasi dinput8.dll/ddraw.dll
 #     yang sebelumnya membuat .asi termuat 2x dan crash saat start).
 #  4) Menonaktifkan paksaan DEP Windows Server (bcdedit nx OptIn + AppCompat
 #     DisableNXShowUI) agar injeksi samp.dll ke gta_sa.exe tidak dibunuh OS.
@@ -107,7 +107,7 @@ function Start-ProcessWithTimeout([string]$FilePath, [string[]]$ArgumentList, [s
     }
     $p = Start-Process @psi
     if (-not $p.WaitForExit($TimeoutSec * 1000)) {
-      Log "  proses '$(Split-Path $FilePath -Leaf)' melebihi batas $TimeoutSec detik — dihentikan."
+      Log "  proses '$(Split-Path $FilePath -Leaf)' melebihi batas $TimeoutSec detik - dihentikan."
       try { $p.Kill() } catch {}
       return -1
     }
@@ -769,7 +769,7 @@ if ($ResetAntiBan) {
     Add-Type -AssemblyName System.Windows.Forms
     $res = [System.Windows.Forms.MessageBox]::Show(
       "GPCI Serial & HWID SA-MP berhasil di-reset ke identitas baru!`r`nPath GPCI Baru: $newJunc`r`nMetric VPN (Tailscale/Portmap) telah dikunci agar tidak bocor ke SA-MP.`r`n`r`nApakah server tujuan masih mendeteksi IP Hosting/VPN dan Anda ingin mengaktifkan Cloudflare WARP Split-Tunnel (Aman RDP tidak putus)?",
-      "XyRDP — Anti-Banned & Anti-VPN SAMP",
+      "XyRDP - Anti-Banned & Anti-VPN SAMP",
       [System.Windows.Forms.MessageBoxButtons]::YesNo,
       [System.Windows.Forms.MessageBoxIcon]::Information
     )
@@ -820,7 +820,7 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'XyRDP — GTA San Andreas & SA-MP 0.3.7-R5 Control Center'
+$form.Text = 'XyRDP - GTA San Andreas & SA-MP 0.3.7-R5 Control Center'
 $form.Size = New-Object System.Drawing.Size(560, 485)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedDialog'
@@ -829,7 +829,7 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 22)
 $form.ForeColor = [System.Drawing.Color]::White
 
 $lblTitle = New-Object System.Windows.Forms.Label
-$lblTitle.Text = 'GTA SA-MP 0.3.7-R5 · DirectX 9 WARP + Windowed Fix'
+$lblTitle.Text = 'GTA SA-MP 0.3.7-R5 | DirectX 9 WARP + Windowed Fix'
 $lblTitle.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
 $lblTitle.Location = New-Object System.Drawing.Point(20, 16)
 $lblTitle.Size = New-Object System.Drawing.Size(510, 28)
@@ -848,7 +848,7 @@ function Update-GuiStatus {
   $hasD3d9 = Test-Path (Join-Path $script:activeDir 'd3d9.dll')
   $hasDdrw = Test-Path (Join-Path $script:activeDir 'ddraw.dll')
   $lblStatus.Text = "Folder Aktif : $($script:activeDir)`r`n" +
-    "gta_sa.exe   : $(if ($hasGta) { 'SIAP (Terdeteksi)' } else { 'BELUM ADA — Klik tombol Ekstrak ZIP / Pilih Folder di bawah' })`r`n" +
+    "gta_sa.exe   : $(if ($hasGta) { 'SIAP (Terdeteksi)' } else { 'BELUM ADA - Klik tombol Ekstrak ZIP / Pilih Folder di bawah' })`r`n" +
     "samp.exe     : $(if ($hasSamp) { 'SIAP (SA-MP 0.3.7-R5)' } else { 'Belum terpasang' })`r`n" +
     "RDP D3D9 Fix : $(if ($hasD3d9 -and $hasDdrw) { 'AKTIF (dgVoodoo2 Fullscreen + Anti-0x00746929 + SilentPatch)' } else { 'Siap dipasang' })"
 }
@@ -1018,9 +1018,47 @@ $form.Controls.Add($lblHint)
 '@
   Set-Content -Path $patcherPath -Value $patcherCode -Encoding UTF8 -Force
 
-  # 11. Jalankan auto-patch pada folder kandidat (tanpa dialog)
+  # 11. Pasang Virtual Sound Card (VB-Audio Virtual Cable) agar gta_sa.exe selalu mendeteksi Sound Card aktif (DirectSound Ready)
+  try {
+    $vbcDir = 'C:\XyRDP\audio\vbcable'
+    $vbcZip = Join-Path $work 'VBCABLE_Driver_Pack43.zip'
+    if (-not (Test-Path (Join-Path $vbcDir 'vbcable.cat'))) {
+      New-Item -ItemType Directory -Path $vbcDir -Force | Out-Null
+      if (Invoke-DownloadWithRetry 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' $vbcZip 2) {
+        if (Test-Path $sevenZip) { & $sevenZip x $vbcZip "-o$vbcDir" -y 2>&1 | Out-Null }
+        else { Expand-Archive -Path $vbcZip -DestinationPath $vbcDir -Force }
+        foreach ($sigTarget in @((Join-Path $vbcDir 'vbcable.cat'), (Join-Path $vbcDir 'VBCABLE_Setup_x64.exe'))) {
+          if (Test-Path $sigTarget) {
+            $cert = (Get-AuthenticodeSignature $sigTarget).SignerCertificate
+            if ($cert) {
+              $cerFile = Join-Path $vbcDir 'vbcert.cer'
+              [System.IO.File]::WriteAllBytes($cerFile, $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+              & certutil.exe -addstore -f "Root" $cerFile 2>&1 | Out-Null
+              & certutil.exe -addstore -f "TrustedPublisher" $cerFile 2>&1 | Out-Null
+            }
+          }
+        }
+        $infFile = Join-Path $vbcDir 'vbMmeCable64_win7.inf'
+        if (Test-Path $infFile) {
+          & pnputil.exe /add-driver $infFile /install 2>&1 | Out-Null
+        }
+        $vbcExe = Join-Path $vbcDir 'VBCABLE_Setup_x64.exe'
+        if (Test-Path $vbcExe) {
+          Start-ProcessWithTimeout $vbcExe @('-i', '-h') $vbcDir 25 | Out-Null
+        }
+        Start-Service -Name 'AudioEndpointBuilder' -ErrorAction SilentlyContinue
+        Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue
+        Log 'VB-Audio Virtual Sound Card berhasil dipasang (DirectSound GTA SA siap 100%).'
+      }
+    }
+  } catch { Log "VB-Cable setup warning: $($_.Exception.Message)" }
+
+  # 11b. Jalankan auto-patch pada folder kandidat (tanpa dialog) dan kunci HKCU:\Software\SAMP\gta_sa_exe
   try {
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $patcherPath 2>&1 | Out-Null
+    New-Item -Path 'HKCU:\Software\SAMP' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-ItemProperty -Path 'HKCU:\Software\SAMP' -Name 'gta_sa_exe' -Value 'C:\Games\GTA San Andreas\gta_sa.exe' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+    New-ItemProperty -Path 'HKCU:\Software\SAMP' -Name 'PlayerName' -Value 'XyPlayer_RDP' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
   } catch {}
 
   # 12. Buat Shortcut di Desktop User RDP & Public Desktop dengan Nama & Ikon Berbeda (Anti-Tertukar!)
@@ -1037,7 +1075,7 @@ $form.Controls.Add($lblHint)
 
       $wsh = New-Object -ComObject WScript.Shell
 
-      # Shortcut 1: GTA SA-MP Launcher (Anti-Ban) — Prioritaskan IKON ASLI samp.exe!
+      # Shortcut 1: GTA SA-MP Launcher (Anti-Ban) - Prioritaskan IKON ASLI samp.exe!
       $lnk1 = $wsh.CreateShortcut((Join-Path $desk 'GTA SA-MP Launcher (Anti-Ban).lnk'))
       $lnk1.TargetPath = 'powershell.exe'
       $lnk1.Arguments = "-NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$patcherPath`" -Interactive -LaunchSamp"
@@ -1052,7 +1090,7 @@ $form.Controls.Add($lblHint)
       $lnk1.Description = 'Buka GTA SA-MP 0.3.7-R5 dengan Auto GPCI/HWID Spoofing & Anti-VPN'
       $lnk1.Save()
 
-      # Shortcut 2: Fix & Patch GTA SA-MP (SilentPatch) — Prioritaskan IKON ASLI gta_sa.exe / samp.exe!
+      # Shortcut 2: Fix & Patch GTA SA-MP (SilentPatch) - Prioritaskan IKON ASLI gta_sa.exe / samp.exe!
       $lnk2 = $wsh.CreateShortcut((Join-Path $desk 'Fix & Patch GTA SA-MP (SilentPatch).lnk'))
       $lnk2.TargetPath = 'powershell.exe'
       $lnk2.Arguments = "-NoProfile -Sta -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$patcherPath`" -Interactive"

@@ -1,5 +1,5 @@
 # ============================================================================
-#  persist-state.ps1 — Simpan State Sesi XyRDP (Auto-Save ke GitHub Release)
+#  persist-state.ps1 - Simpan State Sesi XyRDP (Auto-Save ke GitHub Release)
 # ----------------------------------------------------------------------------
 #  Menyimpan:
 #    - C:\Persist (Folder permanen pengguna)
@@ -25,7 +25,7 @@ $XyTag = if ($Checkpoint) { 'XyRDP:checkpoint' } else { 'XyRDP:persist' }
 
 $cfg = Get-Cfg
 if ($env:PERSIST_DATA -and @('tidak','0','false','no','off') -contains $env:PERSIST_DATA.Trim().ToLower()) {
-  Log 'Persistensi data dinonaktifkan oleh input pengguna — lewati.'
+  Log 'Persistensi data dinonaktifkan oleh input pengguna - lewati.'
   exit 0
 }
 
@@ -43,7 +43,7 @@ if ((-not $env:GITHUB_TOKEN -or -not $env:GITHUB_REPOSITORY) -and (Test-Path 'C:
 $ghToken = $env:GITHUB_TOKEN
 $ghRepo  = $env:GITHUB_REPOSITORY
 if (-not $ghToken -or -not $ghRepo) {
-  Log 'GITHUB_TOKEN atau GITHUB_REPOSITORY tidak tersedia — lewati persist state.'
+  Log 'GITHUB_TOKEN atau GITHUB_REPOSITORY tidak tersedia - lewati persist state.'
   exit 0
 }
 
@@ -288,7 +288,7 @@ $sigFile = 'C:\XyRDP\tools\last-checkpoint-sig.txt'
 if ($Checkpoint -and (Test-Path $sigFile)) {
   $prevSig = (Get-Content $sigFile -Raw -ErrorAction SilentlyContinue).Trim()
   if ($prevSig -eq $stateSig) {
-    Log "Tidak ada perubahan data sejak checkpoint terakhir ($fileCount file) — lewati upload API."
+    Log "Tidak ada perubahan data sejak checkpoint terakhir ($fileCount file) - lewati upload API."
     Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
     exit 0
   }
@@ -311,7 +311,7 @@ if (-not (Test-Path $zipPath)) {
 $zipMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
 Log "Arsip state dibuat ($zipMB MB). Mengenkripsi AES-256..."
 if ($zipMB -gt 5400) {
-  Log "Arsip melebihi batas maksimum multi-part (5400 MB) — lewati upload."
+  Log "Arsip melebihi batas maksimum multi-part (5400 MB) - lewati upload."
   Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
   exit 0
 }

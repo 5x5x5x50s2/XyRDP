@@ -1,5 +1,5 @@
 # ============================================================================
-#  setup-tools-hub.ps1 — Build & Pasang "XyDeskRemote Dashboard" (GUI Desktop)
+#  setup-tools-hub.ps1 - Build & Pasang "XyDeskRemote Dashboard" (GUI Desktop)
 # ----------------------------------------------------------------------------
 #  Mengompilasi aplikasi GUI WinForms native (C:\XyRDP\tools\XyDeskDashboard.exe)
 #  menggunakan C# compiler bawaan .NET Framework 4.x di Windows Server 2022/2025.
@@ -57,7 +57,7 @@ namespace XyDeskTools
 
         public MainForm()
         {
-            this.Text = "XyDeskRemote Dashboard — Pusat Kontrol, Installer, Anti-VM & Cloud Save";
+            this.Text = "XyDeskRemote Dashboard - Pusat Kontrol, Installer, Anti-VM & Cloud Save";
             this.Size = new Size(880, 650);
             this.MinimumSize = new Size(840, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -84,7 +84,7 @@ namespace XyDeskTools
             header.Padding = new Padding(18, 10, 18, 8);
 
             Label title = new Label();
-            title.Text = "XyDeskRemote Dashboard — Pusat Kelola RDP, Installer & Gaming Boost";
+            title.Text = "XyDeskRemote Dashboard - Pusat Kelola RDP, Installer & Gaming Boost";
             title.Font = new Font("Segoe UI Semibold", 13.5f, FontStyle.Bold);
             title.ForeColor = Color.FromArgb(56, 189, 248);
             title.AutoSize = true;
@@ -135,7 +135,7 @@ namespace XyDeskTools
             bottomPanel.BackColor = Color.FromArgb(11, 14, 20);
 
             statusLabel = new Label();
-            statusLabel.Text = "Status: Siap digunakan — Pilih menu di atas untuk mengelola RDP, menginstal app, atau memperbaiki game.";
+            statusLabel.Text = "Status: Siap digunakan - Pilih menu di atas untuk mengelola RDP, menginstal app, atau memperbaiki game.";
             statusLabel.Dock = DockStyle.Top;
             statusLabel.Height = 22;
             statusLabel.ForeColor = Color.FromArgb(52, 211, 153);
@@ -683,7 +683,7 @@ namespace XyDeskTools
                     {
                         progressBar.Style = ProgressBarStyle.Continuous;
                         progressBar.Value = 100;
-                        statusLabel.Text = "Status: Selesai — " + label;
+                        statusLabel.Text = "Status: Selesai - " + label;
                         AppendLog("[SELESAI] " + label);
                     }));
                 }
@@ -750,7 +750,7 @@ try {
         $lnk = $wsh.CreateShortcut((Join-Path $desk 'XyDeskRemote Dashboard.lnk'))
         $lnk.TargetPath = $exePath
         $lnk.WorkingDirectory = $toolsDir
-        $lnk.Description = 'XyDeskRemote Dashboard — Pusat Kelola Sistem, Installer, Anti-VM & Cloud Save'
+        $lnk.Description = 'XyDeskRemote Dashboard - Pusat Kelola Sistem, Installer, Anti-VM & Cloud Save'
         $lnk.IconLocation = "$exePath,0"
         $lnk.Save()
       } catch {}

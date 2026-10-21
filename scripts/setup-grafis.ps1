@@ -1,5 +1,5 @@
 # ============================================================================
-#  setup-grafis.ps1 — GPU Software Lengkap (Mesa3D OpenGL 4.6 + OpenGL ES 3.2
+#  setup-grafis.ps1 - GPU Software Lengkap (Mesa3D OpenGL 4.6 + OpenGL ES 3.2
 #                     + Vulkan 1.3 Lavapipe + System32/SysWOW64 + Java/Emulator)
 # ----------------------------------------------------------------------------
 #  1) Mengekstrak Mesa3D rilis MSVC secara terpisah untuk x64 (C:\XyRDP\grafis\mesa-x64)

@@ -1,5 +1,5 @@
 # ============================================================================
-#  lib-common.ps1 — helper bersama untuk semua script XyRDP (v2: Win10-style,
+#  lib-common.ps1 - helper bersama untuk semua script XyRDP (v2: Win10-style,
 #  akses privat Tailscale). Dipakai dengan cara di-dot-source:
 #
 #      $XyTag = 'XyRDP:akses'
@@ -159,8 +159,8 @@ function Get-Cfg {
   $path = Join-Path (Get-Workspace) 'assets\rdp-extras.json'
   if (Test-Path $path) {
     try { $j = Get-Content $path -Raw | ConvertFrom-Json; Log 'konfigurasi: assets/rdp-extras.json' }
-    catch { Log "rdp-extras.json tidak terbaca ($($_.Exception.Message)) — pakai default" }
-  } else { Log 'assets/rdp-extras.json tidak ada — pakai default' }
+    catch { Log "rdp-extras.json tidak terbaca ($($_.Exception.Message)) - pakai default" }
+  } else { Log 'assets/rdp-extras.json tidak ada - pakai default' }
 
   $c = [pscustomobject]@{}
   foreach ($k in $script:XyCfgDefaults.Keys) {
@@ -194,7 +194,7 @@ function Read-Status {
   try { return (Get-Content $p -Raw | ConvertFrom-Json) } catch { Log "status tidak terbaca: $($_.Exception.Message)"; return $null }
 }
 
-# Update-Status @{ key = value } — merge + tulis balik (tanpa password)
+# Update-Status @{ key = value } - merge + tulis balik (tanpa password)
 function Update-Status([hashtable]$Pairs) {
   $p = Get-StatusPath
   $obj = Read-Status
@@ -331,11 +331,11 @@ function Wait-RdpReady([int]$TimeoutSec = 240, [int]$Port = 3389) {
     $cands = @('127.0.0.1', '::1') + @(Get-LocalIPv4List) | Select-Object -Unique
     foreach ($c in $cands) {
       $r = Test-RdpHandshake $c $Port
-      if ($r.ok) { Log "  RDP SIAP di $c`:$Port — $($r.detail)"; return $c }
+      if ($r.ok) { Log "  RDP SIAP di $c`:$Port - $($r.detail)"; return $c }
     }
     $st = Get-RdpListenerState $Port
     if ($st -ne $lastState) { Log "  listener $Port : $st"; $lastState = $st }
-    # CATATAN: restart TermService SENGAJA tidak dilakukan lagi — pada runner
+    # CATATAN: restart TermService SENGAJA tidak dilakukan lagi - pada runner
     # GitHub, restart tidak menghidupkan kembali listener 3389 (terbukti di
     # validasi 2026-10-03: menunggu 240s + 150s tetap mati). Kita cukup menunggu
     # dan melaporkan apa adanya; penyebabnya sudah dihindari di setup-xydesk.
@@ -359,7 +359,7 @@ function Probe-Rdp([string]$Where, [string]$Address = '127.0.0.1') {
 #  Kenapa penting: pada 3 Okt 2026 terbukti tunnel bisa "selftest ok" dari dalam
 #  VM (bore.pub:51782 menjawab X.224 dari dalam), TAPI dari internet port itu
 #  ditolak (6/8 node luar "connection refused"). Jadi "selftest ok" saja TIDAK
-#  cukup — alamat yang dipamerkan ke pengguna harus diuji dari luar.
+#  cukup - alamat yang dipamerkan ke pengguna harus diuji dari luar.
 #  Layanan: check-host.net (tanpa akun, mendukung TCP).
 # ---------------------------------------------------------------------------
 function Get-OutsideReach([string]$HostName, [int]$Port, [int]$TimeoutSec = 90) {

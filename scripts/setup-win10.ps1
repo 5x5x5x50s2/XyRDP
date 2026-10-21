@@ -1,9 +1,9 @@
 # ============================================================================
-#  setup-win10.ps1 — "Windows 10 look" untuk runner windows-2022
+#  setup-win10.ps1 - "Windows 10 look" untuk runner windows-2022
 # ----------------------------------------------------------------------------
 #  Catatan jujur: runner GitHub TIDAK punya image Windows 10 desktop. Yang
 #  dipakai adalah Windows Server 2022 yang secara UI/kernel = Windows 10 21H2
-#  (build 20348) — jadi tampilannya sudah Windows 10. Script ini menambahkan
+#  (build 20348) - jadi tampilannya sudah Windows 10. Script ini menambahkan
 #  yang khas "Windows 10" dan mematikan yang khas "Server":
 #
 #    1) Server Manager tidak muncul saat login, IE Enhanced Security mati
@@ -13,7 +13,7 @@
 #    4) Wallpaper + latar login/lock screen bergaya Windows 10
 #    5) Ctrl+Alt+Del tidak diwajibkan di layar login (seperti Windows 10)
 #    6) Windows Search diaktifkan supaya Start menu bisa mencari
-#    7) (opsional) label "Windows 10 Pro" di registry — kosmetik
+#    7) (opsional) label "Windows 10 Pro" di registry - kosmetik
 #
 #  Semua langkah BEST-EFFORT: gagal satu tidak mematikan sesi.
 #  Konfigurasi: assets/rdp-extras.json -> win10_look / win10_badge /
@@ -36,7 +36,7 @@ if ($skip) {
 Log "mulai tweak Windows 10 (badge=$($cfg.win10_badge) wallpaper=$($cfg.win10_wallpaper) dark=$($cfg.dark_theme) ringan=$($cfg.lightweight_mode))"
 
 $os = try { Get-CimInstance Win32_OperatingSystem } catch { $null }
-Log "  OS terpasang: $($os.Caption) build $($os.Version) — UI-nya sama dengan Windows 10 21H2"
+Log "  OS terpasang: $($os.Caption) build $($os.Version) - UI-nya sama dengan Windows 10 21H2"
 
 # ---------- 1. buang ciri khas "Server" ----------
 Open-DefaultHive | Out-Null
@@ -160,7 +160,7 @@ if ($wpFile) {
     Log "  wallpaper diterapkan: $local (+ latar layar login)"
   } catch { Log "  wallpaper gagal: $($_.Exception.Message)"; $wallStatus = 'gagal' }
 } else {
-  Log '  tidak ada file wallpaper di assets/ — wallpaper bawaan dipakai'
+  Log '  tidak ada file wallpaper di assets/ - wallpaper bawaan dipakai'
   $wallStatus = 'default'
 }
 
@@ -192,7 +192,7 @@ if ($cfg.win10_badge) {
     $badgeStatus = if ($badgewins -ge 3) { 'ok' } else { "sebagian ($badgewins/4)" }
   } catch { Log "  label Windows 10 gagal (tidak kritis): $($_.Exception.Message)"; $badgeStatus = 'gagal' }
 } else {
-  Log '  label Windows 10 dimatikan (win10_badge=false) — sistem tetap menampilkan nama Windows Server'
+  Log '  label Windows 10 dimatikan (win10_badge=false) - sistem tetap menampilkan nama Windows Server'
 }
 
 Close-DefaultHive
@@ -204,7 +204,7 @@ Update-Status @{ win10 = [ordered]@{
     note = 'Tampilan Windows 10 (UI Windows Server 2022 = kernel/UI Windows 10 21H2)'
 } } | Out-Null
 
-Log "SELESAI — win10 look=ok badge=$badgeStatus wallpaper=$wallStatus search=$searchStatus"
+Log "SELESAI - win10 look=ok badge=$badgeStatus wallpaper=$wallStatus search=$searchStatus"
 try { Probe-Rdp 'akhir step' | Out-Null } catch {}
 
 exit 0

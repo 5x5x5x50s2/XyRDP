@@ -1,5 +1,5 @@
 # ============================================================================
-#  cleanup-actions.ps1 — Pembersihan Bertahap Run Lama (Aman untuk Akun Baru)
+#  cleanup-actions.ps1 - Pembersihan Bertahap Run Lama (Aman untuk Akun Baru)
 # ----------------------------------------------------------------------------
 #  Menyimpan KEEP_RUNS run terbaru (default 5) dan menghapus maksimal 3 run
 #  selesai paling lama per sesi dengan jeda sopan (1.2 detik) agar tidak
@@ -13,7 +13,7 @@ $wf   = $env:GH_WORKFLOW; if (-not $wf) { $wf = 'rdp-6h.yml' }
 $keep = [int]($env:KEEP_RUNS -replace '\D',''); if ($keep -lt 1) { $keep = 5 }
 $tok  = if ($env:CLEANUP_TOKEN) { $env:CLEANUP_TOKEN } else { $env:GITHUB_TOKEN }
 
-if (-not $repo -or -not $tok) { Log 'repo/token tidak diketahui — skip'; exit 0 }
+if (-not $repo -or -not $tok) { Log 'repo/token tidak diketahui - skip'; exit 0 }
 
 $hdrs = @{
   Authorization          = "Bearer $tok"
@@ -26,7 +26,7 @@ try {
   $runs = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/actions/workflows/$wf/runs?per_page=25" -Method Get -Headers $hdrs -TimeoutSec 25
   $list = @($runs.workflow_runs)
   if ($list.Count -le $keep) {
-    Log "Total run ($($list.Count)) masih dalam batas aman ($keep) — tidak ada yang dihapus."
+    Log "Total run ($($list.Count)) masih dalam batas aman ($keep) - tidak ada yang dihapus."
     exit 0
   }
   $old = @($list | Select-Object -Skip $keep | Where-Object { $_.status -notin @('in_progress', 'queued') } | Select-Object -Last 3)

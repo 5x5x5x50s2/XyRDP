@@ -1,5 +1,5 @@
 # ============================================================================
-#  setup-portmap.ps1 — Akses Portmap OpenVPN (Opsional) & Railway Cloud Tunnel
+#  setup-portmap.ps1 - Akses Portmap OpenVPN (Opsional) & Railway Cloud Tunnel
 # ----------------------------------------------------------------------------
 #  Mendukung 3 skenario otomatis:
 #    1. Railway Cloud Tunnel (*.rlwy.net / *.up.railway.app):
@@ -112,7 +112,7 @@ if ($hostName -match '\.(rlwy\.net|railway\.app)$' -or $hostName -match '^(bore\
 # ---------- SKENARIO 2: FALLBACK OTOMATIS BILA PORTMAP TIDAK DIISI ----------
 if (-not $env:PORTMAP_OVPN_CONFIG) {
   if ($env:TAILSCALE_AUTH_KEY) {
-    Log 'PORTMAP_OVPN_CONFIG kosong, tetapi TAILSCALE_AUTH_KEY tersedia — beralih otomatis ke Tailscale.'
+    Log 'PORTMAP_OVPN_CONFIG kosong, tetapi TAILSCALE_AUTH_KEY tersedia - beralih otomatis ke Tailscale.'
     & "$PSScriptRoot/setup-akses.ps1"
     exit $LASTEXITCODE
   }

@@ -1,5 +1,5 @@
 # ============================================================================
-#  publish-status.ps1 — publikasikan out/rdp-status.json ke branch `status`
+#  publish-status.ps1 - publikasikan out/rdp-status.json ke branch `status`
 #  1) GitHub Contents API via Invoke-RestMethod (Bearer GITHUB_TOKEN)  <- utama
 #  2) Fallback: git push pakai header "Authorization: Bearer"          <- terbukti jalan
 #  Verifikasi API mencocokkan run, attempt, dan active. Gagal publikasi = exit 1.
@@ -19,7 +19,7 @@ $statusBranch = if ($env:STATUS_BRANCH) { $env:STATUS_BRANCH.Trim() } else { 'st
 # lokasi repo: Actions -> GITHUB_WORKSPACE, di luar Actions -> folder induk script
 $ws   = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
 $src  = Join-Path $ws 'out\rdp-status.json'
-if (-not (Test-Path $src)) { Log "tidak ada $src — skip"; exit 0 }
+if (-not (Test-Path $src)) { Log "tidak ada $src - skip"; exit 0 }
 
 $json = Get-Content $src -Raw | ConvertFrom-Json
 if (-not $isActive) {
@@ -86,7 +86,7 @@ try {
     if ($res -and $res.content) { Log "Contents API OK ($remotePath -> commit $($res.commit.sha.Substring(0,7)))" }
     elseif ($remotePath -eq 'rdp-status.json') { throw "PUT contents tidak mengembalikan hasil" }
   }
-} catch { Log "cara-1 gagal ($($_.Exception.Message)) — lanjut fallback git" }
+} catch { Log "cara-1 gagal ($($_.Exception.Message)) - lanjut fallback git" }
 
 # ---- cara 2 (fallback): git push + Bearer header ----
 function Verify-Published {
@@ -112,7 +112,7 @@ function Verify-PublishedAPI {
 }
 
 if (-not (Verify-PublishedAPI)) {
-  Log "verifikasi belum lolos — coba fallback git push..."
+  Log "verifikasi belum lolos - coba fallback git push..."
   $tmp = Join-Path $env:RUNNER_TEMP ("xyrdpstatus-" + (Get-Random -Maximum 999999))
   try {
     git init -q -b $statusBranch $tmp | Out-Null
@@ -134,7 +134,7 @@ if (-not (Verify-PublishedAPI)) {
 }
 
 if (Verify-PublishedAPI) {
-  Log "OK — status run/attempt/active terverifikasi melalui GitHub API."
+  Log "OK - status run/attempt/active terverifikasi melalui GitHub API."
   exit 0
 }
 Log 'Gagal mempublikasikan status. Dashboard tidak dapat menyediakan koneksi; periksa izin Contents write workflow.'

@@ -1,4 +1,4 @@
-# RdpFree / KallAncrit — verified tools for development, not a public relay.
+# RdpFree / KallAncrit - verified tools for development, not a public relay.
 $XyTag='RdpFree:host-tools'
 . "$PSScriptRoot/lib-common.ps1"
 $ErrorActionPreference='Stop'

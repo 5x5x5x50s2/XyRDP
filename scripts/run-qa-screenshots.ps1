@@ -45,7 +45,11 @@ public class WinCapture {
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 
+    [DllImport("user32.dll")]
+    public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
     public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    public const uint WM_CLOSE = 0x0010;
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_SHOWWINDOW = 0x0040;
@@ -331,6 +335,11 @@ Get-CimInstance Win32_SoundDevice -ErrorAction SilentlyContinue | Select-Object 
 if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   Remove-Item 'C:\Games\GTA San Andreas\dsound.dll' -Force -ErrorAction SilentlyContinue
   Remove-Item 'C:\Games\GTA San Andreas\dsoal-aldrv.dll' -Force -ErrorAction SilentlyContinue
+  Get-ChildItem -Path 'C:\Games\GTA San Andreas' -File -Filter '*.asi' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+  foreach ($mpg in @('Logo.mpg', 'GTAtitles.mpg')) {
+    $mp = "C:\Games\GTA San Andreas\movies\$mpg"
+    if (Test-Path $mp) { Move-Item -LiteralPath $mp -Destination "$mp.bak" -Force -ErrorAction SilentlyContinue }
+  }
   $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
   for ($w = 0; $w -lt 16; $w++) {
     Start-Sleep -Seconds 1
@@ -368,10 +377,15 @@ if (Test-Path 'C:\Games\PrismLauncher\prismlauncher.exe') {
   Send-KeyPress 0x0D # Next
   Start-Sleep -Seconds 2
   Send-KeyPress 0x0D # Finish -> enters Main Dashboard!
-  Start-Sleep -Seconds 3
-  # Click "Remind Me Later" (668, 665) / "Skip This Version" (220, 665) on Update Available modal so Main Dashboard is 100% clean
-  Send-LeftClick 668 665
-  Start-Sleep -Milliseconds 600
+  for ($u = 0; $u -lt 8; $u++) {
+    Start-Sleep -Milliseconds 600
+    $updHwnd = [WinCapture]::FindWindow($null, 'Update Available - Prism Launcher (Cracked) 11.0.3-main')
+    if ($updHwnd -ne [IntPtr]::Zero) {
+      [WinCapture]::PostMessage($updHwnd, [WinCapture]::WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+      Start-Sleep -Milliseconds 500
+      break
+    }
+  }
   Save-QaWindowScreenshot -Proc $pPrism -OutName '05_Minecraft_PrismLauncher.png' `
     -Title 'QA TEST #5 - Minecraft PrismLauncher Portable (Main Dashboard + Account: XyPlayer_RDP)' `
     -Sub 'Exe: C:\Games\PrismLauncher\prismlauncher.exe | Java 21 + Mesa3D OpenGL 4.6 READY' -WaitSec 2
@@ -382,9 +396,9 @@ if (Test-Path 'C:\Games\Minecraft\TL.jar') {
   $javawList = @(Get-ChildItem -Path 'C:\Program Files\Eclipse Adoptium', 'C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk', 'C:\Program Files\Java' -Recurse -Filter 'javaw.exe' -ErrorAction SilentlyContinue | Sort-Object FullName -Descending)
   $javawExe = if ($javawList.Count -gt 0) { $javawList[0].FullName } else { 'javaw.exe' }
   $pTl = Start-Process -FilePath $javawExe -ArgumentList @('-Xmx2048M', '-Dsun.java2d.d3d=false', '-jar', 'C:\Games\Minecraft\TL.jar') -WorkingDirectory 'C:\Games\Minecraft' -PassThru
-  # Wait until Legacy Launcher spawns its Welcome frame, click "Alright, I got it!", then wait until Downloading libraries finishes!
   $clickedWelcome = $false
-  for ($t = 0; $t -lt 65; $t++) {
+  $clickedFolder = $false
+  for ($t = 0; $t -lt 70; $t++) {
     Start-Sleep -Seconds 2
     $jw = Get-Process -Name 'javaw', 'java' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
     if ($jw) {
@@ -401,8 +415,19 @@ if (Test-Path 'C:\Games\Minecraft\TL.jar') {
           Send-KeyPress 0x0D
           $clickedWelcome = $true
         }
-      } elseif ($clickedWelcome -and $title -match 'Legacy Launcher' -and $title -notmatch 'Welcome|Downloading|%|Starting') {
-        Start-Sleep -Seconds 3
+      } elseif (-not $clickedFolder -and $title -match 'folder select|Conflict') {
+        [WinCapture]::SetForegroundWindow($jw.MainWindowHandle) | Out-Null
+        Start-Sleep -Milliseconds 500
+        $rcTl = New-Object WinCapture+RECT
+        if ([WinCapture]::GetWindowRect($jw.MainWindowHandle, [ref]$rcTl)) {
+          Send-LeftClick ($rcTl.Right - 95) ($rcTl.Bottom - 42)
+          Start-Sleep -Milliseconds 300
+          Send-KeyPress 0x20
+          Send-KeyPress 0x0D
+          $clickedFolder = $true
+        }
+      } elseif ($clickedWelcome -and $title -match 'Legacy Launcher' -and $title -notmatch 'Welcome|Downloading|%|Starting|folder select|Conflict') {
+        Start-Sleep -Seconds 5
         break
       }
     }
@@ -451,15 +476,17 @@ if (Test-Path $etsExe) {
     if ($pEts.MainWindowHandle -ne [IntPtr]::Zero) {
       [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
       Start-Sleep -Milliseconds 600
-      # 1. Reset DirectInput cursor ke pojok kiri atas window (1, 43)
+      # 1. Reset DirectInput cursor ke pojok kiri atas window
       Move-RelativeMouse -1200 -900
       Start-Sleep -Milliseconds 200
-      # 2. Gerakkan tepat ke tombol "Run in Demo mode" (640, 530) -> dx = +639, dy = +487 dari (1, 43) dan klik!
-      Move-RelativeMouse 639 487
+      # 2. Gerakkan tepat ke tombol "Run in Demo mode" (dx=+640, dy=+540) dan klik!
+      Move-RelativeMouse 640 540
+      Send-DirectInputLeftClick
+      Move-RelativeMouse 0 12
       Send-DirectInputLeftClick
     }
   } catch {}
-  Start-Sleep -Seconds 7
+  Start-Sleep -Seconds 8
   Save-QaWindowScreenshot -Proc $pEts -OutName '08_EuroTruckSimulator2_InGame_Play.png' `
     -Title 'QA TEST #8 - PLAY Euro Truck Simulator 2 (In-Game 3D Profile & Truck Selection)' `
     -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | Direct3D 9 (dgVoodoo2 WARP) + VB-Cable Audio ACTIVE' -WaitSec 3

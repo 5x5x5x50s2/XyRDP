@@ -270,14 +270,16 @@ function Install-CompleteSampSuite {
     } catch { Log "Unduh Ultimate ASI Loader warning: $($_.Exception.Message)" }
   }
 
-  # 2. Unduh SilentPatchSA resmi (SilentPatchSA.asi)
+  # 2. Unduh SilentPatchSA resmi (SilentPatchSA.asi) langsung ke folder scripts\ (JANGAN di root agar tidak dimuat 2x!)
   $spSaZip = Join-Path $work 'SilentPatchSA.zip'
-  if (-not (Test-Path (Join-Path $modsDir 'SilentPatchSA.asi'))) {
+  Remove-Item (Join-Path $modsDir 'SilentPatchSA.asi') -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $modsDir 'SilentPatchSA.ini') -Force -ErrorAction SilentlyContinue
+  if (-not (Test-Path (Join-Path $scriptsDir 'SilentPatchSA.asi'))) {
     try {
       if (Invoke-DownloadWithRetry 'https://github.com/CookiePLMonster/SilentPatch/releases/latest/download/SilentPatchSA.zip' $spSaZip 2) {
-        if (Test-Path $sevenZip) { & $sevenZip x $spSaZip "-o$modsDir" -y 2>&1 | Out-Null }
-        else { Expand-Archive -Path $spSaZip -DestinationPath $modsDir -Force }
-        Log 'SilentPatchSA.asi berhasil disiapkan.'
+        if (Test-Path $sevenZip) { & $sevenZip x $spSaZip "-o$scriptsDir" -y 2>&1 | Out-Null }
+        else { Expand-Archive -Path $spSaZip -DestinationPath $scriptsDir -Force }
+        Log 'SilentPatchSA.asi berhasil disiapkan di scripts\.'
       }
     } catch { Log "Unduh SilentPatchSA warning: $($_.Exception.Message)" }
   }
@@ -416,7 +418,7 @@ function Install-CompleteSampSuite {
   Remove-Item (Join-Path $gameDir 'dsound.dll') -Force -ErrorAction SilentlyContinue
   Remove-Item (Join-Path $gameDir 'dsoal-aldrv.dll') -Force -ErrorAction SilentlyContinue
 
-  # 6. Tulis konfigurasi SilentPatchSA.ini (90 FPS + FixMouseStuck RDP)
+  # 6. Tulis konfigurasi SilentPatchSA.ini di scripts\ (90 FPS + SkipIntroSplashes + FixMouseStuck RDP)
   @(
     '[SilentPatch]'
     'FPSLimit=90'
@@ -426,7 +428,7 @@ function Install-CompleteSampSuite {
     'NVCache=1'
     'TwoPassRendering=0'
     'FixMouseStuck=1'
-  ) | Set-Content -Path (Join-Path $modsDir 'SilentPatchSA.ini') -Encoding ASCII -Force
+  ) | Set-Content -Path (Join-Path $scriptsDir 'SilentPatchSA.ini') -Encoding ASCII -Force
 
   # 7. Unduh & Ekstrak SA-MP 0.3.7-R5 Client (samp.exe, samp.dll, samp.saa) langsung ke SAMP-Client & C:\Games\GTA San Andreas
   $sampInstaller = Join-Path $instDir 'sa-mp-0.3.7-R5-2-MP-install.exe'
@@ -669,14 +671,19 @@ function Apply-SilentPatchToDir([string]$Dir) {
     Copy-Item -Path "$sampCache\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
   }
 
-  # 3. SELALU salin paket lengkap dgVoodoo2 Borderless Fullscreen (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll + dgVoodoo.conf)
-  #    + SilentPatchSA.asi + GTASA.WidescreenFix.asi + vorbisFile.dll (Ultimate ASI Loader 1.39 MB)
-  #    supaya meskipun GTA San Andreas.rar baru selesai diekstrak dan menimpa vorbisFile.dll, ASI Loader + dgVoodoo.conf tetap aktif!
+  # 3. SELALU salin paket lengkap dgVoodoo2 (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll + dgVoodoo.conf)
+  #    + scripts\ (SilentPatchSA.asi + GTASA.WidescreenFix.asi + III.VC.SA.WindowedMode.asi) + vorbisFile.dll
   try { & attrib.exe -R "$Dir\*.*" /S 2>&1 | Out-Null } catch {}
   Copy-Item -Path "$modsDir\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
-  if ((Test-Path (Join-Path $modsDir 'SilentPatchSA.asi')) -and (Test-Path (Join-Path $Dir 'scripts'))) {
-    Copy-Item -Path (Join-Path $modsDir 'SilentPatchSA.asi') -Destination (Join-Path $Dir 'scripts\SilentPatchSA.asi') -Force -ErrorAction SilentlyContinue
-    Copy-Item -Path (Join-Path $modsDir 'SilentPatchSA.ini') -Destination (Join-Path $Dir 'scripts\SilentPatchSA.ini') -Force -ErrorAction SilentlyContinue
+  # PENTING: Hapus semua file *.asi di root $Dir agar TIDAK dimuat 2 kali bersama $Dir\scripts\*.asi!
+  Get-ChildItem -Path $Dir -File -Filter '*.asi' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $Dir 'SilentPatchSA.ini') -Force -ErrorAction SilentlyContinue
+  # Nonaktifkan video intro MPEG-1 (Logo.mpg & GTAtitles.mpg) agar gta_sa.exe langsung lompat ke Title Screen tanpa DirectShow hang di Windows Server
+  foreach ($mpg in @('Logo.mpg', 'GTAtitles.mpg')) {
+    $mpgPath = Join-Path $Dir "movies\$mpg"
+    if (Test-Path $mpgPath) {
+      Move-Item -LiteralPath $mpgPath -Destination "$mpgPath.bak" -Force -ErrorAction SilentlyContinue
+    }
   }
 
   # 3a. Pulihkan gta_sa.exe.orig_bak jika ada agar binary gta_sa.exe 100% utuh (DSOAL + dgVoodoo2 sudah menangani DirectSound & DirectDraw)

@@ -25,10 +25,10 @@ New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
 $envFile = Join-Path $toolsDir 'session-env.json'
 @{
   RDP_USER          = $u
-  RDP_PASSWORD      = (if ($env:RDP_PASSWORD) { $env:RDP_PASSWORD } else { '' })
-  GITHUB_TOKEN      = (if ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { '' })
-  GITHUB_REPOSITORY = (if ($env:GITHUB_REPOSITORY) { $env:GITHUB_REPOSITORY } else { '' })
-  GITHUB_RUN_ID     = (if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { '' })
+  RDP_PASSWORD      = $(if ($env:RDP_PASSWORD) { $env:RDP_PASSWORD } else { '' })
+  GITHUB_TOKEN      = $(if ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { '' })
+  GITHUB_REPOSITORY = $(if ($env:GITHUB_REPOSITORY) { $env:GITHUB_REPOSITORY } else { '' })
+  GITHUB_RUN_ID     = $(if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { '' })
 } | ConvertTo-Json | Set-Content -Path $envFile -Encoding UTF8 -Force
 
 $icoDir = Ensure-XyDesktopIcons

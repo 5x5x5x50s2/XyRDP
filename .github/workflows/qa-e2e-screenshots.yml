@@ -56,6 +56,7 @@ jobs:
         run: ./scripts/run-qa-screenshots.ps1
 
       - name: 8. Upload QA Screenshots Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: xyrdp-qa-screenshots

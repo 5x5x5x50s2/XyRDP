@@ -1,5 +1,5 @@
 # ============================================================================
-#  run-qa-screenshots.ps1 — QA E2E Testing & Real Screenshot Capture Suite
+#  run-qa-screenshots.ps1 - QA E2E Testing & Real Screenshot Capture Suite
 #  Menguji seluruh aplikasi, game, runtime, dan shortcut di Windows Server 2022
 #  serta menangkap screenshot PNG nyata dari setiap jendela & ikon Desktop.
 # ============================================================================
@@ -168,7 +168,7 @@ $bGreen  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb
 $bCard   = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(24, 29, 42))
 $pBorder = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(38, 46, 66), 1.5)
 
-$g.DrawString("QA E2E AUDIT — DESKTOP SHORTCUTS & IKON ASLI APLIKASI (WINDOWS SERVER 2022)", $fHeader, $bWhite, 24, 18)
+$g.DrawString("QA E2E AUDIT - DESKTOP SHORTCUTS & IKON ASLI APLIKASI (WINDOWS SERVER 2022)", $fHeader, $bWhite, 24, 18)
 $g.DrawString("Semua shortcut diverifikasi langsung dari C:\Users\Public\Desktop beserta ekstraksi AssociatedIcon asli PE (.exe)", $fSub, $bGreen, 24, 48)
 
 $idx = 0
@@ -225,7 +225,7 @@ Write-Host "=== 2. Menguji & Screenshot XyDeskDashboard.exe + XyDeskRemoteHost.e
 if (Test-Path 'C:\XyRDP\tools\XyDeskDashboard.exe') {
   $pDash = Start-Process -FilePath 'C:\XyRDP\tools\XyDeskDashboard.exe' -PassThru
   Save-QaWindowScreenshot -Proc $pDash -OutName '02_XyDeskDashboard_GUI.png' `
-    -Title 'QA TEST #2 — XyDeskRemote Dashboard (Gaming & Tools Hub)' `
+    -Title 'QA TEST #2 - XyDeskRemote Dashboard (Gaming & Tools Hub)' `
     -Sub 'Exe: C:\XyRDP\tools\XyDeskDashboard.exe | Status: RUNNING OK' -WaitSec 5
   Stop-Process -Id $pDash.Id -Force -ErrorAction SilentlyContinue
 }
@@ -233,7 +233,7 @@ if (Test-Path 'C:\XyRDP\tools\XyDeskDashboard.exe') {
 if (Test-Path 'C:\Program Files\XyDeskRemote\XyDeskRemoteHost.exe') {
   $pHost = Start-Process -FilePath 'C:\Program Files\XyDeskRemote\XyDeskRemoteHost.exe' -PassThru
   Save-QaWindowScreenshot -Proc $pHost -OutName '03_XyDeskRemoteHost_v25_GUI.png' `
-    -Title 'QA TEST #3 — XyDesk Remote Host Agent v2.5 (P2P :4433 + XYWL Wallpaper)' `
+    -Title 'QA TEST #3 - XyDesk Remote Host Agent v2.5 (P2P :4433 + XYWL Wallpaper)' `
     -Sub 'Exe: C:\Program Files\XyDeskRemote\XyDeskRemoteHost.exe | UDP :4433 LISTENING' -WaitSec 5
   Stop-Process -Id $pHost.Id -Force -ErrorAction SilentlyContinue
 }
@@ -245,7 +245,7 @@ Write-Host "=== 3. Menguji & Screenshot SA-MP 0.3.7-R5 (samp.exe) ==="
 if (Test-Path 'C:\Games\GTA San Andreas\samp.exe') {
   $pSamp = Start-Process -FilePath 'C:\Games\GTA San Andreas\samp.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
   Save-QaWindowScreenshot -Proc $pSamp -OutName '04_SAMP_037R5_Browser.png' `
-    -Title 'QA TEST #4 — GTA San Andreas Multiplayer (SA-MP 0.3.7-R5 Server Browser)' `
+    -Title 'QA TEST #4 - GTA San Andreas Multiplayer (SA-MP 0.3.7-R5 Server Browser)' `
     -Sub 'Exe: C:\Games\GTA San Andreas\samp.exe | DirectDraw 0x00746929 Bypass + SilentPatch ACTIVE' -WaitSec 5
   Stop-Process -Id $pSamp.Id -Force -ErrorAction SilentlyContinue
 }
@@ -257,7 +257,7 @@ Write-Host "=== 4. Menguji & Screenshot PrismLauncher (Minecraft) ==="
 if (Test-Path 'C:\Games\PrismLauncher\prismlauncher.exe') {
   $pPrism = Start-Process -FilePath 'C:\Games\PrismLauncher\prismlauncher.exe' -WorkingDirectory 'C:\Games\PrismLauncher' -PassThru
   Save-QaWindowScreenshot -Proc $pPrism -OutName '05_Minecraft_PrismLauncher.png' `
-    -Title 'QA TEST #5 — PrismLauncher Portable (Minecraft Java Edition + OpenGL 4.6)' `
+    -Title 'QA TEST #5 - PrismLauncher Portable (Minecraft Java Edition + OpenGL 4.6)' `
     -Sub 'Exe: C:\Games\PrismLauncher\prismlauncher.exe | Java 21 + Mesa3D OpenGL 4.6 READY' -WaitSec 6
   Stop-Process -Id $pPrism.Id -Force -ErrorAction SilentlyContinue
 }
@@ -273,7 +273,7 @@ if ($blenderExe) {
   $env:MESA_GL_VERSION_OVERRIDE = '4.6'
   $pBlend = Start-Process -FilePath $blenderExe.FullName -WorkingDirectory $blenderExe.DirectoryName -PassThru
   Save-QaWindowScreenshot -Proc $pBlend -OutName '06_Blender3D_42_Studio.png' `
-    -Title 'QA TEST #6 — Blender 3D Studio 4.2 LTS (Mesa3D OpenGL 4.6 Software Accelerated)' `
+    -Title 'QA TEST #6 - Blender 3D Studio 4.2 LTS (Mesa3D OpenGL 4.6 Software Accelerated)' `
     -Sub "Exe: $($blenderExe.FullName) | OpenGL 4.6 llvmpipe ACTIVE" -WaitSec 8
   Stop-Process -Id $pBlend.Id -Force -ErrorAction SilentlyContinue
 }
@@ -286,7 +286,7 @@ $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
 if (Test-Path $etsExe) {
   $pEts = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
   Save-QaWindowScreenshot -Proc $pEts -OutName '07_EuroTruckSimulator2_Free.png' `
-    -Title 'QA TEST #7 — Euro Truck Simulator 2 Free Edition (SCS Software)' `
+    -Title 'QA TEST #7 - Euro Truck Simulator 2 Free Edition (SCS Software)' `
     -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | dgVoodoo2 Direct3D 9 Windowed ACTIVE' -WaitSec 7
   Stop-Process -Id $pEts.Id -Force -ErrorAction SilentlyContinue
 }
@@ -298,14 +298,14 @@ Write-Host "=== 7. Menguji & Screenshot FiveM.exe + Roblox Anti-VM Suite ==="
 if (Test-Path 'C:\Games\FiveM\FiveM.exe') {
   $pFive = Start-Process -FilePath 'C:\Games\FiveM\FiveM.exe' -WorkingDirectory 'C:\Games\FiveM' -PassThru
   Save-QaWindowScreenshot -Proc $pFive -OutName '08_FiveM_Prank_App.png' `
-    -Title 'QA TEST #8 — FiveM CitizenFX Prank App + Voicemod Tuna Audio Loop' `
+    -Title 'QA TEST #8 - FiveM CitizenFX Prank App + Voicemod Tuna Audio Loop' `
     -Sub 'Exe: C:\Games\FiveM\FiveM.exe | Sound: fivem_prank.mp3 READY' -WaitSec 4
   Stop-Process -Id $pFive.Id -Force -ErrorAction SilentlyContinue
 }
 
 $pRbx = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-Sta', '-ExecutionPolicy', 'Bypass', '-File', 'C:\Games\Roblox\Launch-Roblox-AntiVM.ps1') -PassThru
 Save-QaWindowScreenshot -Proc $pRbx -OutName '09_Roblox_AntiVM_Launcher.png' `
-  -Title 'QA TEST #9 — Roblox Player & Anti-VM Launcher Suite' `
+  -Title 'QA TEST #9 - Roblox Player & Anti-VM Launcher Suite' `
   -Sub 'Extracted CDN Package: C:\Games\Roblox\Versions\*\RobloxPlayerBeta.exe + Cloud/Emulator Bypass' -WaitSec 6
 Stop-Process -Id $pRbx.Id -Force -ErrorAction SilentlyContinue
 Get-Process -Name 'RobloxPlayerBeta' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue

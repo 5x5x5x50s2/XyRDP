@@ -294,7 +294,7 @@ Update-Status @{ extras = [ordered]@{
 Close-DefaultHive
 
 $adminTxt = $(if ($adminOk) { 'YA' } else { 'TIDAK' })
-Log ("SELESAI — lightshot={0} wallpaper={2} admin={3}" -f $resLightshot, $resWall, $adminTxt)
+Log ("SELESAI — lightshot={0} wallpaper={1} admin={2}" -f $resLightshot, $resWall, $adminTxt)
 try { Probe-Rdp 'akhir step' | Out-Null } catch {}
 
 exit 0

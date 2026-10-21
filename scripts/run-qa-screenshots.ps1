@@ -39,6 +39,9 @@ public class WinCapture {
     [DllImport("user32.dll")]
     public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 
+    [DllImport("user32.dll")]
+    public static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
     public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOSIZE = 0x0001;
@@ -50,10 +53,19 @@ public class WinCapture {
 
 function Send-KeyPress([byte]$vk) {
   try {
-    [WinCapture]::keybd_event($vk, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 120
-    [WinCapture]::keybd_event($vk, 0, 2, [UIntPtr]::Zero)
+    $scan = [byte]([WinCapture]::MapVirtualKey([uint32]$vk, 0) -band 0xFF)
+    [WinCapture]::keybd_event($vk, $scan, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 90
+    [WinCapture]::keybd_event($vk, $scan, 2, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 60
   } catch {}
+}
+
+function Send-DirectInputString([string]$text) {
+  foreach ($ch in $text.ToUpper().ToCharArray()) {
+    $vk = [byte][char]$ch
+    Send-KeyPress $vk
+  }
 }
 
 function Send-LeftClick([int]$x, [int]$y) {
@@ -67,9 +79,14 @@ function Send-LeftClick([int]$x, [int]$y) {
 }
 
 function Minimize-RunnerTerminals {
-  Get-Process -Name 'cmd', 'pwsh', 'conhost' -ErrorAction SilentlyContinue | ForEach-Object {
+  Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.MainWindowHandle -ne [IntPtr]::Zero -and (
+      $_.ProcessName -in @('cmd', 'pwsh', 'conhost', 'Runner.Listener', 'Runner.Worker') -or
+      $_.MainWindowTitle -match 'hosted-compute-agent|Runner|Windows PowerShell'
+    )
+  } | ForEach-Object {
     try {
-      if ($_.MainWindowHandle -ne [IntPtr]::Zero) {
+      if ($_.Id -ne $PID) {
         [WinCapture]::ShowWindow($_.MainWindowHandle, 6) | Out-Null
       }
     } catch {}
@@ -281,6 +298,7 @@ if ($pPatchGui) { Stop-Process -Id $pPatchGui.Id -Force -ErrorAction SilentlyCon
 # 4. Uji & Screenshot: PLAY GTA San Andreas (gta_sa.exe In-Game / Title Screen)
 # ============================================================================
 Write-Host "=== 4. Menguji & Screenshot PLAY GTA San Andreas (gta_sa.exe) ==="
+Get-CimInstance Win32_SoundDevice -ErrorAction SilentlyContinue | Select-Object Name, Status | Format-Table -AutoSize
 if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
   Start-Sleep -Seconds 9
@@ -289,10 +307,15 @@ if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   Send-KeyPress 0x20 # Space
   Start-Sleep -Seconds 3
   $gtaProc = Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($gtaProc) { $pGta = $gtaProc }
+  if ($gtaProc) {
+    $pGta = $gtaProc
+  } else {
+    Write-Host "gta_sa exited with code: $($pGta.ExitCode)"
+    Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2} -MaxEvents 3 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message
+  }
   Save-QaWindowScreenshot -Proc $pGta -OutName '04_GTA_SanAndreas_InGame_Play.png' `
-    -Title 'QA TEST #4 - PLAY GTA San Andreas (gta_sa.exe + dgVoodoo2 D3D11 + DSOAL OpenAL Audio)' `
-    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | DSOAL Virtual Sound Card + SilentPatch 90 FPS ACTIVE' -WaitSec 3
+    -Title 'QA TEST #4 - PLAY GTA San Andreas (gta_sa.exe + dgVoodoo2 D3D11 + VB-Cable Audio)' `
+    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | VB-Cable + DSOAL Sound + SilentPatch 90 FPS ACTIVE' -WaitSec 3
   Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
@@ -379,9 +402,12 @@ if (Test-Path $etsExe) {
     $pEts.Refresh()
     if ($pEts.MainWindowHandle -ne [IntPtr]::Zero) {
       [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
+      Start-Sleep -Milliseconds 600
+      # Ketikkan Product Key aktivasi penuh ETS 2 via Hardware Scan Code DirectInput!
+      Send-DirectInputString "3342JDYJF0XEA3K5J0YS40UFY"
       Start-Sleep -Milliseconds 500
-      # Ketikkan Product Key aktivasi penuh ETS 2 lalu tekan Enter!
-      [System.Windows.Forms.SendKeys]::SendWait("3342JDYJF0XEA3K5J0YS40UFY{TAB}{ENTER}")
+      Send-KeyPress 0x09 # Tab -> Activate Game
+      Send-KeyPress 0x0D # Enter
     }
   } catch {}
   Start-Sleep -Seconds 5

@@ -1059,14 +1059,14 @@ $form.Controls.Add($lblHint)
   try {
     $vbcDir = 'C:\XyRDP\audio\vbcable'
     $vbcZip = Join-Path $work 'VBCABLE_Driver_Pack43.zip'
-    if (-not (Test-Path (Join-Path $vbcDir 'vbcable.cat'))) {
+    if (-not (Test-Path (Join-Path $vbcDir 'vbaudio_cable64_win7.cat'))) {
       New-Item -ItemType Directory -Path $vbcDir -Force | Out-Null
       if (Invoke-DownloadWithRetry 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' $vbcZip 2) {
         if (Test-Path $sevenZip) { & $sevenZip x $vbcZip "-o$vbcDir" -y 2>&1 | Out-Null }
         else { Expand-Archive -Path $vbcZip -DestinationPath $vbcDir -Force }
-        foreach ($sigTarget in @((Join-Path $vbcDir 'vbcable.cat'), (Join-Path $vbcDir 'VBCABLE_Setup_x64.exe'), (Join-Path $vbcDir 'vbcable_x64.sys'))) {
-          if (Test-Path $sigTarget) {
-            $sig = Get-AuthenticodeSignature $sigTarget -ErrorAction SilentlyContinue
+        Get-ChildItem -Path $vbcDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @('.cat', '.sys', '.exe') } | ForEach-Object {
+          try {
+            $sig = Get-AuthenticodeSignature $_.FullName -ErrorAction SilentlyContinue
             if ($sig -and $sig.SignerCertificate) {
               foreach ($storeName in @('Root', 'TrustedPublisher')) {
                 $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeName, [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
@@ -1075,19 +1075,19 @@ $form.Controls.Add($lblHint)
                 $store.Close()
               }
             }
-          }
-        }
-        $vbcExe = Join-Path $vbcDir 'VBCABLE_Setup_x64.exe'
-        if (Test-Path $vbcExe) {
-          Start-ProcessWithTimeout $vbcExe @('-i', '-h') $vbcDir 15 | Out-Null
+          } catch {}
         }
         $infFile = Join-Path $vbcDir 'vbMmeCable64_win7.inf'
         if (Test-Path $infFile) {
           Start-ProcessWithTimeout 'pnputil.exe' @('/add-driver', $infFile, '/install') $vbcDir 15 | Out-Null
         }
+        $vbcExe = Join-Path $vbcDir 'VBCABLE_Setup_x64.exe'
+        if (Test-Path $vbcExe) {
+          Start-ProcessWithTimeout $vbcExe @('-i', '-h') $vbcDir 20 | Out-Null
+        }
         Start-Service -Name 'AudioEndpointBuilder' -ErrorAction SilentlyContinue
         Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue
-        Log 'VB-Audio Virtual Sound Card berhasil dipasang secara silent via LocalMachine X509Store.'
+        Log 'VB-Audio Virtual Sound Card (vbaudio_cable64_win7) berhasil dipasang secara silent.'
       }
     }
   } catch { Log "VB-Cable setup warning: $($_.Exception.Message)" }

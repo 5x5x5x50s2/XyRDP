@@ -349,7 +349,7 @@ function Install-CompleteSampSuite {
   @(
     'Version                              = 0x287'
     '[General]'
-    'OutputAPI                            = d3d11_fl10_0'
+    'OutputAPI                            = bestavailable'
     'Adapters                             = all'
     'FullScreenOutput                     = default'
     'FullScreenMode                       = false'
@@ -392,6 +392,41 @@ function Install-CompleteSampSuite {
     'EnumeratedResolutionBitdepths        = all'
     'MSD3DDeviceNames                     = true'
   ) | Set-Content -Path (Join-Path $modsDir 'dgVoodoo.conf') -Encoding ASCII -Force
+
+  # 5b. Unduh DSOAL (DirectSound-to-OpenAL Soft x86: dsound.dll + dsoal-aldrv.dll + alsoft.ini)
+  #     WAJIB di Windows Server Cloud VM tanpa kartu suara fisik! Tanpa DSOAL (drivers = wasapi,winmm,null),
+  #     gta_sa.exe langsung keluar saat startup karena DirectSoundEnumerateA mengembalikan 0 sound card!
+  $dsoalZip = Join-Path $work 'DSOAL.zip'
+  if (-not (Test-Path (Join-Path $modsDir 'dsound.dll')) -or -not (Test-Path (Join-Path $modsDir 'dsoal-aldrv.dll'))) {
+    try {
+      if (Invoke-DownloadWithRetry 'https://github.com/kcat/dsoal/releases/download/latest-master/DSOAL.zip' $dsoalZip 2) {
+        $dsoalExt = Join-Path $work 'dsoal_ext'
+        Remove-Item $dsoalExt -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $dsoalExt -Force | Out-Null
+        if (Test-Path $sevenZip) { & $sevenZip x $dsoalZip "-o$dsoalExt" -y 2>&1 | Out-Null }
+        else { Expand-Archive -Path $dsoalZip -DestinationPath $dsoalExt -Force }
+        $innerZip = Get-ChildItem -Path $dsoalExt -Filter 'DSOAL_*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($innerZip) {
+          if (Test-Path $sevenZip) { & $sevenZip x $innerZip.FullName "-o$dsoalExt" -y 2>&1 | Out-Null }
+          else { Expand-Archive -Path $innerZip.FullName -DestinationPath $dsoalExt -Force }
+        }
+        $win32Ds = Join-Path $dsoalExt 'DSOAL\Win32\dsound.dll'
+        $win32Al = Join-Path $dsoalExt 'DSOAL\Win32\dsoal-aldrv.dll'
+        if ((Test-Path $win32Ds) -and (Test-Path $win32Al)) {
+          Copy-Item -LiteralPath $win32Ds -Destination (Join-Path $modsDir 'dsound.dll') -Force
+          Copy-Item -LiteralPath $win32Al -Destination (Join-Path $modsDir 'dsoal-aldrv.dll') -Force
+          Log 'DSOAL x86 (dsound.dll + dsoal-aldrv.dll) berhasil disiapkan (Virtual Audio Fallback Ready)!'
+        }
+        Remove-Item $dsoalExt -Recurse -Force -ErrorAction SilentlyContinue
+      }
+    } catch { Log "Unduh DSOAL warning: $($_.Exception.Message)" }
+  }
+  @(
+    '[general]'
+    'drivers = wasapi,winmm,null'
+    'channels = stereo'
+    'sample-type = int16'
+  ) | Set-Content -Path (Join-Path $modsDir 'alsoft.ini') -Encoding ASCII -Force
 
   # 6. Tulis konfigurasi SilentPatchSA.ini (90 FPS + FixMouseStuck RDP)
   @(
@@ -701,11 +736,12 @@ function Apply-SilentPatchToDir([string]$Dir) {
     Copy-Item -Path (Join-Path $modsDir 'SilentPatchSA.ini') -Destination (Join-Path $Dir 'scripts\SilentPatchSA.ini') -Force -ErrorAction SilentlyContinue
   }
 
-  # 3a. Terapkan binary patch langsung pada gta_sa.exe di disk (VA 0x007469A0 -> 30 C0 90 90)
-  #     sebagai pelindung lapis kedua agar tidak pernah masuk ke cabang DirectDraw crash 0x00746929 (EAX=0)
+  # 3a. Pulihkan gta_sa.exe.orig_bak jika ada agar binary gta_sa.exe 100% utuh (DSOAL + dgVoodoo2 sudah menangani DirectSound & DirectDraw)
   $gtaExeTarget = Join-Path $Dir 'gta_sa.exe'
-  if (Test-Path $gtaExeTarget) {
-    Patch-GtaSaExeDirectDrawBypass $gtaExeTarget
+  $gtaOrigBak   = "$gtaExeTarget.orig_bak"
+  if (Test-Path $gtaOrigBak) {
+    Copy-Item -LiteralPath $gtaOrigBak -Destination $gtaExeTarget -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $gtaOrigBak -Force -ErrorAction SilentlyContinue
   }
 
   # 3b. Pastikan layanan Windows Audio aktif agar gta_sa.exe tidak crash saat inisialisasi DirectSound

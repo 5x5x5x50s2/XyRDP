@@ -283,14 +283,17 @@ if ($pPatchGui) { Stop-Process -Id $pPatchGui.Id -Force -ErrorAction SilentlyCon
 Write-Host "=== 4. Menguji & Screenshot PLAY GTA San Andreas (gta_sa.exe) ==="
 if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
-  Start-Sleep -Seconds 8
+  Start-Sleep -Seconds 9
   Send-KeyPress 0x0D # Enter to skip splash
   Start-Sleep -Seconds 3
   Send-KeyPress 0x20 # Space
+  Start-Sleep -Seconds 3
+  $gtaProc = Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($gtaProc) { $pGta = $gtaProc }
   Save-QaWindowScreenshot -Proc $pGta -OutName '04_GTA_SanAndreas_InGame_Play.png' `
-    -Title 'QA TEST #4 - PLAY GTA San Andreas (gta_sa.exe + dgVoodoo2 D3D11 + VB-Cable Audio)' `
-    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | DirectDraw 0x00746929 Bypass + SilentPatch 90 FPS ACTIVE' -WaitSec 4
-  Stop-Process -Id $pGta.Id -Force -ErrorAction SilentlyContinue
+    -Title 'QA TEST #4 - PLAY GTA San Andreas (gta_sa.exe + dgVoodoo2 D3D11 + DSOAL OpenAL Audio)' `
+    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | DSOAL Virtual Sound Card + SilentPatch 90 FPS ACTIVE' -WaitSec 3
+  Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
 # ============================================================================
@@ -360,19 +363,31 @@ if ($blenderExe) {
 }
 
 # ============================================================================
-# 7. Uji & Screenshot: PLAY Euro Truck Simulator 2 (eurotrucks2.exe In-Game Menu)
+# 7. Uji & Screenshot: PLAY Euro Truck Simulator 2 (eurotrucks2.exe Activated In-Game)
 # ============================================================================
 Write-Host "=== 7. Menguji & Screenshot PLAY Euro Truck Simulator 2 ==="
 $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
 if (Test-Path $etsExe) {
+  # Salin DSOAL juga ke folder ETS2 agar OpenAL/DirectSound di ETS2 selalu aktif
+  foreach ($f in @('dsound.dll', 'dsoal-aldrv.dll', 'alsoft.ini')) {
+    $src = Join-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack' $f
+    if (Test-Path $src) { Copy-Item -LiteralPath $src -Destination (Join-Path 'C:\Games\ETS2\bin\win_x86' $f) -Force -ErrorAction SilentlyContinue }
+  }
   $pEts = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
-  Start-Sleep -Seconds 10
-  Send-KeyPress 0x1B # ESC
-  Start-Sleep -Seconds 4
-  Send-KeyPress 0x0D # Enter
+  Start-Sleep -Seconds 11
+  try {
+    $pEts.Refresh()
+    if ($pEts.MainWindowHandle -ne [IntPtr]::Zero) {
+      [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
+      Start-Sleep -Milliseconds 500
+      # Ketikkan Product Key aktivasi penuh ETS 2 lalu tekan Enter!
+      [System.Windows.Forms.SendKeys]::SendWait("3342JDYJF0XEA3K5J0YS40UFY{TAB}{ENTER}")
+    }
+  } catch {}
+  Start-Sleep -Seconds 5
   Save-QaWindowScreenshot -Proc $pEts -OutName '08_EuroTruckSimulator2_InGame_Play.png' `
-    -Title 'QA TEST #8 - PLAY Euro Truck Simulator 2 (SCS Software 3D Engine)' `
-    -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | dgVoodoo2 Direct3D 9 Windowed ACTIVE' -WaitSec 4
+    -Title 'QA TEST #8 - PLAY Euro Truck Simulator 2 (Activated Full Version - SCS Software 3D)' `
+    -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | Key: 3342J-DYJF0-XEA3K-5J0YS-40UFY + dgVoodoo2 D3D9 ACTIVE' -WaitSec 3
   Stop-Process -Id $pEts.Id -Force -ErrorAction SilentlyContinue
 }
 

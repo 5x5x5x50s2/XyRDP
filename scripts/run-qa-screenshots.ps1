@@ -48,6 +48,46 @@ public class WinCapture {
     [DllImport("user32.dll")]
     public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+
+    public static IntPtr FindWindowByPid(uint targetPid) {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((hWnd, lParam) => {
+            uint pid = 0;
+            GetWindowThreadProcessId(hWnd, out pid);
+            if (pid == targetPid) {
+                var sbClass = new System.Text.StringBuilder(256);
+                var sbTitle = new System.Text.StringBuilder(256);
+                GetClassName(hWnd, sbClass, 256);
+                GetWindowText(hWnd, sbTitle, 256);
+                string cls = sbClass.ToString();
+                if (cls != "IME" && cls != "MSCTFIME UI") {
+                    Console.WriteLine("  [PID " + targetPid + " HWND=" + hWnd + " Visible=" + IsWindowVisible(hWnd) + " Class='" + cls + "' Title='" + sbTitle.ToString() + "']");
+                    if (found == IntPtr.Zero || IsWindowVisible(hWnd) || cls.IndexOf("Grand theft auto", StringComparison.OrdinalIgnoreCase) >= 0) {
+                        found = hWnd;
+                    }
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
     public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
     public const uint WM_CLOSE = 0x0010;
     public const uint SWP_NOMOVE = 0x0002;
@@ -140,9 +180,9 @@ function Save-QaWindowScreenshot {
         $Proc.Refresh()
         if ($Proc.MainWindowHandle -ne [IntPtr]::Zero) {
           $hwnd = $Proc.MainWindowHandle
-        } elseif ($Proc.ProcessName -eq 'gta_sa') {
-          $gh = [WinCapture]::FindWindow('Grand theft auto San Andreas', $null)
-          if ($gh -ne [IntPtr]::Zero) { $hwnd = $gh }
+        } else {
+          $byPid = [WinCapture]::FindWindowByPid([uint32]$Proc.Id)
+          if ($byPid -ne [IntPtr]::Zero) { $hwnd = $byPid }
         }
       } catch {}
     }
@@ -331,6 +371,11 @@ if ($pPatchGui) { Stop-Process -Id $pPatchGui.Id -Force -ErrorAction SilentlyCon
 # 4. Uji & Screenshot: PLAY GTA San Andreas (gta_sa.exe In-Game / Title Screen)
 # ============================================================================
 Write-Host "=== 4. Menguji & Screenshot PLAY GTA San Andreas (gta_sa.exe) ==="
+try {
+  Restart-Service -Name 'Audiosrv' -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+  [System.Media.SystemSounds]::Beep.Play()
+} catch {}
 Get-CimInstance Win32_SoundDevice -ErrorAction SilentlyContinue | Select-Object Name, Status | Format-Table -AutoSize
 if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   Remove-Item 'C:\Games\GTA San Andreas\dsound.dll' -Force -ErrorAction SilentlyContinue
@@ -343,20 +388,22 @@ if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
   for ($w = 0; $w -lt 16; $w++) {
     Start-Sleep -Seconds 1
-    $gtaHwnd = [WinCapture]::FindWindow('Grand theft auto San Andreas', $null)
+    $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pGta.Id)
     if ($gtaHwnd -ne [IntPtr]::Zero) {
       [WinCapture]::ShowWindow($gtaHwnd, 9) | Out-Null
       [WinCapture]::SetForegroundWindow($gtaHwnd) | Out-Null
-      if ($w -in @(7, 11, 14)) {
-        Send-KeyPress 0x0D # Enter to skip splash
-        Send-KeyPress 0x20 # Space
-      }
+    }
+    if ($w -in @(3, 6, 9, 12, 15)) {
+      Send-KeyPress 0x0D # Enter to confirm any dialog / skip splash
+      Send-KeyPress 0x20 # Space
     }
   }
   $gtaProc = Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($gtaProc) {
     $pGta = $gtaProc
     Write-Host "gta_sa is RUNNING! PID=$($gtaProc.Id) MainWindowHandle=$($gtaProc.MainWindowHandle) Title='$($gtaProc.MainWindowTitle)'"
+    Write-Host "gta_sa loaded modules:"
+    $gtaProc.Modules | Where-Object { $_.ModuleName -notmatch '^ntdll|^kernel|^user32|^gdi32|^advapi|^msvcrt|^ucrt|^rpcrt|^sechost|^combase|^shlwapi|^shell32|^imm32|^win32u' } | Select-Object ModuleName, FileName | Format-Table -AutoSize
   } else {
     Write-Host "gta_sa exited with code: $($pGta.ExitCode)"
     Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2} -MaxEvents 3 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message
@@ -374,15 +421,17 @@ Write-Host "=== 5. Menguji & Screenshot PrismLauncher & TLauncher (TL.jar) ==="
 if (Test-Path 'C:\Games\PrismLauncher\prismlauncher.exe') {
   $pPrism = Start-Process -FilePath 'C:\Games\PrismLauncher\prismlauncher.exe' -WorkingDirectory 'C:\Games\PrismLauncher' -PassThru
   Start-Sleep -Seconds 4
-  Send-KeyPress 0x0D # Next
+  Send-KeyPress 0x0D # Page 1 (Language) -> Next
   Start-Sleep -Seconds 2
-  Send-KeyPress 0x0D # Finish -> enters Main Dashboard!
-  for ($u = 0; $u -lt 8; $u++) {
+  Send-KeyPress 0x0D # Page 2 (Java) -> Next
+  Start-Sleep -Seconds 2
+  Send-KeyPress 0x0D # Page 3 (New Feature Alert) -> Finish -> enters Main Dashboard!
+  for ($u = 0; $u -lt 10; $u++) {
     Start-Sleep -Milliseconds 600
     $updHwnd = [WinCapture]::FindWindow($null, 'Update Available - Prism Launcher (Cracked) 11.0.3-main')
     if ($updHwnd -ne [IntPtr]::Zero) {
       [WinCapture]::PostMessage($updHwnd, [WinCapture]::WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-      Start-Sleep -Milliseconds 500
+      Start-Sleep -Milliseconds 600
       break
     }
   }
@@ -469,21 +518,26 @@ $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
 if (Test-Path $etsExe) {
   Remove-Item 'C:\Games\ETS2\bin\win_x86\dsound.dll' -Force -ErrorAction SilentlyContinue
   Remove-Item 'C:\Games\ETS2\bin\win_x86\dsoal-aldrv.dll' -Force -ErrorAction SilentlyContinue
+  [WinCapture]::SetCursorPos(640, 530) | Out-Null
   $pEts = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
   Start-Sleep -Seconds 11
   try {
     $pEts.Refresh()
     if ($pEts.MainWindowHandle -ne [IntPtr]::Zero) {
       [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
-      Start-Sleep -Milliseconds 600
+      [WinCapture]::SetCursorPos(640, 530) | Out-Null
+      Start-Sleep -Milliseconds 500
       # 1. Reset DirectInput cursor ke pojok kiri atas window
       Move-RelativeMouse -1200 -900
       Start-Sleep -Milliseconds 200
-      # 2. Gerakkan tepat ke tombol "Run in Demo mode" (dx=+640, dy=+540) dan klik!
-      Move-RelativeMouse 640 540
-      Send-DirectInputLeftClick
-      Move-RelativeMouse 0 12
-      Send-DirectInputLeftClick
+      # 2. Gerakkan tepat ke tombol "Run in Demo mode" (dx=+640, dy=+538) dan klik beberapa kali!
+      Move-RelativeMouse 640 538
+      for ($c = 0; $c -lt 3; $c++) {
+        [WinCapture]::SetCursorPos(640, 530) | Out-Null
+        Move-RelativeMouse 1 0
+        Send-DirectInputLeftClick
+        Start-Sleep -Milliseconds 350
+      }
     }
   } catch {}
   Start-Sleep -Seconds 8

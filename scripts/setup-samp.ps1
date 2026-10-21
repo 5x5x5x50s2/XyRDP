@@ -369,7 +369,7 @@ function Install-CompleteSampSuite {
     'Version                              = 0x287'
     '[General]'
     'OutputAPI                            = d3d11warp'
-    'Adapters                             = all'
+    'Adapters                             = 0'
     'FullScreenOutput                     = default'
     'FullScreenMode                       = false'
     'ScalingMode                          = stretched'

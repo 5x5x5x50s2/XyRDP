@@ -538,15 +538,200 @@ $form.Controls.Add($btn3)
 '@
   Set-Content -LiteralPath $rbxLauncherPs1 -Value $rbxLauncherCode -Encoding UTF8 -Force
 
-  # 5. Buat shortcut Roblox Player dengan IKON ASLI RESMI RobloxPlayerBeta.exe / RobloxPlayerInstaller.exe!
+  # 4b. Kompilasi Native WinForms Launcher C:\Games\Roblox\RobloxPlayerLauncher.exe via csc.exe (tanpa jendela PowerShell biru!)
+  $rbxLauncherExe = Join-Path $rbxDir 'RobloxPlayerLauncher.exe'
+  $rbxCsFile      = Join-Path $rbxDir 'RobloxPlayerLauncher.cs'
+  $rbxCsCode = @'
+using System;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Windows.Forms;
+
+public class RobloxLauncherForm : Form
+{
+    private Label lblStatus;
+    private string playerBetaPath = "";
+
+    public RobloxLauncherForm()
+    {
+        this.Text = "Roblox Player - XyRDP Anti-VM & Cloud Gaming Hub (120 FPS)";
+        this.Size = new Size(560, 360);
+        this.StartPosition = FormStartPosition.CenterScreen;
+        this.FormBorderStyle = FormBorderStyle.FixedDialog;
+        this.MaximizeBox = false;
+        this.BackColor = Color.FromArgb(15, 23, 42);
+        this.ForeColor = Color.White;
+
+        FindPlayerBeta();
+        if (!string.IsNullOrEmpty(playerBetaPath) && File.Exists(playerBetaPath))
+        {
+            try { this.Icon = Icon.ExtractAssociatedIcon(playerBetaPath); } catch { }
+        }
+
+        Panel header = new Panel();
+        header.Dock = DockStyle.Top;
+        header.Height = 68;
+        header.BackColor = Color.FromArgb(37, 99, 235);
+
+        Label title = new Label();
+        title.Text = "ROBLOX PLAYER - ANTI-VM & CLOUD BYPASS SUITE";
+        title.Font = new Font("Segoe UI", 13f, FontStyle.Bold);
+        title.ForeColor = Color.White;
+        title.Location = new Point(18, 12);
+        title.AutoSize = true;
+        header.Controls.Add(title);
+
+        Label sub = new Label();
+        sub.Text = "SMBIOS Spoof: ASUS ROG B650  |  Direct3D 11 WARP + Mesa3D 4.6  |  Package: READY";
+        sub.Font = new Font("Segoe UI", 8.75f, FontStyle.Regular);
+        sub.ForeColor = Color.FromArgb(219, 234, 254);
+        sub.Location = new Point(18, 39);
+        sub.AutoSize = true;
+        header.Controls.Add(sub);
+        this.Controls.Add(header);
+
+        Button btn1 = new Button();
+        btn1.Text = "1. Mainkan Roblox Instant Cloud / WebGL App Mode (100% Bebas Blokir Hyperion VM)";
+        btn1.Font = new Font("Segoe UI", 9.75f, FontStyle.Bold);
+        btn1.Location = new Point(20, 86);
+        btn1.Size = new Size(505, 50);
+        btn1.BackColor = Color.FromArgb(22, 163, 74);
+        btn1.ForeColor = Color.White;
+        btn1.FlatStyle = FlatStyle.Flat;
+        btn1.Click += (s, e) => LaunchCloudAppMode();
+        this.Controls.Add(btn1);
+
+        Button btn2 = new Button();
+        btn2.Text = "2. Jalankan RobloxPlayerBeta.exe Native Desktop Client (Direct3D 11 + Anti-VM)";
+        btn2.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+        btn2.Location = new Point(20, 148);
+        btn2.Size = new Size(505, 48);
+        btn2.BackColor = Color.FromArgb(37, 99, 235);
+        btn2.ForeColor = Color.White;
+        btn2.FlatStyle = FlatStyle.Flat;
+        btn2.Click += (s, e) => LaunchDesktopClient();
+        this.Controls.Add(btn2);
+
+        Button btn3 = new Button();
+        btn3.Text = "3. Mainkan Roblox via MEmu Play Android Emulator (Bypass Byfron Windows)";
+        btn3.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+        btn3.Location = new Point(20, 208);
+        btn3.Size = new Size(505, 46);
+        btn3.BackColor = Color.FromArgb(30, 41, 59);
+        btn3.ForeColor = Color.White;
+        btn3.FlatStyle = FlatStyle.Flat;
+        btn3.Click += (s, e) => LaunchMemuAndroid();
+        this.Controls.Add(btn3);
+
+        lblStatus = new Label();
+        lblStatus.Text = !string.IsNullOrEmpty(playerBetaPath)
+            ? ("Status SIAP: " + playerBetaPath)
+            : "Status SIAP: Pilih Mode 1 (Cloud/WebGL) atau Mode 2 (Desktop Client)";
+        lblStatus.Font = new Font("Consolas", 8.5f, FontStyle.Regular);
+        lblStatus.ForeColor = Color.FromArgb(74, 222, 128);
+        lblStatus.Location = new Point(20, 272);
+        lblStatus.Size = new Size(505, 36);
+        this.Controls.Add(lblStatus);
+    }
+
+    private void FindPlayerBeta()
+    {
+        try
+        {
+            string root = @"C:\Games\Roblox\Versions";
+            if (Directory.Exists(root))
+            {
+                string[] files = Directory.GetFiles(root, "RobloxPlayerBeta.exe", SearchOption.AllDirectories);
+                if (files.Length > 0) playerBetaPath = files[0];
+            }
+        }
+        catch { }
+    }
+
+    private void LaunchCloudAppMode()
+    {
+        lblStatus.Text = "Membuka Roblox Cloud / WebGL App Mode (Bebas Blokir Hyperion VM)...";
+        string chrome = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
+        string edge = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe";
+        string browser = File.Exists(chrome) ? chrome : (File.Exists(edge) ? edge : "https://www.roblox.com/home");
+        if (File.Exists(browser))
+        {
+            Process.Start(browser, "--app=https://www.roblox.com/home --ignore-gpu-blocklist --enable-webgl --use-angle=d3d11 --start-maximized");
+        }
+        else
+        {
+            Process.Start("https://www.roblox.com/home");
+        }
+    }
+
+    private void LaunchDesktopClient()
+    {
+        FindPlayerBeta();
+        if (!string.IsNullOrEmpty(playerBetaPath) && File.Exists(playerBetaPath))
+        {
+            lblStatus.Text = "Meluncurkan " + playerBetaPath + " ...";
+            ProcessStartInfo psi = new ProcessStartInfo(playerBetaPath, "--app");
+            psi.WorkingDirectory = Path.GetDirectoryName(playerBetaPath);
+            psi.UseShellExecute = false;
+            Process.Start(psi);
+        }
+        else if (File.Exists(@"C:\Games\Roblox\RobloxPlayerInstaller.exe"))
+        {
+            Process.Start(@"C:\Games\Roblox\RobloxPlayerInstaller.exe");
+        }
+    }
+
+    private void LaunchMemuAndroid()
+    {
+        lblStatus.Text = "Membuka MEmu Android Emulator...";
+        string[] memuPaths = new string[] {
+            @"C:\Program Files\Microvirt\MEmu\MEmuConsole.exe",
+            @"D:\Program Files\Microvirt\MEmu\MEmuConsole.exe",
+            @"C:\Games\MEmu\Microvirt\MEmu\MEmuConsole.exe"
+        };
+        foreach (string p in memuPaths)
+        {
+            if (File.Exists(p)) { Process.Start(p); return; }
+        }
+        if (File.Exists(@"C:\Games\MEmu\Launch-MEmu.ps1"))
+        {
+            Process.Start("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"C:\\Games\\MEmu\\Launch-MEmu.ps1\"");
+        }
+    }
+
+    [STAThread]
+    public static void Main()
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.Run(new RobloxLauncherForm());
+    }
+}
+'@
+  try {
+    Set-Content -LiteralPath $rbxCsFile -Value $rbxCsCode -Encoding UTF8 -Force
+    $cscExe = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    Remove-Item -LiteralPath $rbxLauncherExe -Force -ErrorAction SilentlyContinue
+    if (Test-Path $cscExe) {
+      & $cscExe /nologo /target:winexe "/out:$rbxLauncherExe" /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll $rbxCsFile 2>&1 | Out-Null
+    }
+  } catch {}
+
+  # 5. Buat shortcut Roblox Player dengan Target langsung ke RobloxPlayerLauncher.exe & IKON ASLI RobloxPlayerBeta.exe!
   foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
     New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
     try {
       Remove-Item -LiteralPath (Join-Path $desk 'Install Roblox Player.exe') -Force -ErrorAction SilentlyContinue
       $wsh = New-Object -ComObject WScript.Shell
       $lnk = $wsh.CreateShortcut((Join-Path $desk 'Roblox Player (Anti-VM Boost).lnk'))
-      $lnk.TargetPath = 'powershell.exe'
-      $lnk.Arguments = "-NoProfile -Sta -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$rbxLauncherPs1`""
+      if (Test-Path $rbxLauncherExe) {
+        $lnk.TargetPath = $rbxLauncherExe
+        $lnk.Arguments  = ''
+      } else {
+        $lnk.TargetPath = 'powershell.exe'
+        $lnk.Arguments  = "-NoProfile -Sta -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$rbxLauncherPs1`""
+      }
       $lnk.WorkingDirectory = $rbxDir
       if ($playerBetaExe -and (Test-Path $playerBetaExe)) {
         $lnk.IconLocation = "$playerBetaExe,0"

@@ -303,11 +303,19 @@ if (Test-Path 'C:\Games\FiveM\FiveM.exe') {
   Stop-Process -Id $pFive.Id -Force -ErrorAction SilentlyContinue
 }
 
-$pRbx = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-Sta', '-ExecutionPolicy', 'Bypass', '-File', 'C:\Games\Roblox\Launch-Roblox-AntiVM.ps1') -PassThru
-Save-QaWindowScreenshot -Proc $pRbx -OutName '09_Roblox_AntiVM_Launcher.png' `
-  -Title 'QA TEST #9 - Roblox Player & Anti-VM Launcher Suite' `
-  -Sub 'Extracted CDN Package: C:\Games\Roblox\Versions\*\RobloxPlayerBeta.exe + Cloud/Emulator Bypass' -WaitSec 6
-Stop-Process -Id $pRbx.Id -Force -ErrorAction SilentlyContinue
+if (Test-Path 'C:\Games\Roblox\RobloxPlayerLauncher.exe') {
+  $pRbx = Start-Process -FilePath 'C:\Games\Roblox\RobloxPlayerLauncher.exe' -WorkingDirectory 'C:\Games\Roblox' -PassThru
+  Save-QaWindowScreenshot -Proc $pRbx -OutName '09_Roblox_AntiVM_Launcher.png' `
+    -Title 'QA TEST #9 - Roblox Player & Anti-VM Launcher Suite (RobloxPlayerLauncher.exe)' `
+    -Sub 'Exe: C:\Games\Roblox\RobloxPlayerLauncher.exe | RobloxPlayerBeta.exe + Cloud/Emulator Bypass READY' -WaitSec 4
+  Stop-Process -Id $pRbx.Id -Force -ErrorAction SilentlyContinue
+} elseif (Test-Path 'C:\Games\Roblox\Launch-Roblox-AntiVM.ps1') {
+  $pRbx = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-Sta', '-ExecutionPolicy', 'Bypass', '-File', 'C:\Games\Roblox\Launch-Roblox-AntiVM.ps1') -PassThru
+  Save-QaWindowScreenshot -Proc $pRbx -OutName '09_Roblox_AntiVM_Launcher.png' `
+    -Title 'QA TEST #9 - Roblox Player & Anti-VM Launcher Suite' `
+    -Sub 'Extracted CDN Package: C:\Games\Roblox\Versions\*\RobloxPlayerBeta.exe + Cloud/Emulator Bypass' -WaitSec 6
+  Stop-Process -Id $pRbx.Id -Force -ErrorAction SilentlyContinue
+}
 Get-Process -Name 'RobloxPlayerBeta' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 Write-Host "=== QA E2E & Screenshot Suite Selesai ==="

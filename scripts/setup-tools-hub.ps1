@@ -751,8 +751,7 @@ try {
         $lnk.TargetPath = $exePath
         $lnk.WorkingDirectory = $toolsDir
         $lnk.Description = 'XyDeskRemote Dashboard — Pusat Kelola Sistem, Installer, Anti-VM & Cloud Save'
-        if (Test-Path $dashIco) { $lnk.IconLocation = "$dashIco,0" }
-        else { $lnk.IconLocation = 'shell32.dll,21' }
+        $lnk.IconLocation = "$exePath,0"
         $lnk.Save()
       } catch {}
     }

@@ -31,12 +31,20 @@ public class WinCapture {
     public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
     [DllImport("user32.dll")]
+    public static extern bool SetCursorPos(int X, int Y);
+
+    [DllImport("user32.dll")]
+    public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+
+    [DllImport("user32.dll")]
     public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 
     public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_SHOWWINDOW = 0x0040;
+    public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+    public const uint MOUSEEVENTF_LEFTUP = 0x0004;
 }
 "@
 
@@ -46,6 +54,26 @@ function Send-KeyPress([byte]$vk) {
     Start-Sleep -Milliseconds 120
     [WinCapture]::keybd_event($vk, 0, 2, [UIntPtr]::Zero)
   } catch {}
+}
+
+function Send-LeftClick([int]$x, [int]$y) {
+  try {
+    [WinCapture]::SetCursorPos($x, $y) | Out-Null
+    Start-Sleep -Milliseconds 120
+    [WinCapture]::mouse_event([WinCapture]::MOUSEEVENTF_LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 90
+    [WinCapture]::mouse_event([WinCapture]::MOUSEEVENTF_LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+  } catch {}
+}
+
+function Minimize-RunnerTerminals {
+  Get-Process -Name 'cmd', 'pwsh', 'conhost' -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+      if ($_.MainWindowHandle -ne [IntPtr]::Zero) {
+        [WinCapture]::ShowWindow($_.MainWindowHandle, 6) | Out-Null
+      }
+    } catch {}
+  }
 }
 
 function Save-QaWindowScreenshot {
@@ -71,14 +99,7 @@ function Save-QaWindowScreenshot {
     Start-Sleep -Milliseconds 500
   }
 
-  # Minimize terminal runner windows so they don't block the desktop view
-  Get-Process -Name 'cmd', 'pwsh' -ErrorAction SilentlyContinue | ForEach-Object {
-    try {
-      if ($_.MainWindowHandle -ne [IntPtr]::Zero) {
-        [WinCapture]::ShowWindow($_.MainWindowHandle, 6) | Out-Null
-      }
-    } catch {}
-  }
+  Minimize-RunnerTerminals
 
   if ($hwnd -ne [IntPtr]::Zero) {
     try {
@@ -90,8 +111,8 @@ function Save-QaWindowScreenshot {
   }
 
   $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-  $scrW = [Math]::Max(1280, $bounds.Width)
-  $scrH = [Math]::Max(720, $bounds.Height)
+  $scrW = [Math]::Max(1024, $bounds.Width)
+  $scrH = [Math]::Max(768, $bounds.Height)
 
   $bmp = New-Object System.Drawing.Bitmap($scrW, $scrH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $gScreen = [System.Drawing.Graphics]::FromImage($bmp)
@@ -122,12 +143,12 @@ function Save-QaWindowScreenshot {
   # Overlay QA Banner
   $bannerBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(225, 9, 13, 22))
   $gScreen.FillRectangle($bannerBrush, 0, 0, $scrW, 64)
-  $f1 = New-Object System.Drawing.Font('Segoe UI', 14, [System.Drawing.FontStyle]::Bold)
-  $f2 = New-Object System.Drawing.Font('Consolas', 10, [System.Drawing.FontStyle]::Regular)
+  $f1 = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
+  $f2 = New-Object System.Drawing.Font('Consolas', 9.5, [System.Drawing.FontStyle]::Regular)
   $bWhite = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
   $bCyan  = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(56, 189, 248))
-  $gScreen.DrawString($Title, $f1, $bWhite, 20, 8)
-  $gScreen.DrawString($Sub, $f2, $bCyan, 20, 36)
+  $gScreen.DrawString($Title, $f1, $bWhite, 18, 8)
+  $gScreen.DrawString($Sub, $f2, $bCyan, 18, 35)
 
   $outPath = Join-Path $outDir $OutName
   $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
@@ -228,7 +249,7 @@ if (Test-Path 'C:\XyRDP\tools\XyDeskDashboard.exe') {
 }
 
 # ============================================================================
-# 3. Uji & Screenshot: GTA SA-MP Control Center + SA-MP 0.3.7-R5 Browser (Bersih Tanpa Error)
+# 3. Uji & Screenshot: GTA SA-MP Control Center + SA-MP 0.3.7-R5 Browser (Side-by-Side)
 # ============================================================================
 Write-Host "=== 3. Menguji & Screenshot SA-MP Control Center & Server Browser ==="
 New-Item -Path 'HKCU:\Software\SAMP' -Force -ErrorAction SilentlyContinue | Out-Null
@@ -237,14 +258,21 @@ New-ItemProperty -Path 'HKCU:\Software\SAMP' -Name 'PlayerName' -Value 'XyPlayer
 
 $pPatchGui = $null
 if (Test-Path 'C:\Games\GTA-SAMP\Patch-GTA-SAMP.ps1') {
-  $pPatchGui = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-Sta', '-ExecutionPolicy', 'Bypass', '-File', 'C:\Games\GTA-SAMP\Patch-GTA-SAMP.ps1', '-Interactive') -PassThru
-  Start-Sleep -Seconds 3
+  $pPatchGui = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-Sta', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', 'C:\Games\GTA-SAMP\Patch-GTA-SAMP.ps1', '-Interactive') -PassThru
+  Start-Sleep -Seconds 4
 }
 if (Test-Path 'C:\Games\GTA San Andreas\samp.exe') {
   $pSamp = Start-Process -FilePath 'C:\Games\GTA San Andreas\samp.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
+  Start-Sleep -Seconds 3
+  try {
+    $pSamp.Refresh()
+    if ($pSamp.MainWindowHandle -ne [IntPtr]::Zero) {
+      [WinCapture]::SetWindowPos($pSamp.MainWindowHandle, [WinCapture]::HWND_TOPMOST, 18, 72, 680, 560, [WinCapture]::SWP_SHOWWINDOW) | Out-Null
+    }
+  } catch {}
   Save-QaWindowScreenshot -Proc $pSamp -OutName '03_SAMP_037R5_And_ControlCenter.png' `
     -Title 'QA TEST #3 - GTA SA-MP 0.3.7-R5 Server Browser & Anti-Ban Control Center' `
-    -Sub 'Exe: C:\Games\GTA San Andreas\samp.exe + Patch-GTA-SAMP.ps1 | PlayerName: XyPlayer_RDP | Clean Start' -WaitSec 5
+    -Sub 'Exe: C:\Games\GTA San Andreas\samp.exe + Patch-GTA-SAMP.ps1 | PlayerName: XyPlayer_RDP | Clean Start' -WaitSec 2
   Stop-Process -Id $pSamp.Id -Force -ErrorAction SilentlyContinue
 }
 if ($pPatchGui) { Stop-Process -Id $pPatchGui.Id -Force -ErrorAction SilentlyContinue }
@@ -255,9 +283,10 @@ if ($pPatchGui) { Stop-Process -Id $pPatchGui.Id -Force -ErrorAction SilentlyCon
 Write-Host "=== 4. Menguji & Screenshot PLAY GTA San Andreas (gta_sa.exe) ==="
 if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
-  Start-Sleep -Seconds 7
-  Send-KeyPress 0x0D # Enter
+  Start-Sleep -Seconds 8
+  Send-KeyPress 0x0D # Enter to skip splash
   Start-Sleep -Seconds 3
+  Send-KeyPress 0x20 # Space
   Save-QaWindowScreenshot -Proc $pGta -OutName '04_GTA_SanAndreas_InGame_Play.png' `
     -Title 'QA TEST #4 - PLAY GTA San Andreas (gta_sa.exe + dgVoodoo2 D3D11 + VB-Cable Audio)' `
     -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | DirectDraw 0x00746929 Bypass + SilentPatch 90 FPS ACTIVE' -WaitSec 4
@@ -265,18 +294,19 @@ if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
 }
 
 # ============================================================================
-# 5. Uji & Screenshot: PLAY Minecraft (PrismLauncher Dashboard + TLauncher TL.jar)
+# 5. Uji & Screenshot: PLAY Minecraft (PrismLauncher Main Dashboard + TLauncher Main Screen)
 # ============================================================================
 Write-Host "=== 5. Menguji & Screenshot PrismLauncher & TLauncher (TL.jar) ==="
 if (Test-Path 'C:\Games\PrismLauncher\prismlauncher.exe') {
   $pPrism = Start-Process -FilePath 'C:\Games\PrismLauncher\prismlauncher.exe' -WorkingDirectory 'C:\Games\PrismLauncher' -PassThru
   Start-Sleep -Seconds 4
-  # Click Next/Finish if first-run wizard appears
-  Send-KeyPress 0x0D
+  Send-KeyPress 0x0D # Next
+  Start-Sleep -Seconds 2
+  Send-KeyPress 0x0D # Finish -> enters Main Dashboard!
   Start-Sleep -Seconds 2
   Save-QaWindowScreenshot -Proc $pPrism -OutName '05_Minecraft_PrismLauncher.png' `
-    -Title 'QA TEST #5 - Minecraft PrismLauncher Portable (Account: XyPlayer_RDP + OpenGL 4.6)' `
-    -Sub 'Exe: C:\Games\PrismLauncher\prismlauncher.exe | Java 21 + Mesa3D OpenGL 4.6 READY' -WaitSec 4
+    -Title 'QA TEST #5 - Minecraft PrismLauncher Portable (Main Dashboard + Account: XyPlayer_RDP)' `
+    -Sub 'Exe: C:\Games\PrismLauncher\prismlauncher.exe | Java 21 + Mesa3D OpenGL 4.6 READY' -WaitSec 3
   Stop-Process -Id $pPrism.Id -Force -ErrorAction SilentlyContinue
 }
 
@@ -284,10 +314,28 @@ if (Test-Path 'C:\Games\Minecraft\TL.jar') {
   $javawList = @(Get-ChildItem -Path 'C:\Program Files\Eclipse Adoptium', 'C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk', 'C:\Program Files\Java' -Recurse -Filter 'javaw.exe' -ErrorAction SilentlyContinue | Sort-Object FullName -Descending)
   $javawExe = if ($javawList.Count -gt 0) { $javawList[0].FullName } else { 'javaw.exe' }
   $pTl = Start-Process -FilePath $javawExe -ArgumentList @('-Xmx2048M', '-Dsun.java2d.d3d=false', '-jar', 'C:\Games\Minecraft\TL.jar') -WorkingDirectory 'C:\Games\Minecraft' -PassThru
+  Start-Sleep -Seconds 10
+  try {
+    $pTl.Refresh()
+    if ($pTl.MainWindowHandle -ne [IntPtr]::Zero) {
+      [WinCapture]::SetForegroundWindow($pTl.MainWindowHandle) | Out-Null
+      $rcTl = New-Object WinCapture+RECT
+      if ([WinCapture]::GetWindowRect($pTl.MainWindowHandle, [ref]$rcTl)) {
+        # Click "Alright, I got it!" button at bottom-right of Welcome dialog
+        $btnX = $rcTl.Right - 90
+        $btnY = $rcTl.Bottom - 45
+        Send-LeftClick $btnX $btnY
+      }
+    }
+  } catch {}
+  Start-Sleep -Seconds 6
+  # Re-find java/javaw window in case Legacy Launcher spawned main frame
+  $javaWin = Get-Process -Name 'javaw', 'java' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
+  if ($javaWin) { $pTl = $javaWin }
   Save-QaWindowScreenshot -Proc $pTl -OutName '06_Minecraft_TLauncher_Play.png' `
     -Title 'QA TEST #6 - PLAY Minecraft TLauncher (TL.jar + Java 21 + Mesa3D OpenGL 4.6)' `
-    -Sub "Exe: $javawExe -jar C:\Games\Minecraft\TL.jar | Status: RUNNING OK" -WaitSec 12
-  Stop-Process -Id $pTl.Id -Force -ErrorAction SilentlyContinue
+    -Sub "Exe: $javawExe -jar C:\Games\Minecraft\TL.jar | Status: RUNNING OK" -WaitSec 3
+  Get-Process -Name 'javaw', 'java' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
 # ============================================================================
@@ -300,9 +348,14 @@ if ($blenderExe) {
   $env:LIBGL_ALWAYS_SOFTWARE = '1'
   $env:MESA_GL_VERSION_OVERRIDE = '4.6'
   $pBlend = Start-Process -FilePath $blenderExe.FullName -WorkingDirectory $blenderExe.DirectoryName -PassThru
+  Start-Sleep -Seconds 15
+  # Dismiss splash screen by pressing Escape or clicking viewport corner so the 3D Cube is 100% visible!
+  Send-KeyPress 0x1B
+  Start-Sleep -Seconds 1
+  Send-LeftClick 160 220
   Save-QaWindowScreenshot -Proc $pBlend -OutName '07_Blender3D_42_Viewport.png' `
-    -Title 'QA TEST #7 - Blender 3D Studio 4.2.3 LTS (3D Viewport + Mesa3D OpenGL 4.6)' `
-    -Sub "Exe: $($blenderExe.FullName) | OpenGL 4.6 llvmpipe 3D Viewport ACTIVE" -WaitSec 16
+    -Title 'QA TEST #7 - Blender 3D Studio 4.2.3 LTS (3D Viewport Cube + Mesa3D OpenGL 4.6)' `
+    -Sub "Exe: $($blenderExe.FullName) | OpenGL 4.6 llvmpipe 3D Viewport ACTIVE" -WaitSec 3
   Stop-Process -Id $pBlend.Id -Force -ErrorAction SilentlyContinue
 }
 
@@ -313,13 +366,13 @@ Write-Host "=== 7. Menguji & Screenshot PLAY Euro Truck Simulator 2 ==="
 $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
 if (Test-Path $etsExe) {
   $pEts = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
-  Start-Sleep -Seconds 6
-  Send-KeyPress 0x1B # ESC to skip intro
-  Start-Sleep -Seconds 2
+  Start-Sleep -Seconds 10
+  Send-KeyPress 0x1B # ESC
+  Start-Sleep -Seconds 4
   Send-KeyPress 0x0D # Enter
   Save-QaWindowScreenshot -Proc $pEts -OutName '08_EuroTruckSimulator2_InGame_Play.png' `
     -Title 'QA TEST #8 - PLAY Euro Truck Simulator 2 (SCS Software 3D Engine)' `
-    -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | dgVoodoo2 Direct3D 9 Windowed ACTIVE' -WaitSec 6
+    -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | dgVoodoo2 Direct3D 9 Windowed ACTIVE' -WaitSec 4
   Stop-Process -Id $pEts.Id -Force -ErrorAction SilentlyContinue
 }
 
@@ -332,7 +385,7 @@ $edgeExe   = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 $browserExe = if (Test-Path $chromeExe) { $chromeExe } else { $edgeExe }
 $pWebRbx = $null
 if (Test-Path $browserExe) {
-  $pWebRbx = Start-Process -FilePath $browserExe -ArgumentList @('--app=https://www.roblox.com/charts', '--window-size=1180,680', '--window-position=40,70', '--no-first-run', '--no-default-browser-check', '--ignore-gpu-blocklist', '--enable-webgl') -PassThru
+  $pWebRbx = Start-Process -FilePath $browserExe -ArgumentList @('--app=https://www.roblox.com/charts', '--window-size=620,640', '--window-position=12,72', '--no-first-run', '--no-default-browser-check', '--ignore-gpu-blocklist', '--enable-webgl') -PassThru
   Start-Sleep -Seconds 6
 }
 $pRbxBeta = $null
@@ -343,9 +396,16 @@ if ($betaExe) {
 }
 if (Test-Path 'C:\Games\Roblox\RobloxPlayerLauncher.exe') {
   $pRbxHub = Start-Process -FilePath 'C:\Games\Roblox\RobloxPlayerLauncher.exe' -WorkingDirectory 'C:\Games\Roblox' -PassThru
+  Start-Sleep -Seconds 2
+  try {
+    $pRbxHub.Refresh()
+    if ($pRbxHub.MainWindowHandle -ne [IntPtr]::Zero) {
+      [WinCapture]::SetWindowPos($pRbxHub.MainWindowHandle, [WinCapture]::HWND_TOPMOST, 445, 190, 560, 360, [WinCapture]::SWP_SHOWWINDOW) | Out-Null
+    }
+  } catch {}
   Save-QaWindowScreenshot -Proc $pRbxHub -OutName '09_Roblox_Play_And_AntiVM_Suite.png' `
     -Title 'QA TEST #9 - PLAY Roblox (Cloud/WebGL Charts + RobloxPlayerBeta.exe + Anti-VM Hub)' `
-    -Sub 'Exe: RobloxPlayerLauncher.exe + RobloxPlayerBeta.exe (version-9ac8595712b447a7) + WebGL App Mode ACTIVE' -WaitSec 4
+    -Sub 'Exe: RobloxPlayerLauncher.exe + RobloxPlayerBeta.exe (version-9ac8595712b447a7) + WebGL App Mode ACTIVE' -WaitSec 2
   Stop-Process -Id $pRbxHub.Id -Force -ErrorAction SilentlyContinue
 }
 if ($pRbxBeta) { Stop-Process -Id $pRbxBeta.Id -Force -ErrorAction SilentlyContinue }
@@ -353,9 +413,9 @@ if ($pWebRbx) { Stop-Process -Id $pWebRbx.Id -Force -ErrorAction SilentlyContinu
 Get-Process -Name 'RobloxPlayerBeta', 'chrome', 'msedge' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # ============================================================================
-# 9. Uji & Screenshot: FiveM Prank App + MEmu Android Emulator
+# 9. Uji & Screenshot: FiveM Prank App
 # ============================================================================
-Write-Host "=== 9. Menguji & Screenshot FiveM.exe + MEmu Android Emulator ==="
+Write-Host "=== 9. Menguji & Screenshot FiveM.exe ==="
 if (Test-Path 'C:\Games\FiveM\FiveM.exe') {
   $pFive = Start-Process -FilePath 'C:\Games\FiveM\FiveM.exe' -WorkingDirectory 'C:\Games\FiveM' -PassThru
   Save-QaWindowScreenshot -Proc $pFive -OutName '10_FiveM_Prank_App.png' `

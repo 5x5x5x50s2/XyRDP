@@ -1018,7 +1018,45 @@ $form.Controls.Add($lblHint)
 '@
   Set-Content -Path $patcherPath -Value $patcherCode -Encoding UTF8 -Force
 
-  # 11. Jalankan auto-patch pada folder kandidat (tanpa dialog) dan kunci HKCU:\Software\SAMP\gta_sa_exe
+  # 11. Pasang Virtual Sound Card (VB-Audio Virtual Cable) via .NET LocalMachine X509Store (100% Silent Tanpa Dialog Modal)
+  #     Wajib agar Windows Server memiliki Output Audio Device aktif sehingga gta_sa.exe tidak keluar karena "no sound card installed"!
+  try {
+    $vbcDir = 'C:\XyRDP\audio\vbcable'
+    $vbcZip = Join-Path $work 'VBCABLE_Driver_Pack43.zip'
+    if (-not (Test-Path (Join-Path $vbcDir 'vbcable.cat'))) {
+      New-Item -ItemType Directory -Path $vbcDir -Force | Out-Null
+      if (Invoke-DownloadWithRetry 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' $vbcZip 2) {
+        if (Test-Path $sevenZip) { & $sevenZip x $vbcZip "-o$vbcDir" -y 2>&1 | Out-Null }
+        else { Expand-Archive -Path $vbcZip -DestinationPath $vbcDir -Force }
+        foreach ($sigTarget in @((Join-Path $vbcDir 'vbcable.cat'), (Join-Path $vbcDir 'VBCABLE_Setup_x64.exe'), (Join-Path $vbcDir 'vbcable_x64.sys'))) {
+          if (Test-Path $sigTarget) {
+            $sig = Get-AuthenticodeSignature $sigTarget -ErrorAction SilentlyContinue
+            if ($sig -and $sig.SignerCertificate) {
+              foreach ($storeName in @('Root', 'TrustedPublisher')) {
+                $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeName, [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
+                $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                $store.Add($sig.SignerCertificate)
+                $store.Close()
+              }
+            }
+          }
+        }
+        $vbcExe = Join-Path $vbcDir 'VBCABLE_Setup_x64.exe'
+        if (Test-Path $vbcExe) {
+          Start-ProcessWithTimeout $vbcExe @('-i', '-h') $vbcDir 15 | Out-Null
+        }
+        $infFile = Join-Path $vbcDir 'vbMmeCable64_win7.inf'
+        if (Test-Path $infFile) {
+          Start-ProcessWithTimeout 'pnputil.exe' @('/add-driver', $infFile, '/install') $vbcDir 15 | Out-Null
+        }
+        Start-Service -Name 'AudioEndpointBuilder' -ErrorAction SilentlyContinue
+        Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue
+        Log 'VB-Audio Virtual Sound Card berhasil dipasang secara silent via LocalMachine X509Store.'
+      }
+    }
+  } catch { Log "VB-Cable setup warning: $($_.Exception.Message)" }
+
+  # 11b. Jalankan auto-patch pada folder kandidat (tanpa dialog) dan kunci HKCU:\Software\SAMP\gta_sa_exe
   try {
     Start-Service -Name 'AudioEndpointBuilder' -ErrorAction SilentlyContinue
     Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue

@@ -272,12 +272,26 @@ try {
   & reg.exe export "HKCU\Software\SAMP" $sampRegOut /y 2>&1 | Out-Null
 } catch {}
 
-# 4. Hitung apakah ada file yang akan disimpan
-$fileCount = (Get-ChildItem -Path $stageDir -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object).Count
+# 4. Hitung apakah ada file yang akan disimpan & cek perubahan (Anti-Spam API untuk Akun Baru)
+$allStagedFiles = @(Get-ChildItem -Path $stageDir -Recurse -File -Force -ErrorAction SilentlyContinue)
+$fileCount = $allStagedFiles.Count
 if ($fileCount -eq 0) {
   Log 'Tidak ada file baru di C:\Persist atau profil user untuk disimpan.'
   Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
   exit 0
+}
+
+$totalBytes = ($allStagedFiles | Measure-Object -Property Length -Sum).Sum
+$latestTicks = ($allStagedFiles | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc.Ticks
+$stateSig = "$fileCount|$totalBytes|$latestTicks"
+$sigFile = 'C:\XyRDP\tools\last-checkpoint-sig.txt'
+if ($Checkpoint -and (Test-Path $sigFile)) {
+  $prevSig = (Get-Content $sigFile -Raw -ErrorAction SilentlyContinue).Trim()
+  if ($prevSig -eq $stateSig) {
+    Log "Tidak ada perubahan data sejak checkpoint terakhir ($fileCount file) — lewati upload API."
+    Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
+    exit 0
+  }
 }
 
 Log "Mengompresi $fileCount file state..."
@@ -372,6 +386,10 @@ try {
   }
   Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $upHdrs -InFile $encPath -TimeoutSec 300 | Out-Null
   Log "State berhasil disimpan ke Release '$tag' ($assetName, $zipMB MB, $fileCount file)."
+
+  # Simpan signature state terakhir agar checkpoint berikutnya tidak spam API bila belum ada perubahan
+  New-Item -ItemType Directory -Path 'C:\XyRDP\tools' -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-Content -Path $sigFile -Value $stateSig -Encoding ASCII -Force
 
   # Catat waktu simpan terakhir untuk ditampilkan di XyDeskRemote Dashboard
   New-Item -ItemType Directory -Path 'C:\Persist\System' -Force -ErrorAction SilentlyContinue | Out-Null

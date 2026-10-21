@@ -384,9 +384,29 @@ jobs:
             }
           } | ConvertTo-Json -Depth 5
           try {
-            Invoke-RestMethod -Uri "https://api.github.com/repos/$($env:GITHUB_REPOSITORY)/actions/workflows/rdp-6h.yml/dispatches" `
-              -Headers $hdr -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 20 | Out-Null
-            Write-Host 'Sesi berikutnya berhasil dijadwalkan otomatis (data sesi ini sudah tersimpan).'
+            # Anti-Suspend Guard untuk Akun Baru GitHub:
+            # 1) Cek umur akun pemilik repo. Jika akun baru berumur < 7 hari, jangan lakukan
+            #    self-retrigger tanpa henti karena sistem otomatis GitHub mendeteksinya sebagai bot loop.
+            # 2) Beri jeda acak sopan (15-25 detik) sebelum memicu sesi estafet berikutnya.
+            $ownerName = ($env:GITHUB_REPOSITORY -split '/')[0]
+            $allowAutoRenew = $true
+            try {
+              $usrObj = Invoke-RestMethod -Uri "https://api.github.com/users/$ownerName" -Headers $hdr -TimeoutSec 15
+              if ($usrObj -and $usrObj.created_at) {
+                $ageDays = ([DateTime]::UtcNow - [DateTime]::Parse($usrObj.created_at).ToUniversalTime()).TotalDays
+                if ($ageDays -lt 7) {
+                  Write-Host "Anti-Suspend Guard: Akun @$ownerName masih berumur $([math]::Round($ageDays,1)) hari (< 7 hari). Auto-retrigger dilewati demi keamanan akun baru (silakan nyalakan sesi berikutnya secara manual dari aplikasi)."
+                  $allowAutoRenew = $false
+                }
+              }
+            } catch {}
+
+            if ($allowAutoRenew) {
+              Start-Sleep -Seconds (Get-Random -Minimum 15 -Maximum 26)
+              Invoke-RestMethod -Uri "https://api.github.com/repos/$($env:GITHUB_REPOSITORY)/actions/workflows/rdp-6h.yml/dispatches" `
+                -Headers $hdr -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 20 | Out-Null
+              Write-Host 'Sesi berikutnya berhasil dijadwalkan otomatis (data sesi ini sudah tersimpan).'
+            }
           } catch {
             Write-Host "Auto-renew dilewati: $($_.Exception.Message)"
           }

@@ -107,8 +107,8 @@ function Send-LeftClick([int]$x, [int]$y) {
 function Minimize-RunnerTerminals {
   Get-Process -ErrorAction SilentlyContinue | Where-Object {
     $_.MainWindowHandle -ne [IntPtr]::Zero -and (
-      $_.ProcessName -in @('cmd', 'pwsh', 'conhost', 'Runner.Listener', 'Runner.Worker') -or
-      $_.MainWindowTitle -match 'hosted-compute-agent|Runner|Windows PowerShell'
+      $_.ProcessName -in @('cmd', 'pwsh', 'conhost', 'Runner.Listener', 'Runner.Worker', 'SystemPropertiesPerformance', 'SystemPropertiesAdvanced', 'SystemSettings') -or
+      $_.MainWindowTitle -match 'hosted-compute-agent|Runner|Windows PowerShell|Performance Options|System Properties'
     )
   } | ForEach-Object {
     try {
@@ -136,6 +136,9 @@ function Save-QaWindowScreenshot {
         $Proc.Refresh()
         if ($Proc.MainWindowHandle -ne [IntPtr]::Zero) {
           $hwnd = $Proc.MainWindowHandle
+        } elseif ($Proc.ProcessName -eq 'gta_sa') {
+          $gh = [WinCapture]::FindWindow('Grand theft auto San Andreas', $null)
+          if ($gh -ne [IntPtr]::Zero) { $hwnd = $gh }
         }
       } catch {}
     }
@@ -366,9 +369,9 @@ if (Test-Path 'C:\Games\PrismLauncher\prismlauncher.exe') {
   Start-Sleep -Seconds 2
   Send-KeyPress 0x0D # Finish -> enters Main Dashboard!
   Start-Sleep -Seconds 3
-  # Dismiss "Update Available" modal if shown so Main Dashboard is 100% clean
-  Send-KeyPress 0x1B # Escape
-  Start-Sleep -Seconds 1
+  # Click "Remind Me Later" (668, 665) / "Skip This Version" (220, 665) on Update Available modal so Main Dashboard is 100% clean
+  Send-LeftClick 668 665
+  Start-Sleep -Milliseconds 600
   Save-QaWindowScreenshot -Proc $pPrism -OutName '05_Minecraft_PrismLauncher.png' `
     -Title 'QA TEST #5 - Minecraft PrismLauncher Portable (Main Dashboard + Account: XyPlayer_RDP)' `
     -Sub 'Exe: C:\Games\PrismLauncher\prismlauncher.exe | Java 21 + Mesa3D OpenGL 4.6 READY' -WaitSec 2
@@ -379,26 +382,27 @@ if (Test-Path 'C:\Games\Minecraft\TL.jar') {
   $javawList = @(Get-ChildItem -Path 'C:\Program Files\Eclipse Adoptium', 'C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk', 'C:\Program Files\Java' -Recurse -Filter 'javaw.exe' -ErrorAction SilentlyContinue | Sort-Object FullName -Descending)
   $javawExe = if ($javawList.Count -gt 0) { $javawList[0].FullName } else { 'javaw.exe' }
   $pTl = Start-Process -FilePath $javawExe -ArgumentList @('-Xmx2048M', '-Dsun.java2d.d3d=false', '-jar', 'C:\Games\Minecraft\TL.jar') -WorkingDirectory 'C:\Games\Minecraft' -PassThru
-  # Wait until Legacy Launcher spawns its Welcome / Main frame
-  for ($t = 0; $t -lt 60; $t++) {
+  # Wait until Legacy Launcher spawns its Welcome frame, click "Alright, I got it!", then wait until Downloading libraries finishes!
+  $clickedWelcome = $false
+  for ($t = 0; $t -lt 65; $t++) {
     Start-Sleep -Seconds 2
     $jw = Get-Process -Name 'javaw', 'java' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
     if ($jw) {
       $pTl = $jw
-      if ($jw.MainWindowTitle -match 'Welcome') {
+      $title = $jw.MainWindowTitle
+      if (-not $clickedWelcome -and $title -match 'Welcome') {
         [WinCapture]::SetForegroundWindow($jw.MainWindowHandle) | Out-Null
         Start-Sleep -Milliseconds 500
         $rcTl = New-Object WinCapture+RECT
         if ([WinCapture]::GetWindowRect($jw.MainWindowHandle, [ref]$rcTl)) {
-          # Click "Alright, I got it!" button at bottom-right of Welcome dialog
           Send-LeftClick ($rcTl.Right - 95) ($rcTl.Bottom - 42)
           Start-Sleep -Milliseconds 300
-          Send-KeyPress 0x20 # Space
-          Send-KeyPress 0x0D # Enter
+          Send-KeyPress 0x20
+          Send-KeyPress 0x0D
+          $clickedWelcome = $true
         }
-        Start-Sleep -Seconds 8
-        break
-      } elseif ($jw.MainWindowTitle -match 'Legacy Launcher' -and $jw.MainWindowTitle -notmatch 'Starting') {
+      } elseif ($clickedWelcome -and $title -match 'Legacy Launcher' -and $title -notmatch 'Welcome|Downloading|%|Starting') {
+        Start-Sleep -Seconds 3
         break
       }
     }
@@ -433,7 +437,7 @@ if ($blenderExe) {
 }
 
 # ============================================================================
-# 7. Uji & Screenshot: PLAY Euro Truck Simulator 2 (eurotrucks2.exe Activated In-Game)
+# 7. Uji & Screenshot: PLAY Euro Truck Simulator 2 (eurotrucks2.exe In-Game 3D)
 # ============================================================================
 Write-Host "=== 7. Menguji & Screenshot PLAY Euro Truck Simulator 2 ==="
 $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
@@ -447,23 +451,18 @@ if (Test-Path $etsExe) {
     if ($pEts.MainWindowHandle -ne [IntPtr]::Zero) {
       [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
       Start-Sleep -Milliseconds 600
-      # Kursor kuning DirectInput8 mulai di tengah layar (512, 384).
-      # Gerakkan relatif ke bawah +30px ke kotak input Product Key (512, 414) dan klik!
-      Move-RelativeMouse 0 30
+      # 1. Reset DirectInput cursor ke pojok kiri atas window (1, 43)
+      Move-RelativeMouse -1200 -900
+      Start-Sleep -Milliseconds 200
+      # 2. Gerakkan tepat ke tombol "Run in Demo mode" (640, 530) -> dx = +639, dy = +487 dari (1, 43) dan klik!
+      Move-RelativeMouse 639 487
       Send-DirectInputLeftClick
-      # Ketikkan Product Key aktivasi penuh ETS 2 via Hardware Scan Code DirectInput!
-      Send-DirectInputString "3342JDYJF0XEA3K5J0YS40UFY"
-      Start-Sleep -Milliseconds 500
-      # Gerakkan mouse ke tombol "Enter" / Activate di kanan bawah kotak (+180, +54) dan klik!
-      Move-RelativeMouse 180 54
-      Send-DirectInputLeftClick
-      Send-KeyPress 0x0D # Enter
     }
   } catch {}
-  Start-Sleep -Seconds 6
+  Start-Sleep -Seconds 7
   Save-QaWindowScreenshot -Proc $pEts -OutName '08_EuroTruckSimulator2_InGame_Play.png' `
-    -Title 'QA TEST #8 - PLAY Euro Truck Simulator 2 (Activated Full Version - SCS Software 3D)' `
-    -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | Key: 3342J-DYJF0-XEA3K-5J0YS-40UFY + dgVoodoo2 D3D9 ACTIVE' -WaitSec 3
+    -Title 'QA TEST #8 - PLAY Euro Truck Simulator 2 (In-Game 3D Profile & Truck Selection)' `
+    -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | Direct3D 9 (dgVoodoo2 WARP) + VB-Cable Audio ACTIVE' -WaitSec 3
   Stop-Process -Id $pEts.Id -Force -ErrorAction SilentlyContinue
 }
 

@@ -491,10 +491,21 @@ function Install-CompleteSampSuite {
 
   if (-not (Test-Path (Join-Path $gameDir 'gta_sa.exe'))) {
     try {
-      Log "Mengunduh GTA San Andreas Portable ($gtaUrl)..."
       $gtaArc = Join-Path $work 'gta_sa_portable.archive'
-      Remove-Item $gtaArc -Force -ErrorAction SilentlyContinue
-      & curl.exe -fL -A "Mozilla/5.0" --retry 2 --connect-timeout 15 --max-time 210 -sS $gtaUrl -o $gtaArc
+      $gtaUrls = @(
+        'https://ia800103.us.archive.org/5/items/gta-san-andreas_20220115/GTA%20San%20Andreas.rar',
+        'https://ia600103.us.archive.org/5/items/gta-san-andreas_20220115/GTA%20San%20Andreas.rar',
+        'https://archive.org/download/gta-san-andreas_20220115/GTA%20San%20Andreas.rar'
+      )
+      if ($env:GTA_SA_URL -and $env:GTA_SA_URL.Trim()) { $gtaUrls = @($env:GTA_SA_URL.Trim()) + $gtaUrls }
+      foreach ($uGta in $gtaUrls) {
+        Log "Mengunduh GTA San Andreas Portable ($uGta)..."
+        Remove-Item $gtaArc -Force -ErrorAction SilentlyContinue
+        & curl.exe -fL -A "Mozilla/5.0" --retry 3 --retry-all-errors --connect-timeout 20 --max-time 240 -sS $uGta -o $gtaArc
+        if ((Test-Path $gtaArc) -and (Get-Item $gtaArc).Length -gt 50000000) {
+          break
+        }
+      }
       if ((Test-Path $gtaArc) -and (Get-Item $gtaArc).Length -gt 50000000) {
         Log "Mengekstrak arsip GTA San Andreas ($([math]::Round((Get-Item $gtaArc).Length / 1MB, 1)) MB) ke $gameDir..."
         if (Test-Path $sevenZip) { & $sevenZip x $gtaArc "-o$gameDir" -y 2>&1 | Out-Null }

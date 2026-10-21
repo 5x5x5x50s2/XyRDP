@@ -1139,8 +1139,9 @@ function Install-EuroTruckSimulator2FreeSuite {
   if (-not (Test-Path $etsExe)) {
     Log 'Mengunduh & memasang Euro Truck Simulator 2 (ETS 2 Free Edition Resmi SCS Software)...'
     foreach ($etsUrl in @(
-      'https://web.archive.org/web/20130312033231if_/http://download.eurotrucksimulator2.com/EuroTruckSimulator2_setup.exe',
-      'https://archive.org/download/ets2v1.1.1/EuroTruckSimulator2_setup.exe'
+      'https://ia601805.us.archive.org/7/items/ets2v1.1.1/EuroTruckSimulator2_setup.exe',
+      'https://ia801805.us.archive.org/7/items/ets2v1.1.1/EuroTruckSimulator2_setup.exe',
+      'https://web.archive.org/web/20130312033231if_/http://download.eurotrucksimulator2.com/EuroTruckSimulator2_setup.exe'
     )) {
       if (Invoke-GameDownload $etsUrl $setupExe 100000000) {
         Log 'Menjalankan silent install Euro Truck Simulator 2 ke C:\Games\ETS2...'

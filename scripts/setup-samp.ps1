@@ -1040,11 +1040,11 @@ $form.Controls.Add($lblHint)
         }
         $infFile = Join-Path $vbcDir 'vbMmeCable64_win7.inf'
         if (Test-Path $infFile) {
-          & pnputil.exe /add-driver $infFile /install 2>&1 | Out-Null
+          Start-ProcessWithTimeout 'pnputil.exe' @('/add-driver', $infFile, '/install') $vbcDir 12 | Out-Null
         }
         $vbcExe = Join-Path $vbcDir 'VBCABLE_Setup_x64.exe'
         if (Test-Path $vbcExe) {
-          Start-ProcessWithTimeout $vbcExe @('-i', '-h') $vbcDir 25 | Out-Null
+          Start-ProcessWithTimeout $vbcExe @('-i', '-h') $vbcDir 12 | Out-Null
         }
         Start-Service -Name 'AudioEndpointBuilder' -ErrorAction SilentlyContinue
         Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue

@@ -84,7 +84,8 @@ try {
 }
 
 $asset = $rel.assets | Where-Object { $_.name -like 'xyrdp-state.*.enc' } | Select-Object -First 1
-if (-not $asset) {
+$partAssets = @($rel.assets | Where-Object { $_.name -like 'xyrdp-state.*.enc.part*' } | Sort-Object -Property name)
+if (-not $asset -and $partAssets.Count -eq 0) {
   Log 'Asset state tidak ditemukan di release.'
   exit 0
 }
@@ -93,22 +94,49 @@ $workDir = 'C:\XyRDP\restore-work'
 Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $workDir -Force | Out-Null
 
-$encPath = Join-Path $workDir $asset.name
-$zipPath = Join-Path $workDir ($asset.name -replace '\.enc$', '')
-$extDir  = Join-Path $workDir 'extracted'
+$dlHdrs = @{
+  'Authorization' = "Bearer $ghToken"
+  'Accept'        = 'application/octet-stream'
+  'User-Agent'    = 'XyRDP-State'
+}
 
-Log "Mengunduh state sesi sebelumnya ($($asset.name), $([math]::Round($asset.size / 1MB, 2)) MB)..."
-try {
-  $dlHdrs = @{
-    'Authorization' = "Bearer $ghToken"
-    'Accept'        = 'application/octet-stream'
-    'User-Agent'    = 'XyRDP-State'
+if ($partAssets.Count -gt 0) {
+  $baseEncName = $partAssets[0].name -replace '\.part\d+$', ''
+  $encPath = Join-Path $workDir $baseEncName
+  $zipPath = Join-Path $workDir ($baseEncName -replace '\.enc$', '')
+  $extDir  = Join-Path $workDir 'extracted'
+  Log "Mengunduh & menggabungkan $($partAssets.Count) part arsip state ($baseEncName)..."
+  try {
+    $fsJoin = [System.IO.File]::Create($encPath)
+    try {
+      foreach ($pa in $partAssets) {
+        $tmpPart = Join-Path $workDir $pa.name
+        Invoke-WebRequest -Uri "https://api.github.com/repos/$ghRepo/releases/assets/$($pa.id)" -Headers $dlHdrs -OutFile $tmpPart -UseBasicParsing -TimeoutSec 240
+        $fsPart = [System.IO.File]::OpenRead($tmpPart)
+        $fsPart.CopyTo($fsJoin)
+        $fsPart.Close()
+        Remove-Item $tmpPart -Force -ErrorAction SilentlyContinue
+      }
+    } finally {
+      $fsJoin.Close()
+    }
+  } catch {
+    Log "Gagal mengunduh multi-part state: $($_.Exception.Message)"
+    Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
+    exit 0
   }
-  Invoke-WebRequest -Uri "https://api.github.com/repos/$ghRepo/releases/assets/$($asset.id)" -Headers $dlHdrs -OutFile $encPath -UseBasicParsing -TimeoutSec 240
-} catch {
-  Log "Gagal mengunduh state: $($_.Exception.Message)"
-  Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
-  exit 0
+} else {
+  $encPath = Join-Path $workDir $asset.name
+  $zipPath = Join-Path $workDir ($asset.name -replace '\.enc$', '')
+  $extDir  = Join-Path $workDir 'extracted'
+  Log "Mengunduh state sesi sebelumnya ($($asset.name), $([math]::Round($asset.size / 1MB, 2)) MB)..."
+  try {
+    Invoke-WebRequest -Uri "https://api.github.com/repos/$ghRepo/releases/assets/$($asset.id)" -Headers $dlHdrs -OutFile $encPath -UseBasicParsing -TimeoutSec 240
+  } catch {
+    Log "Gagal mengunduh state: $($_.Exception.Message)"
+    Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
+    exit 0
+  }
 }
 
 if (-not (Test-Path $encPath) -or (Get-Item $encPath).Length -lt 32) {

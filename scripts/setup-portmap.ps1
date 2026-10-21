@@ -26,11 +26,12 @@ $portRaw  = if ($env:PORTMAP_PORT) { $env:PORTMAP_PORT.Trim() } else { '' }
 $port     = 0
 [void][int]::TryParse($portRaw, [ref]$port)
 
-# ---------- SKENARIO 1: RAILWAY CLOUD TUNNEL (*.rlwy.net / *.railway.app) ----------
-if ($hostName -match '\.(rlwy\.net|railway\.app)$') {
+# ---------- SKENARIO 1: RAILWAY CLOUD TUNNEL (*.rlwy.net / *.railway.app) ATAU BORE.PUB ----------
+if ($hostName -match '\.(rlwy\.net|railway\.app)$' -or $hostName -match '^(bore\.pub|auto|auto-tunnel)$') {
   try {
-    Log "Mendeteksi endpoint Railway Cloud Tunnel: $hostName (port=$port)..."
-    if ($port -lt 1 -or $port -gt 65535) { $port = 3389 }
+    if ($hostName -match '^(auto|auto-tunnel)$') { $hostName = 'bore.pub' }
+    Log "Mendeteksi endpoint Cloud Tunnel: $hostName (port=$port)..."
+    if ($port -lt 1 -or $port -gt 65535) { $port = 0 }
 
     # Pastikan listener RDP 3389 hidup
     if (-not (Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue)) {
@@ -44,11 +45,11 @@ if ($hostName -match '\.(rlwy\.net|railway\.app)$') {
     Remove-Item $rwLogFile -Force -ErrorAction SilentlyContinue
 
     if ($hostName -match '\.up\.railway\.app$') {
+      if ($port -le 0) { $port = 3389 }
       # Mode Railway WebSocket / HTTP Reverse Tunnel via Chisel
       $chiselGz  = Join-Path $root 'chisel.gz'
       $chiselExe = Join-Path $root 'chisel.exe'
       if (-not (Test-Path $chiselExe)) {
-        $chiselZip = Join-Path $root 'chisel.zip'
         $rel = Get-GhAssetUrl 'jpillora/chisel' 'windows_amd64\.gz$'
         $dlUrl = if ($rel) { $rel.url } else { 'https://github.com/jpillora/chisel/releases/download/v1.10.1/chisel_1.10.1_windows_amd64.gz' }
         if (Get-File $dlUrl $chiselGz 90) {
@@ -65,7 +66,7 @@ if ($hostName -match '\.(rlwy\.net|railway\.app)$') {
         Start-Sleep -Seconds 4
       }
     } else {
-      # Mode Railway TCP Proxy (*.proxy.rlwy.net) via Bore / Chisel
+      # Mode Railway TCP Proxy (*.proxy.rlwy.net) atau Auto Public Tunnel (bore.pub)
       $boreZip = Join-Path $root 'bore.zip'
       $boreExe = Join-Path $root 'bore.exe'
       if (-not (Test-Path $boreExe)) {
@@ -75,24 +76,36 @@ if ($hostName -match '\.(rlwy\.net|railway\.app)$') {
         }
       }
       if (Test-Path $boreExe) {
-        $proc = Start-Process $boreExe -ArgumentList @('local', '3389', '--to', $hostName, '--port', "$port") -RedirectStandardOutput $rwLogFile -RedirectStandardError "$rwLogFile.err" -PassThru -WindowStyle Hidden
+        $boreArgs = if ($port -gt 0) { @('local', '3389', '--to', $hostName, '--port', "$port") } else { @('local', '3389', '--to', $hostName) }
+        $proc = Start-Process $boreExe -ArgumentList $boreArgs -RedirectStandardOutput $rwLogFile -RedirectStandardError "$rwLogFile.err" -PassThru -WindowStyle Hidden
         $proc.Id | Set-Content $rwPidFile
-        Start-Sleep -Seconds 4
+        for ($w = 0; $w -lt 12; $w++) {
+          Start-Sleep -Seconds 1
+          if (Test-Path $rwLogFile) {
+            $logTxt = Get-Content $rwLogFile -Raw -ErrorAction SilentlyContinue
+            if ($logTxt -match 'listening at ([a-zA-Z0-9.-]+):(\d+)') {
+              $hostName = $Matches[1]
+              $port = [int]$Matches[2]
+              break
+            }
+          }
+        }
+        if ($port -le 0) { $port = 3389 }
       }
     }
 
     Update-Status @{
       akses = @{
         mode    = 'railway'
-        railway = @{ status = 'ok'; host = $hostName; port = $port; note = 'Railway Cloud Tunnel aktif menuju port 3389.' }
-        portmap = @{ status = 'ok'; host = $hostName; port = $port; note = 'Railway Cloud Tunnel aktif.' }
+        railway = @{ status = 'ok'; host = $hostName; port = $port; note = 'Cloud Tunnel aktif menuju port 3389.' }
+        portmap = @{ status = 'ok'; host = $hostName; port = $port; note = 'Cloud Tunnel aktif.' }
         tunnel  = @{ status = 'ok'; host = $hostName; port = $port; address = "$hostName`:$port"; selftest = 'ok'; outside = 'railway' }
       }
     } | Out-Null
-    Log "Railway Tunnel siap: $hostName`:$port -> TCP 3389."
+    Log "Cloud Tunnel siap: $hostName`:$port -> TCP 3389."
     exit 0
   } catch {
-    Log "Railway Tunnel warning: $($_.Exception.Message)"
+    Log "Cloud Tunnel warning: $($_.Exception.Message)"
   }
 }
 

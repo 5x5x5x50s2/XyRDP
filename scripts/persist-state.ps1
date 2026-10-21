@@ -310,8 +310,8 @@ if (-not (Test-Path $zipPath)) {
 
 $zipMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
 Log "Arsip state dibuat ($zipMB MB). Mengenkripsi AES-256..."
-if ($zipMB -gt 1900) {
-  Log "Arsip melebihi batas GitHub Release (1900 MB) — lewati upload."
+if ($zipMB -gt 5400) {
+  Log "Arsip melebihi batas maksimum multi-part (5400 MB) — lewati upload."
   Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
   exit 0
 }
@@ -369,7 +369,7 @@ try {
     $rel = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$ghRepo/releases" -Headers $hdrs -ContentType 'application/json' -Body $body -TimeoutSec 30
   }
 
-  $assetName = if ($zipPath.EndsWith('.7z')) { 'xyrdp-state.7z.enc' } else { 'xyrdp-state.zip.enc' }
+  $baseAssetName = if ($zipPath.EndsWith('.7z')) { 'xyrdp-state.7z.enc' } else { 'xyrdp-state.zip.enc' }
   foreach ($a in @($rel.assets)) {
     if ($a.name -like 'xyrdp-state.*') {
       try {
@@ -378,14 +378,46 @@ try {
     }
   }
 
-  $uploadUrl = ($rel.upload_url -replace '\{\?name,label\}$', '') + "?name=$assetName"
   $upHdrs = @{
     'Authorization' = "Bearer $ghToken"
     'Content-Type'  = 'application/octet-stream'
     'User-Agent'    = 'XyRDP-State'
   }
-  Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $upHdrs -InFile $encPath -TimeoutSec 300 | Out-Null
-  Log "State berhasil disimpan ke Release '$tag' ($assetName, $zipMB MB, $fileCount file)."
+  $encLen = (Get-Item $encPath).Length
+  $chunkMaxBytes = 1850L * 1024L * 1024L
+  if ($encLen -le $chunkMaxBytes) {
+    $uploadUrl = ($rel.upload_url -replace '\{\?name,label\}$', '') + "?name=$baseAssetName"
+    Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $upHdrs -InFile $encPath -TimeoutSec 300 | Out-Null
+    Log "State berhasil disimpan ke Release '$tag' ($baseAssetName, $zipMB MB, $fileCount file)."
+  } else {
+    # Multi-Part Split Archive Upload (>1.85 GB s/d 5.4 GB)
+    $fsRead = [System.IO.File]::OpenRead($encPath)
+    $partIdx = 1
+    $buf = New-Object byte[] (16 * 1024 * 1024)
+    try {
+      while ($fsRead.Position -lt $fsRead.Length) {
+        $partName = "{0}.part{1:D2}" -f $baseAssetName, $partIdx
+        $partPath = Join-Path $workDir $partName
+        $fsPart = [System.IO.File]::Create($partPath)
+        $written = 0L
+        while ($written -lt $chunkMaxBytes -and $fsRead.Position -lt $fsRead.Length) {
+          $toRead = [int][Math]::Min([long]$buf.Length, ($chunkMaxBytes - $written))
+          $n = $fsRead.Read($buf, 0, $toRead)
+          if ($n -le 0) { break }
+          $fsPart.Write($buf, 0, $n)
+          $written += $n
+        }
+        $fsPart.Close()
+        $uploadUrl = ($rel.upload_url -replace '\{\?name,label\}$', '') + "?name=$partName"
+        Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $upHdrs -InFile $partPath -TimeoutSec 300 | Out-Null
+        Remove-Item $partPath -Force -ErrorAction SilentlyContinue
+        Log "  Uploaded multi-part chunk $partName ($([math]::Round($written / 1MB, 1)) MB)"
+        $partIdx++
+      }
+    } finally {
+      $fsRead.Close()
+    }
+  }
 
   # Simpan signature state terakhir agar checkpoint berikutnya tidak spam API bila belum ada perubahan
   New-Item -ItemType Directory -Path 'C:\XyRDP\tools' -Force -ErrorAction SilentlyContinue | Out-Null

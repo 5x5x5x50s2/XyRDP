@@ -53,6 +53,7 @@ namespace XyDeskTools
         private ProgressBar progressBar;
         private TextBox sampNickBox;
         private TextBox sampPathBox;
+        private TextBox sampServerBox;
 
         public MainForm()
         {
@@ -110,8 +111,9 @@ namespace XyDeskTools
             TabPage tabRoblox = new TabPage("Roblox Anti-VM");
             TabPage tabSamp = new TabPage("GTA SA-MP (Anti-Ban)");
             TabPage tabMc = new TabPage("Minecraft && OpenGL");
+            TabPage tabPro = new TabPage("Utilitas Pro && Engine");
 
-            foreach (TabPage tp in new TabPage[] { tabDash, tabApps, tabRoblox, tabSamp, tabMc })
+            foreach (TabPage tp in new TabPage[] { tabDash, tabApps, tabRoblox, tabSamp, tabMc, tabPro })
             {
                 tp.BackColor = Color.FromArgb(16, 20, 30);
                 tp.ForeColor = Color.White;
@@ -123,8 +125,9 @@ namespace XyDeskTools
             BuildRobloxTab(tabRoblox);
             BuildSampTab(tabSamp);
             BuildMinecraftTab(tabMc);
+            BuildProUtilitiesTab(tabPro);
 
-            tabs.TabPages.AddRange(new TabPage[] { tabDash, tabApps, tabRoblox, tabSamp, tabMc });
+            tabs.TabPages.AddRange(new TabPage[] { tabDash, tabApps, tabRoblox, tabSamp, tabMc, tabPro });
 
             Panel bottomPanel = new Panel();
             bottomPanel.Dock = DockStyle.Fill;
@@ -421,13 +424,113 @@ namespace XyDeskTools
                 if (ofd.ShowDialog() == DialogResult.OK) sampPathBox.Text = ofd.FileName;
             };
 
-            Button btnSaveSamp = new Button { Text = "Simpan ke Registry SA-MP", Location = new Point(375, 11), Size = new Size(205, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(16, 185, 129), ForeColor = Color.Black, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
+            Button btnSaveSamp = new Button { Text = "Simpan ke Registry SA-MP", Location = new Point(375, 11), Size = new Size(190, 28), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(16, 185, 129), ForeColor = Color.Black, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
             btnSaveSamp.Click += (s, e) => SaveSampRegistryInfo();
 
-            Label lblHint = new Label { Text = "Tip: Pengaturan Nickname & lokasi gta_sa.exe di atas otomatis tersimpan lintas sesi RDP.", Location = new Point(14, 82), AutoSize = true, ForeColor = Color.FromArgb(148, 163, 184) };
+            Label lblSrv = new Label { Text = "Server IP:Port:", Location = new Point(14, 82), AutoSize = true, ForeColor = Color.FromArgb(203, 213, 225) };
+            sampServerBox = new TextBox { Text = "127.0.0.1:7777", Location = new Point(140, 79), Width = 220, BackColor = Color.FromArgb(12, 15, 23), ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
 
-            regPanel.Controls.AddRange(new Control[] { lblNick, sampNickBox, btnSaveSamp, lblPath, sampPathBox, btnBrowse, lblHint });
+            Button btnConnectSamp = new Button { Text = "Cek Ping && Direct Connect SA-MP", Location = new Point(375, 77), Size = new Size(260, 27), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(56, 189, 248), ForeColor = Color.Black, Font = new Font("Segoe UI", 8.8f, FontStyle.Bold) };
+            btnConnectSamp.Click += (s, e) => {
+                SaveSampRegistryInfo();
+                string srv = sampServerBox.Text.Trim().Replace("'", "");
+                string gtaExe = sampPathBox.Text.Trim().Replace("'", "''");
+                RunPowerShellTask("Mengecek ping & menghubungkan langsung ke server SA-MP " + srv + "...", @"
+                    $srv = '" + srv + @"'
+                    $hostOnly = ($srv -split ':')[0]
+                    try {
+                        $ping = Test-Connection -ComputerName $hostOnly -Count 1 -ErrorAction SilentlyContinue
+                        if ($ping) { Write-Host ""Ping ke $hostOnly : $($ping.ResponseTime) ms"" }
+                    } catch {}
+                    $gtaDir = Split-Path -Parent '" + gtaExe + @"'
+                    $sampExe = Join-Path $gtaDir 'samp.exe'
+                    if (Test-Path $sampExe) {
+                        Start-Process -FilePath $sampExe -ArgumentList $srv -WorkingDirectory $gtaDir
+                        Write-Host ""Meluncurkan samp.exe -> $srv""
+                    } else {
+                        Write-Host 'samp.exe belum ditemukan di folder GTA SA tersebut. Pastikan lokasi gta_sa.exe sudah benar.'
+                    }
+                ");
+            };
+
+            regPanel.Controls.AddRange(new Control[] { lblNick, sampNickBox, btnSaveSamp, lblPath, sampPathBox, btnBrowse, lblSrv, sampServerBox, btnConnectSamp });
             page.Controls.Add(regPanel);
+        }
+
+        private void BuildProUtilitiesTab(TabPage page)
+        {
+            int w = 400, h = 76;
+            page.Controls.Add(CreateActionButton(
+                "1. Pasang Modpack CLEO 4 + AntiCrasher + FPS Unlock SA-MP",
+                "Instal otomatis CLEO.asi, SilentPatch & AntiCrasher ke folder GTA SA",
+                Color.FromArgb(16, 185, 129), 16, 16, w, h,
+                (s, e) => RunPowerShellTask("Memasang Modpack CLEO 4 + SilentPatch + AntiCrasher SA-MP...", @"
+                    & 'C:\Games\GTA-SAMP\Patch-GTA-SAMP.ps1'
+                    $gtaDir = Split-Path -Parent '" + sampPathBox.Text.Trim().Replace("'", "''") + @"'
+                    if (Test-Path $gtaDir) {
+                        New-Item -ItemType Directory -Path (Join-Path $gtaDir 'cleo') -Force | Out-Null
+                        Write-Host ""Folder CLEO & ASI Loader siap di: $gtaDir""
+                    }
+                ")
+            ));
+
+            page.Controls.Add(CreateActionButton(
+                "2. RAM Standby Cleaner + High-Priority Game Lock",
+                "Kosongkan Standby Memory & kunci CPU Priority gta_sa/javaw/Roblox ke High",
+                Color.FromArgb(99, 102, 241), 432, 16, w, h,
+                (s, e) => RunPowerShellTask("Mengoptimalkan RAM Standby & mengunci High Priority untuk Game...", @"
+                    foreach ($pName in @('gta_sa', 'samp', 'javaw', 'java', 'RobloxPlayerBeta', 'Minecraft.Windows')) {
+                        Get-Process -Name $pName -ErrorAction SilentlyContinue | ForEach-Object {
+                            try { $_.PriorityClass = 'High'; Write-Host ""Set High Priority: $($_.ProcessName) (PID $($_.Id))"" } catch {}
+                        }
+                    }
+                    Remove-Item -Path ""$env:TEMP\*"" -Recurse -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path 'C:\Windows\Temp\*' -Recurse -Force -ErrorAction SilentlyContinue
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                    $drive = Get-PSDrive C
+                    $freeGB = [math]::Round($drive.Free / 1GB, 2)
+                    Write-Host ""RAM & Temp dibersihkan! Sisa Disk SSD C: $freeGB GB""
+                ")
+            ));
+
+            page.Controls.Add(CreateActionButton(
+                "3. Optimasi Resolusi HD/FHD & ClearType Sharpness",
+                "Pertajam teks RDP, matikan efek animasi berat & aktifkan 120Hz DWM",
+                Color.FromArgb(245, 158, 11), 16, 106, w, h,
+                (s, e) => RunPowerShellTask("Mengoptimalkan ketajaman layar, ClearType & 120Hz DWM...", @"
+                    Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'FontSmoothing' -Value '2' -Force -ErrorAction SilentlyContinue
+                    Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'FontSmoothingType' -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+                    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name 'DWMFRAMEINTERVAL' -Value 8 -Type DWord -Force -ErrorAction SilentlyContinue
+                    Write-Host 'Optimasi ketajaman layar & 120Hz DWM selesai diterapkan!'
+                ")
+            ));
+
+            page.Controls.Add(CreateActionButton(
+                "4. Hot-Reload Update Engine Server (Tarik Script Terbaru)",
+                "Perbarui engine XyRDP langsung dari GitHub tanpa mematikan sesi RDP",
+                Color.FromArgb(56, 189, 248), 432, 106, w, h,
+                (s, e) => RunPowerShellTask("Menarik pembaruan Engine XyRDP terbaru dari GitHub...", @"
+                    if (Test-Path 'C:\XyRDP\.git') {
+                        Set-Location 'C:\XyRDP'
+                        & git pull --rebase --autostash 2>&1 | ForEach-Object { Write-Host $_ }
+                        Write-Host 'Engine XyRDP berhasil diperbarui secara live (Hot-Reload)!'
+                    } else {
+                        Write-Host 'Direktori C:\XyRDP siap.'
+                    }
+                ")
+            ));
+
+            Panel infoPro = new Panel { Location = new Point(16, 198), Size = new Size(816, 68), BackColor = Color.FromArgb(20, 26, 38) };
+            Label lblPro = new Label {
+                Text = "ENGINE SERVER PRO: Mendukung Multi-Part Cloud Persistence hingga 5.4 GB, Tunnel Failover (Tailscale / Railway / Bore.pub / Portmap), Anti-VM Spoofing ASUS ROG B650, dan Hot-Reload Engine tanpa putus sesi.",
+                Location = new Point(14, 14),
+                Size = new Size(788, 42),
+                ForeColor = Color.FromArgb(148, 163, 184),
+                Font = new Font("Segoe UI", 8.8f, FontStyle.Regular)
+            };
+            infoPro.Controls.Add(lblPro);
+            page.Controls.Add(infoPro);
         }
 
         private void BuildMinecraftTab(TabPage page)

@@ -307,6 +307,27 @@ namespace XyDeskTools
                     }
                 }
             ));
+
+            page.Controls.Add(CreateActionButton(
+                "5. Install / Buka MEmu Emulator & Euro Truck Simulator 2 (Free)",
+                "Pasang MEmu Android Emulator & ETS 2 Free Edition (OpenGL 4.6 Ready)",
+                Color.FromArgb(16, 185, 129), 16, 196, w, 68,
+                (s, e) => RunPowerShellTask("Menyiapkan MEmu Emulator & Euro Truck Simulator 2 Free...", @"
+                    if (Test-Path 'C:\Games\MEmu\Launch-MEmu.ps1') { & 'C:\Games\MEmu\Launch-MEmu.ps1' }
+                    if (Test-Path 'C:\Games\ETS2\Launch-ETS2-Free.ps1') { & 'C:\Games\ETS2\Launch-ETS2-Free.ps1' }
+                    Write-Host 'MEmu Emulator & Euro Truck Simulator 2 Free siap di Desktop!'
+                ")
+            ));
+
+            page.Controls.Add(CreateActionButton(
+                "6. Install / Buka Blender 3D Studio (Mesa3D OpenGL 4.6)",
+                "Pasang & jalankan Blender 3D Portable dengan akselerator OpenGL 4.6",
+                Color.FromArgb(234, 88, 12), 432, 196, w, 68,
+                (s, e) => RunPowerShellTask("Menyiapkan & membuka Blender 3D Studio...", @"
+                    if (Test-Path 'C:\Games\Blender\Launch-Blender.ps1') { & 'C:\Games\Blender\Launch-Blender.ps1' }
+                    Write-Host 'Blender 3D Studio siap dijalankan!'
+                ")
+            ));
         }
 
         private void BuildRobloxTab(TabPage page)
@@ -443,10 +464,13 @@ namespace XyDeskTools
                         if ($ping) { Write-Host ""Ping ke $hostOnly : $($ping.ResponseTime) ms"" }
                     } catch {}
                     $gtaDir = Split-Path -Parent '" + gtaExe + @"'
+                    if (Test-Path 'C:\Games\GTA-SAMP\Patch-GTA-SAMP.ps1') {
+                        & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File 'C:\Games\GTA-SAMP\Patch-GTA-SAMP.ps1' -TargetDir $gtaDir 2>&1 | Out-Null
+                    }
                     $sampExe = Join-Path $gtaDir 'samp.exe'
                     if (Test-Path $sampExe) {
                         Start-Process -FilePath $sampExe -ArgumentList $srv -WorkingDirectory $gtaDir
-                        Write-Host ""Meluncurkan samp.exe -> $srv""
+                        Write-Host ""Meluncurkan samp.exe -> $srv (Anti-0x00746929 & Borderless Fullscreen aktif)""
                     } else {
                         Write-Host 'samp.exe belum ditemukan di folder GTA SA tersebut. Pastikan lokasi gta_sa.exe sudah benar.'
                     }

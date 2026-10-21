@@ -456,6 +456,559 @@ if ($playerBeta -and (Test-Path $playerBeta)) {
   }
 }
 
+function Install-FiveMPrankApp {
+  $fivemDir = 'C:\Games\FiveM'
+  New-Item -ItemType Directory -Path $fivemDir -Force -ErrorAction SilentlyContinue | Out-Null
+
+  # 1. Unduh file audio prank Voicemod Tuna (https://tuna.voicemod.net/sound/5806533f-2cc6-4275-948c-fb6d75993933)
+  $mp3Url  = 'https://us-tuna-sounds-files.voicemod.net/5806533f-2cc6-4275-948c-fb6d75993933-1667976949389.mp3'
+  $mp3Path = Join-Path $fivemDir 'fivem_prank.mp3'
+  if (-not (Test-Path $mp3Path) -or (Get-Item $mp3Path).Length -lt 5000) {
+    Invoke-GameDownload $mp3Url $mp3Path 5000 | Out-Null
+  }
+
+  # 2. Siapkan ikon resmi FiveM (konversi PNG resmi FiveM -> .ico 64x64 ARGB, fallback ke ikon FiveM Oranye)
+  $icoDir   = Ensure-XyDesktopIcons
+  $fivemIco = Join-Path $fivemDir 'FiveM.ico'
+  $logoPng  = Join-Path $fivemDir 'fivem_logo.png'
+  try {
+    if (-not (Test-Path $logoPng)) {
+      Invoke-GameDownload 'https://avatars.githubusercontent.com/u/25161025?s=256&v=4' $logoPng 1000 | Out-Null
+    }
+    if (Test-Path $logoPng) {
+      Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+      $srcImg = [System.Drawing.Image]::FromFile($logoPng)
+      $bmp64  = New-Object System.Drawing.Bitmap(64, 64, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+      $g      = [System.Drawing.Graphics]::FromImage($bmp64)
+      $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+      $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+      $g.DrawImage($srcImg, 0, 0, 64, 64)
+      $msPng = New-Object System.IO.MemoryStream
+      $bmp64.Save($msPng, [System.Drawing.Imaging.ImageFormat]::Png)
+      $pngBytes = $msPng.ToArray()
+      $msPng.Dispose(); $g.Dispose(); $bmp64.Dispose(); $srcImg.Dispose()
+
+      foreach ($targetIco in @($fivemIco, (Join-Path $icoDir 'fivem.ico'))) {
+        $fs = New-Object System.IO.FileStream($targetIco, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+        $bw = New-Object System.IO.BinaryWriter($fs)
+        $bw.Write([uint16]0); $bw.Write([uint16]1); $bw.Write([uint16]1)
+        $bw.Write([byte]64);  $bw.Write([byte]64);  $bw.Write([byte]0); $bw.Write([byte]0)
+        $bw.Write([uint16]1); $bw.Write([uint16]32)
+        $bw.Write([uint32]$pngBytes.Length); $bw.Write([uint32]22)
+        $bw.Write($pngBytes)
+        $bw.Flush(); $bw.Dispose(); $fs.Dispose()
+      }
+    }
+  } catch {}
+  if (-not (Test-Path $fivemIco) -and (Test-Path (Join-Path $icoDir 'fivem.ico'))) {
+    Copy-Item -LiteralPath (Join-Path $icoDir 'fivem.ico') -Destination $fivemIco -Force -ErrorAction SilentlyContinue
+  }
+
+  # 3. Kompilasi aplikasi GUI C# WinForms FiveM.exe (Popup Prank + Auto Audio Loop Voicemod Tuna)
+  $fivemExe = Join-Path $fivemDir 'FiveM.exe'
+  $csCode = @'
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.IO;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows.Forms;
+
+public class FiveMPrankForm : Form
+{
+    [DllImport("winmm.dll")]
+    private static extern int mciSendString(string command, StringBuilder buffer, int bufferSize, IntPtr hwndCallback);
+
+    [DllImport("winmm.dll")]
+    private static extern int waveOutSetVolume(IntPtr hwo, uint dwVolume);
+
+    private Label lblTitle;
+    private Label lblSub;
+    private Label lblStatus;
+    private ProgressBar progressBar;
+    private Button btnStop;
+    private Panel eqPanel;
+    private Timer animTimer;
+    private int tickCount = 0;
+    private bool prankStage = false;
+    private bool allowClose = false;
+    private int closeAttempts = 0;
+    private string mp3File = @"C:\Games\FiveM\fivem_prank.mp3";
+    private Random rng = new Random();
+    private int[] barHeights = new int[18];
+
+    public FiveMPrankForm()
+    {
+        this.Text = "FiveM — Cfx.re CitizenFX Launcher";
+        this.Size = new Size(560, 370);
+        this.StartPosition = FormStartPosition.CenterScreen;
+        this.FormBorderStyle = FormBorderStyle.FixedDialog;
+        this.MaximizeBox = false;
+        this.TopMost = true;
+        this.BackColor = Color.FromArgb(18, 18, 23);
+        this.ForeColor = Color.White;
+        try {
+            if (File.Exists(@"C:\Games\FiveM\FiveM.ico")) {
+                this.Icon = new Icon(@"C:\Games\FiveM\FiveM.ico");
+            }
+        } catch {}
+
+        Panel header = new Panel();
+        header.Dock = DockStyle.Top;
+        header.Height = 64;
+        header.BackColor = Color.FromArgb(249, 115, 22);
+        this.Controls.Add(header);
+
+        lblTitle = new Label();
+        lblTitle.Text = "FiveM · CitizenFX Roleplay Client";
+        lblTitle.Font = new Font("Segoe UI", 15f, FontStyle.Bold);
+        lblTitle.ForeColor = Color.White;
+        lblTitle.Location = new Point(18, 16);
+        lblTitle.Size = new Size(520, 32);
+        header.Controls.Add(lblTitle);
+
+        lblSub = new Label();
+        lblSub.Text = "Memeriksa instalasi Grand Theft Auto V & CitizenFX Cache...\r\nMenghubungkan ke Cfx.re Master Server...";
+        lblSub.Font = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+        lblSub.ForeColor = Color.FromArgb(228, 228, 231);
+        lblSub.Location = new Point(22, 82);
+        lblSub.Size = new Size(505, 68);
+        this.Controls.Add(lblSub);
+
+        progressBar = new ProgressBar();
+        progressBar.Location = new Point(22, 158);
+        progressBar.Size = new Size(500, 22);
+        progressBar.Style = ProgressBarStyle.Continuous;
+        progressBar.Value = 35;
+        this.Controls.Add(progressBar);
+
+        eqPanel = new Panel();
+        eqPanel.Location = new Point(22, 188);
+        eqPanel.Size = new Size(500, 56);
+        eqPanel.BackColor = Color.FromArgb(27, 27, 34);
+        eqPanel.Visible = false;
+        eqPanel.Paint += (s, e) => {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            int bw = 22;
+            for (int i = 0; i < barHeights.Length; i++) {
+                int h = Math.Max(6, barHeights[i]);
+                int x = 12 + i * (bw + 5);
+                int y = eqPanel.Height - h - 4;
+                using (Brush b = new SolidBrush(i % 2 == 0 ? Color.FromArgb(249, 115, 22) : Color.FromArgb(239, 68, 68))) {
+                    e.Graphics.FillRectangle(b, x, y, bw, h);
+                }
+            }
+        };
+        this.Controls.Add(eqPanel);
+
+        lblStatus = new Label();
+        lblStatus.Text = "Downloading CitizenFX_SubProcess_game_2699.bin (98%)...";
+        lblStatus.Font = new Font("Consolas", 9.5f, FontStyle.Regular);
+        lblStatus.ForeColor = Color.FromArgb(253, 186, 116);
+        lblStatus.Location = new Point(22, 252);
+        lblStatus.Size = new Size(500, 24);
+        this.Controls.Add(lblStatus);
+
+        btnStop = new Button();
+        btnStop.Text = "Mohon Tunggu...";
+        btnStop.Font = new Font("Segoe UI", 10f, FontStyle.Bold);
+        btnStop.Location = new Point(22, 282);
+        btnStop.Size = new Size(500, 40);
+        btnStop.BackColor = Color.FromArgb(63, 63, 70);
+        btnStop.ForeColor = Color.White;
+        btnStop.FlatStyle = FlatStyle.Flat;
+        btnStop.Enabled = false;
+        btnStop.Click += OnStopClicked;
+        this.Controls.Add(btnStop);
+
+        this.FormClosing += (s, e) => {
+            if (!allowClose && closeAttempts < 1) {
+                e.Cancel = true;
+                closeAttempts++;
+                PlayPrankSound();
+                MessageBox.Show(
+                    "Eits ga semudah itu ditutup bosku! 🤣🔊\r\nDengerin dulu sound FiveM spesial ini sekali lagi ya!",
+                    "FiveM Prank — Cfx.re Soundboard",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+            } else {
+                StopPrankSound();
+            }
+        };
+
+        animTimer = new Timer();
+        animTimer.Interval = 90;
+        animTimer.Tick += OnTick;
+        animTimer.Start();
+    }
+
+    private void EnsureAudioReady()
+    {
+        try {
+            if (!File.Exists(mp3File) || new FileInfo(mp3File).Length < 5000) {
+                Directory.CreateDirectory(@"C:\Games\FiveM");
+                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+                using (var wc = new WebClient()) {
+                    wc.Headers.Add("User-Agent", "Mozilla/5.0");
+                    wc.DownloadFile("https://us-tuna-sounds-files.voicemod.net/5806533f-2cc6-4275-948c-fb6d75993933-1667976949389.mp3", mp3File);
+                }
+            }
+        } catch {}
+    }
+
+    private void PlayPrankSound()
+    {
+        try {
+            EnsureAudioReady();
+            waveOutSetVolume(IntPtr.Zero, 0xFFFFFFFF);
+            mciSendString("close fivem_snd", null, 0, IntPtr.Zero);
+            mciSendString("open \"" + mp3File + "\" type mpegvideo alias fivem_snd", null, 0, IntPtr.Zero);
+            mciSendString("setaudio fivem_snd volume to 1000", null, 0, IntPtr.Zero);
+            mciSendString("play fivem_snd repeat", null, 0, IntPtr.Zero);
+        } catch {}
+    }
+
+    private void StopPrankSound()
+    {
+        try {
+            mciSendString("stop fivem_snd", null, 0, IntPtr.Zero);
+            mciSendString("close fivem_snd", null, 0, IntPtr.Zero);
+        } catch {}
+    }
+
+    private void OnTick(object sender, EventArgs e)
+    {
+        tickCount++;
+        if (!prankStage) {
+            progressBar.Value = Math.Min(100, 35 + tickCount * 8);
+            if (tickCount >= 9) {
+                prankStage = true;
+                PlayPrankSound();
+                this.Text = "🚨 KENA PRANK FIVEM XYDESK! 🤣🔊";
+                lblTitle.Text = "🤣 KENA PRANK FIVEM BOSKU! 🔊🔥";
+                lblSub.Text = "Mau main FiveM GTA V Roleplay di Cloud RDP gratis?!\r\nNih dengerin dulu sound spesial FiveM Voicemod sampe puas! 😂🎧";
+                lblSub.ForeColor = Color.FromArgb(254, 240, 138);
+                progressBar.Visible = false;
+                eqPanel.Visible = true;
+                lblStatus.Text = "🔊 PLAYING: Voicemod Tuna Soundboard — Volume 1000% MAX (LOOP)";
+                btnStop.Text = "Ampun Bang, Matikan Suara & Mengaku Kena Prank 🙏";
+                btnStop.BackColor = Color.FromArgb(220, 38, 38);
+                btnStop.Enabled = true;
+            }
+        } else {
+            for (int i = 0; i < barHeights.Length; i++) {
+                barHeights[i] = rng.Next(10, 48);
+            }
+            eqPanel.Invalidate();
+            if (tickCount % 35 == 0) {
+                mciSendString("play fivem_snd repeat", null, 0, IntPtr.Zero);
+            }
+        }
+    }
+
+    private void OnStopClicked(object sender, EventArgs e)
+    {
+        if (closeAttempts == 0) {
+            closeAttempts++;
+            PlayPrankSound();
+            MessageBox.Show(
+                "Yakin mau udahan? 😂\r\nKlik sekali lagi tombolnya kalau beneran nyerah kena prank FiveM!",
+                "🤣 KENA PRANK FIVEM! 🤣",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
+            return;
+        }
+        allowClose = true;
+        StopPrankSound();
+        this.Close();
+    }
+
+    [STAThread]
+    public static void Main()
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.Run(new FiveMPrankForm());
+    }
+}
+'@
+  try {
+    Remove-Item -LiteralPath $fivemExe -Force -ErrorAction SilentlyContinue
+    Add-Type -TypeDefinition $csCode -ReferencedAssemblies @('System.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll') -OutputAssembly $fivemExe -OutputType WindowsApplication -ErrorAction Stop
+  } catch {
+    Log "Kompilasi FiveM.exe warning: $($_.Exception.Message)"
+  }
+
+  # 4. Buat Shortcut "FiveM" dengan ikon FiveM di Desktop User & Public Desktop
+  $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
+  foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
+    New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
+    try {
+      $wsh = New-Object -ComObject WScript.Shell
+      $lnk = $wsh.CreateShortcut((Join-Path $desk 'FiveM.lnk'))
+      if (Test-Path $fivemExe) {
+        $lnk.TargetPath = $fivemExe
+      } else {
+        $psFallback = Join-Path $fivemDir 'Launch-FiveM-Prank.ps1'
+        Set-Content -LiteralPath $psFallback -Value $csCode -Encoding UTF8 -Force
+        $lnk.TargetPath = 'powershell.exe'
+        $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"Add-Type -Path '$psFallback' -ReferencedAssemblies System.Drawing,System.Windows.Forms; [FiveMPrankForm]::Main()`""
+      }
+      $lnk.WorkingDirectory = $fivemDir
+      if (Test-Path $fivemIco) {
+        $lnk.IconLocation = "$fivemIco,0"
+      }
+      $lnk.Description = 'FiveM — Cfx.re CitizenFX GTA V Roleplay Client'
+      $lnk.Save()
+    } catch {}
+  }
+}
+
+function Install-MEmuEmulatorSuite {
+  $memuDir = 'C:\Games\MEmu'
+  New-Item -ItemType Directory -Path $memuDir -Force -ErrorAction SilentlyContinue | Out-Null
+  $icoDir = Ensure-XyDesktopIcons
+  $memuIco = Join-Path $icoDir 'memu.ico'
+  $setupExe = Join-Path $memuDir 'MEmu-Setup.exe'
+
+  # Unduh installer resmi MEmu Play (online bootstrapper cepat ~20 MB) bila belum ada
+  if (-not (Test-Path $setupExe) -or (Get-Item $setupExe).Length -lt 50000) {
+    foreach ($u in @(
+      'https://dl.memuplay.com/download/Memu-Setup.exe',
+      'https://www.memuplay.com/download-memu-on-pc.html'
+    )) {
+      if (Invoke-GameDownload $u $setupExe 100000) {
+        Log "Installer MEmu Play siap di $setupExe"
+        break
+      }
+    }
+  }
+
+  $launchPs1 = Join-Path $memuDir 'Launch-MEmu.ps1'
+  $psCode = @'
+$ErrorActionPreference = 'Continue'
+$env:GALLIUM_DRIVER = 'llvmpipe'
+$env:MESA_GL_VERSION_OVERRIDE = '4.6'
+$cands = @(
+  'C:\Program Files\Microvirt\MEmu\MEmuConsole.exe',
+  'C:\Program Files\Microvirt\MEmu\MEmu.exe',
+  'C:\Program Files (x86)\Microvirt\MEmu\MEmuConsole.exe',
+  'D:\Program Files\Microvirt\MEmu\MEmuConsole.exe'
+)
+foreach ($c in $cands) {
+  if (Test-Path $c) {
+    Start-Process -FilePath $c
+    exit 0
+  }
+}
+$setup = 'C:\Games\MEmu\MEmu-Setup.exe'
+if (-not (Test-Path $setup) -or (Get-Item $setup).Length -lt 100000) {
+  & curl.exe -fL -A "Mozilla/5.0" "https://dl.memuplay.com/download/Memu-Setup.exe" -o $setup
+}
+if (Test-Path $setup) {
+  Start-Process -FilePath $setup
+} else {
+  $wg = Get-Command winget.exe -ErrorAction SilentlyContinue
+  if ($wg) {
+    Start-Process -FilePath 'winget.exe' -ArgumentList @('install','--id','Microvirt.MEmu','--accept-package-agreements','--accept-source-agreements')
+  }
+}
+'@
+  Set-Content -LiteralPath $launchPs1 -Value $psCode -Encoding UTF8 -Force
+
+  $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
+  foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
+    New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
+    try {
+      $wsh = New-Object -ComObject WScript.Shell
+      $lnk = $wsh.CreateShortcut((Join-Path $desk 'MEmu Emulator.lnk'))
+      $lnk.TargetPath = 'powershell.exe'
+      $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launchPs1`""
+      $lnk.WorkingDirectory = $memuDir
+      if (Test-Path $memuIco) { $lnk.IconLocation = "$memuIco,0" }
+      $lnk.Description = 'MEmu Play Android Emulator (OpenGL 4.6 + Hyper-V Ready)'
+      $lnk.Save()
+    } catch {}
+  }
+}
+
+function Install-EuroTruckSimulator2FreeSuite {
+  $etsDir = 'C:\Games\ETS2'
+  New-Item -ItemType Directory -Path $etsDir -Force -ErrorAction SilentlyContinue | Out-Null
+  $icoDir = Ensure-XyDesktopIcons
+  $etsIco = Join-Path $icoDir 'ets2.ico'
+
+  # Siapkan config.cfg bawaan ramah RDP (OpenGL 4.6 Mesa3D + Windowed Borderless agar tidak black screen di RDP)
+  $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
+  foreach ($profUser in @($u, 'runneradmin', 'xyadmin')) {
+    if (-not $profUser) { continue }
+    $docEts = "C:\Users\$profUser\Documents\Euro Truck Simulator 2"
+    New-Item -ItemType Directory -Path $docEts -Force -ErrorAction SilentlyContinue | Out-Null
+    $cfgFile = Join-Path $docEts 'config.cfg'
+    if (-not (Test-Path $cfgFile)) {
+      @(
+        'uset r_full_resolution_corrections "0"'
+        'uset r_force_color_shadowmaps "0"'
+        'uset r_device "gl"'
+        'uset r_fullscreen "0"'
+        'uset r_mode_height "720"'
+        'uset r_mode_width "1280"'
+        'uset r_vsync "0"'
+        'uset g_fps "1"'
+      ) | Set-Content -LiteralPath $cfgFile -Encoding UTF8 -Force
+    }
+  }
+
+  $launchPs1 = Join-Path $etsDir 'Launch-ETS2-Free.ps1'
+  $psCode = @'
+$ErrorActionPreference = 'Continue'
+Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+$env:GALLIUM_DRIVER = 'llvmpipe'
+$env:LIBGL_ALWAYS_SOFTWARE = '1'
+$env:MESA_GL_VERSION_OVERRIDE = '4.6'
+$env:MESA_GLSL_VERSION_OVERRIDE = '460'
+
+$etsCandidates = @(
+  'C:\Games\ETS2\bin\win_x64\eurotrucks2.exe',
+  'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe',
+  'C:\Persist\Games\ETS2\bin\win_x64\eurotrucks2.exe',
+  'C:\Program Files (x86)\Euro Truck Simulator 2\bin\win_x64\eurotrucks2.exe',
+  'C:\Program Files (x86)\Steam\steamapps\common\Euro Truck Simulator 2\bin\win_x64\eurotrucks2.exe'
+)
+foreach ($exe in $etsCandidates) {
+  if (Test-Path $exe) {
+    $binDir = Split-Path $exe -Parent
+    if (Test-Path 'C:\XyRDP\grafis\mesa-x64\opengl32.dll') {
+      Copy-Item 'C:\XyRDP\grafis\mesa-x64\*.dll' -Destination $binDir -Force -ErrorAction SilentlyContinue
+    }
+    Start-Process -FilePath $exe -WorkingDirectory $binDir -ArgumentList @('-gl', '-nofullscreen', '-nointro')
+    exit 0
+  }
+}
+
+$setupExe = 'C:\Games\ETS2\ets2_free_setup.exe'
+if (-not (Test-Path $setupExe) -or (Get-Item $setupExe).Length -lt 10000000) {
+  [System.Windows.Forms.MessageBox]::Show(
+    "Mengunduh Euro Truck Simulator 2 (ETS 2 Free Edition Resmi SCS Software)...`r`nProses unduhan berjalan otomatis, installer akan langsung terbuka setelah selesai!",
+    "Euro Truck Simulator 2 Free — XyRDP Auto-Installer",
+    [System.Windows.Forms.MessageBoxButtons]::OK,
+    [System.Windows.Forms.MessageBoxIcon]::Information
+  ) | Out-Null
+  foreach ($url in @(
+    'https://download.eurotrucksimulator2.com/ets2_1_48_5_setup.exe',
+    'https://download.eurotrucksimulator2.com/ets2_1_43_3_setup.exe',
+    'https://archive.org/download/euro-truck-simulator-2-v-1.35.1.1s/Euro%20Truck%20Simulator%202%20v1.35.1.1s.zip'
+  )) {
+    & curl.exe -fL -A "Mozilla/5.0" --retry 3 $url -o $setupExe
+    if ((Test-Path $setupExe) -and (Get-Item $setupExe).Length -gt 10000000) { break }
+  }
+}
+
+if (Test-Path $setupExe) {
+  Start-Process -FilePath $setupExe -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/DIR="C:\Games\ETS2"') -Wait -ErrorAction SilentlyContinue
+  if (Test-Path 'C:\Games\ETS2\bin\win_x64\eurotrucks2.exe') {
+    if (Test-Path 'C:\XyRDP\grafis\mesa-x64\opengl32.dll') {
+      Copy-Item 'C:\XyRDP\grafis\mesa-x64\*.dll' -Destination 'C:\Games\ETS2\bin\win_x64' -Force -ErrorAction SilentlyContinue
+    }
+    Start-Process -FilePath 'C:\Games\ETS2\bin\win_x64\eurotrucks2.exe' -WorkingDirectory 'C:\Games\ETS2\bin\win_x64' -ArgumentList @('-gl', '-nofullscreen', '-nointro')
+    exit 0
+  }
+  Start-Process -FilePath $setupExe
+}
+'@
+  Set-Content -LiteralPath $launchPs1 -Value $psCode -Encoding UTF8 -Force
+
+  foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
+    New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
+    try {
+      $wsh = New-Object -ComObject WScript.Shell
+      $lnk = $wsh.CreateShortcut((Join-Path $desk 'Euro Truck Simulator 2.lnk'))
+      $lnk.TargetPath = 'powershell.exe'
+      $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launchPs1`""
+      $lnk.WorkingDirectory = $etsDir
+      if (Test-Path $etsIco) { $lnk.IconLocation = "$etsIco,0" }
+      $lnk.Description = 'Euro Truck Simulator 2 Free Edition (OpenGL 4.6 Ready)'
+      $lnk.Save()
+    } catch {}
+  }
+}
+
+function Install-Blender3DSuite {
+  $blenderDir = 'C:\Games\Blender'
+  New-Item -ItemType Directory -Path $blenderDir -Force -ErrorAction SilentlyContinue | Out-Null
+  $icoDir = Ensure-XyDesktopIcons
+  $blenderIco = Join-Path $icoDir 'blender.ico'
+
+  $launchPs1 = Join-Path $blenderDir 'Launch-Blender.ps1'
+  $psCode = @'
+$ErrorActionPreference = 'Continue'
+$env:GALLIUM_DRIVER = 'llvmpipe'
+$env:LIBGL_ALWAYS_SOFTWARE = '1'
+$env:MESA_GL_VERSION_OVERRIDE = '4.6'
+$env:MESA_GLSL_VERSION_OVERRIDE = '460'
+
+$found = Get-ChildItem -Path @('C:\Games\Blender', 'C:\Program Files\Blender Foundation') -Recurse -File -Filter 'blender.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($found) {
+  $bDir = $found.DirectoryName
+  if (Test-Path 'C:\XyRDP\grafis\mesa-x64\opengl32.dll') {
+    Copy-Item 'C:\XyRDP\grafis\mesa-x64\*.dll' -Destination $bDir -Force -ErrorAction SilentlyContinue
+  }
+  Start-Process -FilePath $found.FullName -WorkingDirectory $bDir
+  exit 0
+}
+
+$zipFile = 'C:\Games\Blender\blender-portable.zip'
+foreach ($u in @(
+  'https://mirror.clarkson.edu/blender/release/Blender4.2/blender-4.2.3-windows-x64.zip',
+  'https://download.blender.org/release/Blender4.2/blender-4.2.3-windows-x64.zip',
+  'https://download.blender.org/release/Blender3.6/blender-3.6.16-windows-x64.zip'
+)) {
+  & curl.exe -fL -A "Mozilla/5.0" --retry 3 $u -o $zipFile
+  if ((Test-Path $zipFile) -and (Get-Item $zipFile).Length -gt 50000000) {
+    $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
+    if (Test-Path $sevenZip) { & $sevenZip x $zipFile '-oC:\Games\Blender' -y | Out-Null }
+    else { Expand-Archive -Path $zipFile -DestinationPath 'C:\Games\Blender' -Force }
+    Remove-Item $zipFile -Force -ErrorAction SilentlyContinue
+    break
+  }
+}
+
+$foundAfter = Get-ChildItem -Path 'C:\Games\Blender' -Recurse -File -Filter 'blender.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($foundAfter) {
+  $bDir = $foundAfter.DirectoryName
+  if (Test-Path 'C:\XyRDP\grafis\mesa-x64\opengl32.dll') {
+    Copy-Item 'C:\XyRDP\grafis\mesa-x64\*.dll' -Destination $bDir -Force -ErrorAction SilentlyContinue
+  }
+  Start-Process -FilePath $foundAfter.FullName -WorkingDirectory $bDir
+} else {
+  $wg = Get-Command winget.exe -ErrorAction SilentlyContinue
+  if ($wg) {
+    Start-Process -FilePath 'winget.exe' -ArgumentList @('install','--id','BlenderFoundation.Blender','--silent','--accept-package-agreements','--accept-source-agreements') -Wait
+  }
+}
+'@
+  Set-Content -LiteralPath $launchPs1 -Value $psCode -Encoding UTF8 -Force
+
+  $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
+  foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
+    New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
+    try {
+      $wsh = New-Object -ComObject WScript.Shell
+      $lnk = $wsh.CreateShortcut((Join-Path $desk 'Blender 3D.lnk'))
+      $lnk.TargetPath = 'powershell.exe'
+      $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launchPs1`""
+      $lnk.WorkingDirectory = $blenderDir
+      if (Test-Path $blenderIco) { $lnk.IconLocation = "$blenderIco,0" }
+      $lnk.Description = 'Blender 3D Studio (Mesa3D OpenGL 4.6 Ready)'
+      $lnk.Save()
+    } catch {}
+  }
+}
+
 $report = @{}
 
 # Selalu siapkan Minecraft Java Suite (TL Launcher + PrismLauncher + Official Launcher + OpenGL 4.6 Injection)
@@ -497,6 +1050,23 @@ $report['roblox'] = @{
   status   = if (Test-Path 'C:\Games\Roblox\RobloxPlayerInstaller.exe') { 'ready-antivm' } else { 'launcher-ready' }
   launcher = 'C:\Games\Roblox\Launch-Roblox-AntiVM.ps1'
 }
+
+# 4. Selalu siapkan Shortcut Aplikasi Prank FiveM (Ikon FiveM + Popup Prank + Sound Voicemod Tuna)
+Log 'Menyiapkan Shortcut FiveM di Desktop...'
+Install-FiveMPrankApp
+$report['fivem'] = @{
+  status = (Test-Path 'C:\Games\FiveM\FiveM.exe')
+  sound  = (Test-Path 'C:\Games\FiveM\fivem_prank.mp3')
+}
+
+# 5. Selalu siapkan MEmu Emulator, Euro Truck Simulator 2 (ETS 2 Free), & Blender 3D Studio
+Log 'Menyiapkan MEmu Android Emulator, Euro Truck Simulator 2 (ETS 2 Free), & Blender 3D Studio...'
+Install-MEmuEmulatorSuite
+Install-EuroTruckSimulator2FreeSuite
+Install-Blender3DSuite
+$report['memu']    = @{ status = 'ready'; launcher = 'C:\Games\MEmu\Launch-MEmu.ps1' }
+$report['ets2']    = @{ status = 'ready'; launcher = 'C:\Games\ETS2\Launch-ETS2-Free.ps1' }
+$report['blender'] = @{ status = 'ready'; launcher = 'C:\Games\Blender\Launch-Blender.ps1' }
 
 Update-Status @{ games = $report } | Out-Null
 exit 0

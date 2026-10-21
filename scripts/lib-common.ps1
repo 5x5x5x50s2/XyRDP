@@ -657,6 +657,10 @@ function Ensure-XyDesktopIcons {
   New-XyAppIcon "$icoDir\persist-folder.ico"     'DIR' 234 179 8   161 98  7   'PERSIST'   | Out-Null
   New-XyAppIcon "$icoDir\bluestacks.ico"         'BS5' 59  130 246 29  78  216 'ANDROID'   | Out-Null
   New-XyAppIcon "$icoDir\mumu.ico"               'MM'  236 72  153 157 23  77  'ANDROID'   | Out-Null
+  New-XyAppIcon "$icoDir\memu.ico"               'ME'  16  185 129 5   150 105 'MEMU PLAY' | Out-Null
+  New-XyAppIcon "$icoDir\ets2.ico"               'ETS' 245 158 11  180 83  9   'ETS 2'     | Out-Null
+  New-XyAppIcon "$icoDir\blender.ico"            '3D'  234 88  12  37  99  235 'BLENDER'   | Out-Null
+  New-XyAppIcon "$icoDir\fivem.ico"              'V'   249 115 22  220 38  38  'FiveM'     | Out-Null
   return $icoDir
 }
 

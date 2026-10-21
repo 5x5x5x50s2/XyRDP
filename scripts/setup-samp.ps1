@@ -342,14 +342,17 @@ function Install-CompleteSampSuite {
     } catch { Log "Unduh dgVoodoo2 warning: $($_.Exception.Message)" }
   }
 
-  # Tulis dgVoodoo.conf khusus RDP (FULLSCREEN PENUH 100% Layar RDP, No Watermark, 512MB Virtual VRAM, Anti-Crash 0x00746929)
+  # Tulis dgVoodoo.conf khusus RDP (Borderless Fullscreen 100% Layar RDP, No Watermark, 512MB Virtual VRAM, Anti-Crash 0x00746929)
+  # PENTING: FullScreenMode WAJIB false + ApplicationControlledScreenMode = false + WindowedAttributes = borderless, fullscreen!
+  # Jika FullScreenMode = true, DXGI SetFullscreenState(TRUE) ditolak oleh Microsoft Remote Display Adapter di RDP
+  # sehingga DirectDrawCreateEx (0x64C516DF) mengembalikan EAX = 0x00000000 dan crash di 0x00746929!
   @(
     'Version                              = 0x287'
     '[General]'
-    'OutputAPI                            = bestavailable'
+    'OutputAPI                            = d3d11_fl10_0'
     'Adapters                             = all'
     'FullScreenOutput                     = default'
-    'FullScreenMode                       = true'
+    'FullScreenMode                       = false'
     'ScalingMode                          = stretched'
     'ProgressiveScanlineOrder             = false'
     'EnumerateRefreshRates                = true'
@@ -359,34 +362,35 @@ function Install-CompleteSampSuite {
     'InheritColorProfileInFullScreenMode  = false'
     'KeepWindowAspectRatio                = false'
     'CaptureMouse                         = false'
-    'CenterAppWindow                      = false'
+    'CenterAppWindow                      = true'
     'DisableScreenSaver                   = true'
     '[GeneralExt]'
     'DesktopResolution                    = desktop'
-    'PresentationModel                    = auto'
+    'PresentationModel                    = flip_discard'
     'FreeMouse                            = true'
     'WindowedAttributes                   = borderless, fullscreen'
     '[DirectX]'
-    'DisableAndPassThru                  = false'
-    'VideoCard                           = internal3D'
-    'VRAM                                = 512'
-    'Filtering                           = appdriven'
-    'Mipmapping                          = appdriven'
-    'Resolution                          = unforced'
-    'Antialiasing                        = off'
-    'AppControlledScreenMode             = true'
-    'DisableAltEnterToToggleScreenMode   = false'
-    'Bilinear2DOperations                = false'
-    'PhongShadingWhenPossible            = false'
-    'ForceVerticalSync                   = false'
-    'dgVoodooWatermark                   = false'
-    'FastVideoMemoryAccess               = true'
-    'DisableD3DTnLDevice                 = false'
+    'DisableAndPassThru                   = false'
+    'VideoCard                            = internal3D'
+    'VRAM                                 = 512'
+    'Filtering                            = appdriven'
+    'Mipmapping                           = appdriven'
+    'Resolution                           = unforced'
+    'Antialiasing                         = off'
+    'ApplicationControlledScreenMode      = false'
+    'AppControlledScreenMode              = false'
+    'DisableAltEnterToToggleScreenMode    = false'
+    'Bilinear2DOperations                 = false'
+    'PhongShadingWhenPossible             = false'
+    'ForceVerticalSync                    = false'
+    'dgVoodooWatermark                    = false'
+    'FastVideoMemoryAccess                = true'
+    'DisableD3DTnLDevice                  = false'
     '[DirectXExt]'
-    'DefaultEnumeratedResolutions        = all'
-    'ExtraEnumeratedResolutions          = 800x600, 1024x768, 1280x720, 1366x768, 1600x900, 1920x1080'
-    'EnumeratedResolutionBitdepths       = all'
-    'MSD3DDeviceNames                    = true'
+    'DefaultEnumeratedResolutions         = all'
+    'ExtraEnumeratedResolutions           = 800x600, 1024x768, 1280x720, 1366x768, 1600x900, 1920x1080'
+    'EnumeratedResolutionBitdepths        = all'
+    'MSD3DDeviceNames                     = true'
   ) | Set-Content -Path (Join-Path $modsDir 'dgVoodoo.conf') -Encoding ASCII -Force
 
   # 6. Tulis konfigurasi SilentPatchSA.ini (90 FPS + FixMouseStuck RDP)
@@ -598,18 +602,78 @@ function Enable-CloudflareWarpSafeSplitTunnel {
   return $true
 }
 
+function Patch-GtaSaExeDirectDrawBypass([string]$ExePath) {
+  try {
+    if (-not $ExePath -or -not (Test-Path -LiteralPath $ExePath)) { return }
+    $fi = Get-Item -LiteralPath $ExePath -ErrorAction Stop
+    if ($fi.Length -lt 4000000 -or $fi.Length -gt 25000000) { return }
+    $bytes = [System.IO.File]::ReadAllBytes($ExePath)
+    if ($bytes.Length -lt 0x347000) { return }
+    if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { return }
+
+    # Cari raw file offset untuk RVA 0x003469A0 (VA 0x007469A0 dengan ImageBase 0x00400000)
+    $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+    if ($peOffset -lt 0x40 -or ($peOffset + 0xF8) -ge $bytes.Length) { return }
+    $numSections = [BitConverter]::ToUInt16($bytes, $peOffset + 6)
+    $optHeaderSize = [BitConverter]::ToUInt16($bytes, $peOffset + 20)
+    $secTable = $peOffset + 24 + $optHeaderSize
+    $targetRva = 0x003469A0
+    $rawOffset = -1
+    for ($i = 0; $i -lt $numSections; $i++) {
+      $sOff = $secTable + ($i * 40)
+      if (($sOff + 40) -gt $bytes.Length) { break }
+      $vSize = [BitConverter]::ToInt32($bytes, $sOff + 8)
+      $vAddr = [BitConverter]::ToInt32($bytes, $sOff + 12)
+      $rSize = [BitConverter]::ToInt32($bytes, $sOff + 16)
+      $rPtr  = [BitConverter]::ToInt32($bytes, $sOff + 20)
+      $span  = [Math]::Max($vSize, $rSize)
+      if ($targetRva -ge $vAddr -and $targetRva -lt ($vAddr + $span)) {
+        $rawOffset = $targetRva - $vAddr + $rPtr
+        break
+      }
+    }
+    if ($rawOffset -lt 0x1000 -or ($rawOffset + 4) -ge $bytes.Length) { return }
+
+    # Jika sudah di-patch (30 C0 90 90), tidak perlu menulis ulang
+    if ($bytes[$rawOffset] -eq 0x30 -and $bytes[$rawOffset + 1] -eq 0xC0 -and $bytes[$rawOffset + 2] -eq 0x90 -and $bytes[$rawOffset + 3] -eq 0x90) {
+      return
+    }
+
+    # Pastikan hanya mem-patch gta_sa.exe US 1.0 yang valid (cek byte di sekitar 0x00746920..0x007469A0)
+    $checkOff = $rawOffset - (0x007469A0 - 0x00746929)
+    if ($checkOff -gt 0 -and ($bytes[$checkOff] -eq 0x8B -or $bytes[$checkOff] -eq 0x89 -or $bytes[$rawOffset] -eq 0xA1 -or $bytes[$rawOffset] -eq 0x38 -or $bytes[$rawOffset] -eq 0x80)) {
+      $bakPath = "$ExePath.orig_bak"
+      if (-not (Test-Path -LiteralPath $bakPath)) {
+        [System.IO.File]::WriteAllBytes($bakPath, $bytes)
+      }
+      # Patch VA 0x007469A0 -> xor al, al ; nop ; nop (30 C0 90 90)
+      # Ini mem-bypass DirectDraw multi-monitor enumeration yang memicu crash 0x00746929 (EAX=0) di RDP!
+      $bytes[$rawOffset]     = 0x30
+      $bytes[$rawOffset + 1] = 0xC0
+      $bytes[$rawOffset + 2] = 0x90
+      $bytes[$rawOffset + 3] = 0x90
+      [System.IO.File]::WriteAllBytes($ExePath, $bytes)
+    }
+  } catch {}
+}
+
 function Apply-SilentPatchToDir([string]$Dir) {
   if (-not $Dir -or -not (Test-Path $Dir)) { return $false }
 
   # Jangan menimpa file bila gta_sa.exe sedang aktif berjalan
   if (Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue) { return $true }
 
-  # 1. Hapus duplikat dinput8.dll agar tidak bentrok dengan vorbisFile.dll,
+  # 1. Simpan vorbisFile.dll asli (< 250 KB) sebagai vorbisHooked.dll sebelum ditimpa Ultimate ASI Loader,
+  #    hapus duplikat dinput8.dll agar tidak bentrok dengan vorbisFile.dll,
   #    dan HAPUS III.VC.SA.WindowedMode.asi agar SA-MP bisa FULLSCREEN PENUH!
   #    PENTING: JANGAN menghapus ddraw.dll / d3dimm.dll karena dibutuhkan dgVoodoo2 untuk mencegah crash 0x00746929!
   $vorbisPath = Join-Path $Dir 'vorbisFile.dll'
+  $vorbisHooked = Join-Path $Dir 'vorbisHooked.dll'
+  if ((Test-Path $vorbisPath) -and (Get-Item $vorbisPath).Length -lt 250000 -and -not (Test-Path $vorbisHooked)) {
+    Copy-Item -LiteralPath $vorbisPath -Destination $vorbisHooked -Force -ErrorAction SilentlyContinue
+  }
   $dinputPath = Join-Path $Dir 'dinput8.dll'
-  if ((Test-Path $vorbisPath) -and (Test-Path $dinputPath)) {
+  if (Test-Path $dinputPath) {
     Remove-Item $dinputPath -Force -ErrorAction SilentlyContinue
   }
   foreach ($wmRel in @('scripts\III.VC.SA.WindowedMode.asi', 'scripts\III.VC.SA.WindowedMode.ini', 'III.VC.SA.WindowedMode.asi', 'III.VC.SA.WindowedMode.ini')) {
@@ -619,18 +683,29 @@ function Apply-SilentPatchToDir([string]$Dir) {
     }
   }
 
-  $markerFile = Join-Path $Dir '.xyrdp_samp_fullscreen_v2'
-  $alreadyPatched = (Test-Path $markerFile) -and (Test-Path (Join-Path $Dir 'd3d9.dll')) -and (Test-Path (Join-Path $Dir 'ddraw.dll')) -and (Test-Path (Join-Path $Dir 'd3dimm.dll'))
+  $markerFile = Join-Path $Dir '.xyrdp_samp_fullscreen_v3'
+  $alreadyPatched = (Test-Path $markerFile)
 
   # 2. Salin SA-MP Client (samp.exe, samp.dll, samp.saa) bila belum ada di folder target
   if ((Test-Path (Join-Path $sampCache 'samp.exe')) -and -not (Test-Path (Join-Path $Dir 'samp.exe'))) {
     Copy-Item -Path "$sampCache\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
   }
 
-  # 3. Salin paket lengkap dgVoodoo2 Fullscreen (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll + dgVoodoo.conf)
-  #    + SilentPatchSA.asi + GTASA.WidescreenFix.asi + vorbisFile.dll SETELAH game diekstrak!
-  if (-not $alreadyPatched) {
-    Copy-Item -Path "$modsDir\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
+  # 3. SELALU salin paket lengkap dgVoodoo2 Borderless Fullscreen (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll + dgVoodoo.conf)
+  #    + SilentPatchSA.asi + GTASA.WidescreenFix.asi + vorbisFile.dll (Ultimate ASI Loader 1.39 MB)
+  #    supaya meskipun GTA San Andreas.rar baru selesai diekstrak dan menimpa vorbisFile.dll, ASI Loader + dgVoodoo.conf tetap aktif!
+  try { & attrib.exe -R "$Dir\*.*" /S 2>&1 | Out-Null } catch {}
+  Copy-Item -Path "$modsDir\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
+  if ((Test-Path (Join-Path $modsDir 'SilentPatchSA.asi')) -and (Test-Path (Join-Path $Dir 'scripts'))) {
+    Copy-Item -Path (Join-Path $modsDir 'SilentPatchSA.asi') -Destination (Join-Path $Dir 'scripts\SilentPatchSA.asi') -Force -ErrorAction SilentlyContinue
+    Copy-Item -Path (Join-Path $modsDir 'SilentPatchSA.ini') -Destination (Join-Path $Dir 'scripts\SilentPatchSA.ini') -Force -ErrorAction SilentlyContinue
+  }
+
+  # 3a. Terapkan binary patch langsung pada gta_sa.exe di disk (VA 0x007469A0 -> 30 C0 90 90)
+  #     sebagai pelindung lapis kedua agar tidak pernah masuk ke cabang DirectDraw crash 0x00746929 (EAX=0)
+  $gtaExeTarget = Join-Path $Dir 'gta_sa.exe'
+  if (Test-Path $gtaExeTarget) {
+    Patch-GtaSaExeDirectDrawBypass $gtaExeTarget
   }
 
   # 3b. Pastikan layanan Windows Audio aktif agar gta_sa.exe tidak crash saat inisialisasi DirectSound
@@ -639,9 +714,8 @@ function Apply-SilentPatchToDir([string]$Dir) {
     Start-Service -Name 'Audiosrv' -ErrorAction SilentlyContinue
   } catch {}
 
-  # 4. Hapus atribut Read-Only dan bersihkan gta_sa.set lama HANYA satu kali saat migrasi Fullscreen v2
+  # 4. Bersihkan gta_sa.set lama HANYA satu kali saat migrasi Fullscreen v3
   if (-not $alreadyPatched) {
-    try { & attrib.exe -R "$Dir\*.*" /S 2>&1 | Out-Null } catch {}
     foreach ($docRoot in @(
       [Environment]::GetFolderPath('MyDocuments'),
       "C:\Users\$env:USERNAME\Documents"
@@ -655,7 +729,7 @@ function Apply-SilentPatchToDir([string]$Dir) {
         }
       }
     }
-    Set-Content -Path $markerFile -Value 'fullscreen-v2' -Encoding ASCII -Force -ErrorAction SilentlyContinue
+    Set-Content -Path $markerFile -Value 'fullscreen-v3' -Encoding ASCII -Force -ErrorAction SilentlyContinue
   }
 
   # 5. Atur Registry AppCompat + DEP Exception + SAMP gta_sa_exe path

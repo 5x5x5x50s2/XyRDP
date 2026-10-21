@@ -197,9 +197,10 @@ public static class XyRawInputDaemon {
     static volatile IPEndPoint videoSubEp = null;
     static volatile long videoSubExpireTick = 0;
     static volatile int videoTargetFps = 60;
-    static volatile int videoQuality = 72;
-    static volatile int videoScalePct = 85;
+    static volatile int videoQuality = 88;
+    static volatile int videoScalePct = 100;
     static UdpClient sharedUdp = null;
+    static readonly object sendLock = new object();
 
     static ImageCodecInfo GetJpegCodec() {
         foreach (var c in ImageCodecInfo.GetImageEncoders()) {
@@ -235,11 +236,15 @@ public static class XyRawInputDaemon {
                     using (var g = Graphics.FromImage(bmp)) {
                         g.CopyFromScreen(0, 0, 0, 0, new Size(srcW, srcH), CopyPixelOperation.SourceCopy);
                     }
-                    using (var ms = new MemoryStream(65536)) {
+                    using (var ms = new MemoryStream(98304)) {
                         var epParams = new EncoderParameters(1);
-                        epParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)Math.Max(40, Math.Min(92, videoQuality)));
+                        epParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)Math.Max(70, Math.Min(95, videoQuality)));
                         if (scale < 100) {
-                            using (var scaled = new Bitmap(bmp, dstW, dstH)) {
+                            using (var scaled = new Bitmap(dstW, dstH, PixelFormat.Format24bppRgb)) {
+                                using (var gs = Graphics.FromImage(scaled)) {
+                                    gs.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                                    gs.DrawImage(bmp, 0, 0, dstW, dstH);
+                                }
                                 if (jpegCodec != null) scaled.Save(ms, jpegCodec, epParams);
                                 else scaled.Save(ms, ImageFormat.Jpeg);
                             }
@@ -270,7 +275,9 @@ public static class XyRawInputDaemon {
                             pkt[14] = flags;
                             pkt[15] = (byte)fps;
                             Buffer.BlockCopy(jpegBytes, offset, pkt, 16, len);
-                            sharedUdp.Send(pkt, pkt.Length, ep);
+                            lock (sendLock) {
+                                sharedUdp.Send(pkt, pkt.Length, ep);
+                            }
                         }
                     }
                 }
@@ -307,7 +314,57 @@ public static class XyRawInputDaemon {
                             string host = Environment.MachineName;
                             string json = "{\"proto\":\"XYDESK-QUIC-1\",\"hostname\":\"" + host + "\",\"ip\":\"\",\"rdp_port\":3389,\"quic_port\":" + port + ",\"gpu\":\"XyRDP-Mesa3D\",\"encoder\":\"JPEG-120FPS\",\"pc_id\":\"" + host + "\",\"console_stream\":true}";
                             byte[] resp = Encoding.UTF8.GetBytes(json);
-                            udp.Send(resp, resp.Length, ep);
+                            lock (sendLock) { udp.Send(resp, resp.Length, ep); }
+                            continue;
+                        }
+                        if (txt.StartsWith("XYDESK_QUIC_WALLPAPER_V1")) {
+                            try {
+                                string[] wallCandidates = new string[] {
+                                    @"C:\Windows\Web\Wallpaper\Windows\xyrdp-wallpaper.jpg",
+                                    Environment.ExpandEnvironmentVariables(@"%APPDATA%\Microsoft\Windows\Themes\TranscodedWallpaper"),
+                                    @"C:\Windows\Web\Wallpaper\Windows\img0.jpg"
+                                };
+                                foreach (string wp in wallCandidates) {
+                                    if (File.Exists(wp)) {
+                                        using (var srcBmp = new Bitmap(wp))
+                                        using (var thumb = new Bitmap(480, 270, PixelFormat.Format24bppRgb))
+                                        using (var g = Graphics.FromImage(thumb))
+                                        using (var ms = new MemoryStream(49152)) {
+                                            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+                                            g.DrawImage(srcBmp, 0, 0, 480, 270);
+                                            var jc = GetJpegCodec();
+                                            if (jc != null) {
+                                                var epP = new EncoderParameters(1);
+                                                epP.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 78L);
+                                                thumb.Save(ms, jc, epP);
+                                            } else {
+                                                thumb.Save(ms, ImageFormat.Jpeg);
+                                            }
+                                            byte[] jb = ms.ToArray();
+                                            if (jb.Length > 256 && jb.Length <= 60000) {
+                                                byte[] wpkt = new byte[4 + jb.Length];
+                                                wpkt[0] = (byte)'X'; wpkt[1] = (byte)'Y'; wpkt[2] = (byte)'W'; wpkt[3] = (byte)'L';
+                                                Buffer.BlockCopy(jb, 0, wpkt, 4, jb.Length);
+                                                lock (sendLock) { udp.Send(wpkt, wpkt.Length, ep); }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch { }
+                            continue;
+                        }
+                    }
+                    if (rx.Length > 47 && (rx[0] & 0xC0) == 0xC0) {
+                        string payload = Encoding.ASCII.GetString(rx, 24, Math.Min(23, rx.Length - 24));
+                        if (payload.StartsWith("XYDESK_QUIC_DISCOVER_V1")) {
+                            string host = Environment.MachineName;
+                            string ackJson = "XYDESK_QUIC_ACK_V1\0{\"proto\":\"XYDESK-QUIC-1\",\"hostname\":\"" + host + "\",\"rdp_port\":3389,\"quic_port\":" + port + ",\"console_stream\":true}";
+                            byte[] ackPayload = Encoding.UTF8.GetBytes(ackJson);
+                            byte[] resp = new byte[24 + ackPayload.Length];
+                            Array.Copy(rx, 0, resp, 0, 24);
+                            Array.Copy(ackPayload, 0, resp, 24, ackPayload.Length);
+                            lock (sendLock) { udp.Send(resp, resp.Length, ep); }
                             continue;
                         }
                     }
@@ -325,7 +382,7 @@ public static class XyRawInputDaemon {
                         continue;
                     }
                     if (rx.Length >= 5 && rx[0] == (byte)'X' && rx[1] == (byte)'Y' && rx[2] == (byte)'S' && rx[3] == (byte)'B') {
-                        udp.Send(audioAck, audioAck.Length, ep);
+                        lock (sendLock) { udp.Send(audioAck, audioAck.Length, ep); }
                         continue;
                     }
                     if (rx.Length < 12) continue;
@@ -367,7 +424,7 @@ public static class XyRawInputDaemon {
                     long now = Environment.TickCount64;
                     if (cmd == 5 || (now - lastAck) >= 250) {
                         lastAck = now;
-                        udp.Send(ack, ack.Length, ep);
+                        lock (sendLock) { udp.Send(ack, ack.Length, ep); }
                     }
                 } catch { }
             }

@@ -83,6 +83,41 @@ function Sync-And-Heal-DesktopShortcuts {
           $sc3.Save()
         }
       }
+
+      # 4. Shortcut FiveM (Ikon FiveM Oranye — Prank App)
+      $fivemExe = 'C:\Games\FiveM\FiveM.exe'
+      $fivemIco = if (Test-Path 'C:\Games\FiveM\FiveM.ico') { 'C:\Games\FiveM\FiveM.ico' } else { Join-Path $icoDir 'fivem.ico' }
+      if (Test-Path $fivemExe) {
+        $lnkFivem = Join-Path $desk 'FiveM.lnk'
+        if (-not (Test-Path $lnkFivem)) {
+          $sc4 = $wsh.CreateShortcut($lnkFivem)
+          $sc4.TargetPath = $fivemExe
+          $sc4.WorkingDirectory = 'C:\Games\FiveM'
+          $sc4.Description = 'FiveM — Cfx.re CitizenFX GTA V Roleplay Client'
+          if (Test-Path $fivemIco) { $sc4.IconLocation = "$fivemIco,0" }
+          $sc4.Save()
+        }
+      }
+
+      # 5. Shortcut MEmu Emulator, Euro Truck Simulator 2 Free, & Blender 3D
+      foreach ($extraApp in @(
+        @{ Name = 'MEmu Emulator.lnk'; Ps1 = 'C:\Games\MEmu\Launch-MEmu.ps1'; Dir = 'C:\Games\MEmu'; Ico = (Join-Path $icoDir 'memu.ico'); Desc = 'MEmu Play Android Emulator' },
+        @{ Name = 'Euro Truck Simulator 2.lnk'; Ps1 = 'C:\Games\ETS2\Launch-ETS2-Free.ps1'; Dir = 'C:\Games\ETS2'; Ico = (Join-Path $icoDir 'ets2.ico'); Desc = 'Euro Truck Simulator 2 Free Edition' },
+        @{ Name = 'Blender 3D.lnk'; Ps1 = 'C:\Games\Blender\Launch-Blender.ps1'; Dir = 'C:\Games\Blender'; Ico = (Join-Path $icoDir 'blender.ico'); Desc = 'Blender 3D Studio (OpenGL 4.6 Ready)' }
+      )) {
+        if (Test-Path $extraApp.Ps1) {
+          $lnkExtra = Join-Path $desk $extraApp.Name
+          if (-not (Test-Path $lnkExtra)) {
+            $scE = $wsh.CreateShortcut($lnkExtra)
+            $scE.TargetPath = 'powershell.exe'
+            $scE.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$($extraApp.Ps1)`""
+            $scE.WorkingDirectory = $extraApp.Dir
+            $scE.Description = $extraApp.Desc
+            if (Test-Path $extraApp.Ico) { $scE.IconLocation = "$($extraApp.Ico),0" }
+            $scE.Save()
+          }
+        }
+      }
     }
   } catch {}
 }

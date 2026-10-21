@@ -133,12 +133,12 @@ if (Open-DefaultHive) {
 Log "  ClearType: $fontTxt (FontSmoothing=2 + FontSmoothingType=2 di profil Default)"
 $rdpAlive4 = Probe-Rdp 'setelah ClearType profil Default'
 
-# ---------- 4. Firewall (dibuka di VM; dari luar tetap hanya via tunnel) ----------
+# ---------- 4. Firewall (dibuka di VM; dari luar tetap hanya via tunnel/P2P) ----------
 function Add-FwRule([string]$Name, [string]$Proto, [string]$Ports) {
   try {
     Remove-NetFirewallRule -DisplayName $Name -ErrorAction SilentlyContinue | Out-Null
     New-NetFirewallRule -DisplayName $Name -Direction Inbound -Action Allow `
-      -Protocol $Proto -LocalPort $Ports -RemoteAddress '100.64.0.0/10' -Profile Any -ErrorAction Stop | Out-Null
+      -Protocol $Proto -LocalPort $Ports -RemoteAddress Any -Profile Any -ErrorAction Stop | Out-Null
     return $true
   } catch { Log "  firewall '$Name' gagal: $($_.Exception.Message)"; return $false }
 }
@@ -151,29 +151,36 @@ $rdpAlive5 = Probe-Rdp 'setelah aturan firewall'
 
 # ---------- 5. Layanan ----------
 $svcOk = @()
-foreach ($svc in @('TermService', 'Audiosrv')) {
+foreach ($svc in @('TermService', 'Audiosrv', 'AudioEndpointBuilder', 'UmRdpService')) {
   try {
     Set-Service -Name $svc -StartupType Automatic -ErrorAction Stop
     Start-Service -Name $svc -ErrorAction Stop
-    $svcOk += $svc
+    if ($svc -in @('TermService', 'Audiosrv')) { $svcOk += $svc }
   } catch { Log "  layanan $svc gagal: $($_.Exception.Message)" }
 }
-try { Start-Service -Name 'UmRdpService' -ErrorAction SilentlyContinue } catch {}
 $svcTxt = if ($svcOk.Count -eq 2) { 'ok' } elseif ($svcOk.Count -eq 1) { "sebagian ($($svcOk[0]) hidup)" } else { 'gagal' }
 Log "  layanan: $svcTxt"
 $rdpAlive6 = Probe-Rdp 'setelah start layanan'
 
-# ---------- 6. Akses privat + Daemon UDP :4433 RawInput (Game FPS 360° Aim) ----------
+# ---------- 6. Akses privat + Daemon UDP :4433 P2P Stream (`XYV1`) & RawInput (`XYI1`) ----------
 try {
   $daemonDir = 'C:\ProgramData\XyDesk'
   New-Item -ItemType Directory -Path $daemonDir -Force -ErrorAction SilentlyContinue | Out-Null
   $daemonPs1 = Join-Path $daemonDir 'xydesk-rawinput-udp.ps1'
   $daemonCode = @'
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @"
 using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Windows.Forms;
 
 public static class XyRawInputDaemon {
     [StructLayout(LayoutKind.Sequential)]
@@ -184,16 +191,144 @@ public static class XyRawInputDaemon {
         public uint dwFlags; public uint time; public IntPtr dwExtraInfo;
     }
     [DllImport("user32.dll")] static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+    [DllImport("user32.dll")] static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int nIndex);
+
+    static volatile IPEndPoint videoSubEp = null;
+    static volatile long videoSubExpireTick = 0;
+    static volatile int videoTargetFps = 60;
+    static volatile int videoQuality = 72;
+    static volatile int videoScalePct = 85;
+    static UdpClient sharedUdp = null;
+
+    static ImageCodecInfo GetJpegCodec() {
+        foreach (var c in ImageCodecInfo.GetImageEncoders()) {
+            if (c.MimeType == "image/jpeg") return c;
+        }
+        return null;
+    }
+
+    static void VideoLoop() {
+        var jpegCodec = GetJpegCodec();
+        ushort frameId = 1;
+        while (true) {
+            try {
+                var ep = videoSubEp;
+                long now = Environment.TickCount64;
+                if (ep == null || now > videoSubExpireTick || sharedUdp == null) {
+                    Thread.Sleep(40);
+                    continue;
+                }
+                int fps = Math.Max(15, Math.Min(120, videoTargetFps));
+                int intervalMs = Math.Max(8, 1000 / fps);
+                long t0 = Environment.TickCount64;
+
+                Rectangle bounds = Screen.PrimaryScreen != null ? Screen.PrimaryScreen.Bounds : new Rectangle(0, 0, 1280, 720);
+                int srcW = Math.Max(640, bounds.Width);
+                int srcH = Math.Max(480, bounds.Height);
+                int scale = Math.Max(50, Math.Min(100, videoScalePct));
+                int dstW = (srcW * scale) / 100;
+                int dstH = (srcH * scale) / 100;
+
+                byte[] jpegBytes = null;
+                using (var bmp = new Bitmap(srcW, srcH, PixelFormat.Format24bppRgb)) {
+                    using (var g = Graphics.FromImage(bmp)) {
+                        g.CopyFromScreen(0, 0, 0, 0, new Size(srcW, srcH), CopyPixelOperation.SourceCopy);
+                    }
+                    using (var ms = new MemoryStream(65536)) {
+                        var epParams = new EncoderParameters(1);
+                        epParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)Math.Max(40, Math.Min(92, videoQuality)));
+                        if (scale < 100) {
+                            using (var scaled = new Bitmap(bmp, dstW, dstH)) {
+                                if (jpegCodec != null) scaled.Save(ms, jpegCodec, epParams);
+                                else scaled.Save(ms, ImageFormat.Jpeg);
+                            }
+                        } else {
+                            if (jpegCodec != null) bmp.Save(ms, jpegCodec, epParams);
+                            else bmp.Save(ms, ImageFormat.Jpeg);
+                        }
+                        jpegBytes = ms.ToArray();
+                    }
+                }
+
+                if (jpegBytes != null && jpegBytes.Length > 0) {
+                    const int maxPayload = 1360;
+                    int chunkCount = (jpegBytes.Length + maxPayload - 1) / maxPayload;
+                    if (chunkCount > 0 && chunkCount <= 256) {
+                        byte flags = (GetSystemMetrics(0x1000) == 0) ? (byte)1 : (byte)0;
+                        ushort fId = frameId++;
+                        for (int idx = 0; idx < chunkCount; idx++) {
+                            int offset = idx * maxPayload;
+                            int len = Math.Min(maxPayload, jpegBytes.Length - offset);
+                            byte[] pkt = new byte[16 + len];
+                            pkt[0] = (byte)'X'; pkt[1] = (byte)'Y'; pkt[2] = (byte)'V'; pkt[3] = (byte)'1';
+                            pkt[4] = (byte)(fId & 0xFF); pkt[5] = (byte)((fId >> 8) & 0xFF);
+                            pkt[6] = (byte)(idx & 0xFF); pkt[7] = (byte)((idx >> 8) & 0xFF);
+                            pkt[8] = (byte)(chunkCount & 0xFF); pkt[9] = (byte)((chunkCount >> 8) & 0xFF);
+                            pkt[10] = (byte)(dstW & 0xFF); pkt[11] = (byte)((dstW >> 8) & 0xFF);
+                            pkt[12] = (byte)(dstH & 0xFF); pkt[13] = (byte)((dstH >> 8) & 0xFF);
+                            pkt[14] = flags;
+                            pkt[15] = (byte)fps;
+                            Buffer.BlockCopy(jpegBytes, offset, pkt, 16, len);
+                            sharedUdp.Send(pkt, pkt.Length, ep);
+                        }
+                    }
+                }
+
+                long elapsed = Environment.TickCount64 - t0;
+                int sleepMs = (int)(intervalMs - elapsed);
+                if (sleepMs > 1) Thread.Sleep(sleepMs);
+            } catch {
+                Thread.Sleep(50);
+            }
+        }
+    }
 
     public static void Run(int port) {
         using (var udp = new UdpClient(port)) {
+            sharedUdp = udp;
+            udp.Client.SendBufferSize = 4 * 1024 * 1024;
+            udp.Client.ReceiveBufferSize = 2 * 1024 * 1024;
+            var vThread = new Thread(VideoLoop);
+            vThread.IsBackground = true;
+            vThread.Start();
+
             IPEndPoint ep = new IPEndPoint(IPAddress.Any, 0);
             byte[] ack = new byte[] { (byte)'X', (byte)'Y', (byte)'I', (byte)'A', 1 };
+            byte[] audioAck = new byte[] { (byte)'X', (byte)'Y', (byte)'S', (byte)'T', (byte)'1', 1 };
             long lastAck = 0;
             while (true) {
                 try {
                     byte[] rx = udp.Receive(ref ep);
-                    if (rx == null || rx.Length < 12) continue;
+                    if (rx == null || rx.Length < 4) continue;
+                    if (rx.Length >= 20 && rx[0] == (byte)'X' && rx[1] == (byte)'Y' && rx[2] == (byte)'D' && rx[3] == (byte)'E') {
+                        string txt = Encoding.ASCII.GetString(rx);
+                        if (txt.StartsWith("XYDESK_QUIC_DISCOVER_V1")) {
+                            string host = Environment.MachineName;
+                            string json = "{\"proto\":\"XYDESK-QUIC-1\",\"hostname\":\"" + host + "\",\"ip\":\"\",\"rdp_port\":3389,\"quic_port\":" + port + ",\"gpu\":\"XyRDP-Mesa3D\",\"encoder\":\"JPEG-120FPS\",\"pc_id\":\"" + host + "\",\"console_stream\":true}";
+                            byte[] resp = Encoding.UTF8.GetBytes(json);
+                            udp.Send(resp, resp.Length, ep);
+                            continue;
+                        }
+                    }
+                    if (rx.Length >= 12 && rx[0] == (byte)'X' && rx[1] == (byte)'Y' && rx[2] == (byte)'V' && rx[3] == (byte)'1') {
+                        byte enable = rx[4];
+                        if (enable != 0) {
+                            videoTargetFps = rx[5] & 0xFF;
+                            videoQuality = rx[6] & 0xFF;
+                            videoScalePct = rx[7] & 0xFF;
+                            videoSubEp = new IPEndPoint(ep.Address, ep.Port);
+                            videoSubExpireTick = Environment.TickCount64 + 6000;
+                        } else {
+                            videoSubEp = null;
+                        }
+                        continue;
+                    }
+                    if (rx.Length >= 5 && rx[0] == (byte)'X' && rx[1] == (byte)'Y' && rx[2] == (byte)'S' && rx[3] == (byte)'B') {
+                        udp.Send(audioAck, audioAck.Length, ep);
+                        continue;
+                    }
+                    if (rx.Length < 12) continue;
                     if (rx[0] != (byte)'X' || rx[1] != (byte)'Y' || rx[2] != (byte)'I' || rx[3] != (byte)'1') continue;
                     byte cmd = rx[4];
                     short a1 = BitConverter.ToInt16(rx, 6);
@@ -224,8 +359,12 @@ public static class XyRawInputDaemon {
                         inp[0].mi.dwFlags = 0x0800; // MOUSEEVENTF_WHEEL
                         inp[0].mi.mouseData = (uint)a1;
                         SendInput(1, inp, Marshal.SizeOf(typeof(INPUT)));
+                    } else if (cmd == 4) {
+                        byte vk = (byte)(a1 & 0xFF);
+                        bool down = (a2 != 0);
+                        keybd_event(vk, 0, down ? 0u : 0x0002u, UIntPtr.Zero);
                     }
-                    long now = Environment.TickCount;
+                    long now = Environment.TickCount64;
                     if (cmd == 5 || (now - lastAck) >= 250) {
                         lastAck = now;
                         udp.Send(ack, ack.Length, ep);

@@ -146,6 +146,9 @@ function Save-QaWindowScreenshot([System.Diagnostics.Process]$Proc, [string]$Out
 # ============================================================================
 Write-Host "=== 1. Mengaudit Seluruh Shortcut Desktop & Mengekstrak Ikon Asli ==="
 $desk = 'C:\Users\Public\Desktop'
+foreach ($junk in @('Epic Games Launcher.lnk', 'R 4.6.1.lnk', 'Unity Hub.lnk')) {
+  Remove-Item -LiteralPath (Join-Path $desk $junk) -Force -ErrorAction SilentlyContinue
+}
 $lnks = Get-ChildItem -Path $desk -Filter '*.lnk' -ErrorAction SilentlyContinue | Sort-Object Name
 $wsh  = New-Object -ComObject WScript.Shell
 

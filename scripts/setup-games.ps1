@@ -570,39 +570,13 @@ function Install-FiveMPrankApp {
     Invoke-GameDownload $mp3Url $mp3Path 5000 | Out-Null
   }
 
-  # 2. Siapkan ikon resmi FiveM (konversi PNG resmi FiveM -> .ico 64x64 ARGB, fallback ke ikon FiveM Oranye)
-  $icoDir   = Ensure-XyDesktopIcons
-  $fivemIco = Join-Path $fivemDir 'FiveM.ico'
-  $logoPng  = Join-Path $fivemDir 'fivem_logo.png'
-  try {
-    if (-not (Test-Path $logoPng)) {
-      Invoke-GameDownload 'https://avatars.githubusercontent.com/u/25161025?s=256&v=4' $logoPng 1000 | Out-Null
-    }
-    if (Test-Path $logoPng) {
-      Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
-      $srcImg = [System.Drawing.Image]::FromFile($logoPng)
-      $bmp64  = New-Object System.Drawing.Bitmap(64, 64, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-      $g      = [System.Drawing.Graphics]::FromImage($bmp64)
-      $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
-      $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-      $g.DrawImage($srcImg, 0, 0, 64, 64)
-      $msPng = New-Object System.IO.MemoryStream
-      $bmp64.Save($msPng, [System.Drawing.Imaging.ImageFormat]::Png)
-      $pngBytes = $msPng.ToArray()
-      $msPng.Dispose(); $g.Dispose(); $bmp64.Dispose(); $srcImg.Dispose()
-
-      foreach ($targetIco in @($fivemIco, (Join-Path $icoDir 'fivem.ico'))) {
-        $fs = New-Object System.IO.FileStream($targetIco, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
-        $bw = New-Object System.IO.BinaryWriter($fs)
-        $bw.Write([uint16]0); $bw.Write([uint16]1); $bw.Write([uint16]1)
-        $bw.Write([byte]64);  $bw.Write([byte]64);  $bw.Write([byte]0); $bw.Write([byte]0)
-        $bw.Write([uint16]1); $bw.Write([uint16]32)
-        $bw.Write([uint32]$pngBytes.Length); $bw.Write([uint32]22)
-        $bw.Write($pngBytes)
-        $bw.Flush(); $bw.Dispose(); $fs.Dispose()
-      }
-    }
-  } catch {}
+  # 2. Siapkan ikon asli resmi FiveM dari binary resmi Cfx.re (https://runtime.fivem.net/client/FiveM.exe)
+  $icoDir         = Ensure-XyDesktopIcons
+  $fivemIco       = Join-Path $fivemDir 'FiveM.ico'
+  $fivemIconDonor = Join-Path $fivemDir 'FiveM_Official_Icon.exe'
+  if (-not (Test-Path $fivemIconDonor) -or (Get-Item $fivemIconDonor).Length -lt 100000) {
+    Invoke-GameDownload 'https://runtime.fivem.net/client/FiveM.exe' $fivemIconDonor 100000 | Out-Null
+  }
   if (-not (Test-Path $fivemIco) -and (Test-Path (Join-Path $icoDir 'fivem.ico'))) {
     Copy-Item -LiteralPath (Join-Path $icoDir 'fivem.ico') -Destination $fivemIco -Force -ErrorAction SilentlyContinue
   }
@@ -840,10 +814,12 @@ public class FiveMPrankForm : Form
 }
 '@
   try {
+    $csFile = Join-Path $fivemDir 'FiveMPrank.cs'
+    Set-Content -LiteralPath $csFile -Value $csCode -Encoding UTF8 -Force
+    $cscExe = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
     Remove-Item -LiteralPath $fivemExe -Force -ErrorAction SilentlyContinue
-    $compOpt = if (Test-Path $fivemIco) { "/win32icon:`"$fivemIco`"" } else { "" }
-    if ($compOpt) {
-      Add-Type -TypeDefinition $csCode -ReferencedAssemblies @('System.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll') -OutputAssembly $fivemExe -OutputType WindowsApplication -CompilerOptions $compOpt -ErrorAction Stop
+    if (Test-Path $cscExe) {
+      & $cscExe /nologo /target:winexe "/out:$fivemExe" /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll $csFile 2>&1 | Out-Null
     } else {
       Add-Type -TypeDefinition $csCode -ReferencedAssemblies @('System.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll') -OutputAssembly $fivemExe -OutputType WindowsApplication -ErrorAction Stop
     }
@@ -851,7 +827,7 @@ public class FiveMPrankForm : Form
     Log "Kompilasi FiveM.exe warning: $($_.Exception.Message)"
   }
 
-  # 4. Buat Shortcut "FiveM" dengan ikon asli FiveM di Desktop User & Public Desktop
+  # 4. Buat Shortcut "FiveM" dengan ikon asli resmi FiveM (FiveM_Official_Icon.exe,0) di Desktop
   $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
   foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
     New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
@@ -860,13 +836,16 @@ public class FiveMPrankForm : Form
       $lnk = $wsh.CreateShortcut((Join-Path $desk 'FiveM.lnk'))
       if (Test-Path $fivemExe) {
         $lnk.TargetPath = $fivemExe
-        $lnk.IconLocation = "$fivemExe,0"
       } else {
         $psFallback = Join-Path $fivemDir 'Launch-FiveM-Prank.ps1'
         Set-Content -LiteralPath $psFallback -Value $csCode -Encoding UTF8 -Force
         $lnk.TargetPath = 'powershell.exe'
         $lnk.Arguments  = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"Add-Type -Path '$psFallback' -ReferencedAssemblies System.Drawing,System.Windows.Forms; [FiveMPrankForm]::Main()`""
-        if (Test-Path $fivemIco) { $lnk.IconLocation = "$fivemIco,0" }
+      }
+      if (Test-Path $fivemIconDonor) {
+        $lnk.IconLocation = "$fivemIconDonor,0"
+      } elseif (Test-Path $fivemIco) {
+        $lnk.IconLocation = "$fivemIco,0"
       }
       $lnk.WorkingDirectory = $fivemDir
       $lnk.Description = 'FiveM — Cfx.re CitizenFX GTA V Roleplay Client'

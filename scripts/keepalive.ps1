@@ -40,8 +40,8 @@ function Sync-And-Heal-DesktopShortcuts {
       }
       $wsh = New-Object -ComObject WScript.Shell
 
-      # Bersihkan shortcut duplikat/lama yang namanya membingungkan
-      foreach ($oldItem in @('XyDeskTools.exe', 'XyDesk Gaming & Tools Hub.lnk', 'Simpan Data & Game Sekarang.lnk', 'Minecraft (TLauncher).lnk', 'PrismLauncher (Minecraft).lnk', 'GTA SAMP.lnk', 'SA-MP 0.3.7-R5 Server Browser.lnk', 'Patch GTA SA-MP (SilentPatch).lnk', 'Atasi Banned & Anti-VPN SAMP.lnk', 'Install Roblox Player.exe')) {
+      # Bersihkan shortcut duplikat/lama atau sampah bawaan image runner
+      foreach ($oldItem in @('XyDeskTools.exe', 'XyDesk Gaming & Tools Hub.lnk', 'Simpan Data & Game Sekarang.lnk', 'Minecraft (TLauncher).lnk', 'PrismLauncher (Minecraft).lnk', 'GTA SAMP.lnk', 'SA-MP 0.3.7-R5 Server Browser.lnk', 'Patch GTA SA-MP (SilentPatch).lnk', 'Atasi Banned & Anti-VPN SAMP.lnk', 'Install Roblox Player.exe', 'Epic Games Launcher.lnk', 'R 4.6.1.lnk', 'Unity Hub.lnk')) {
         Remove-Item -LiteralPath (Join-Path $desk $oldItem) -Force -ErrorAction SilentlyContinue
       }
 
@@ -84,8 +84,9 @@ function Sync-And-Heal-DesktopShortcuts {
         }
       }
 
-      # 4. Shortcut FiveM (Ikon Asli FiveM.exe)
+      # 4. Shortcut FiveM (Ikon Asli FiveM_Official_Icon.exe)
       $fivemExe = 'C:\Games\FiveM\FiveM.exe'
+      $fivemIconDonor = 'C:\Games\FiveM\FiveM_Official_Icon.exe'
       if (Test-Path $fivemExe) {
         $lnkFivem = Join-Path $desk 'FiveM.lnk'
         if (-not (Test-Path $lnkFivem)) {
@@ -93,7 +94,8 @@ function Sync-And-Heal-DesktopShortcuts {
           $sc4.TargetPath = $fivemExe
           $sc4.WorkingDirectory = 'C:\Games\FiveM'
           $sc4.Description = 'FiveM — Cfx.re CitizenFX GTA V Roleplay Client'
-          $sc4.IconLocation = "$fivemExe,0"
+          if (Test-Path $fivemIconDonor) { $sc4.IconLocation = "$fivemIconDonor,0" }
+          else { $sc4.IconLocation = "$fivemExe,0" }
           $sc4.Save()
         }
       }

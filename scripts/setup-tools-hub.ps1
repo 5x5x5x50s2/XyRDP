@@ -717,11 +717,22 @@ namespace XyDeskTools
 '@
 
 try {
-  Add-Type -TypeDefinition $csharpSource `
-    -ReferencedAssemblies @('System.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll') `
-    -OutputAssembly $exePath `
-    -OutputType WindowsApplication `
-    -ErrorAction Stop
+  $csFile = Join-Path $toolsDir 'XyDeskDashboard.cs'
+  Set-Content -LiteralPath $csFile -Value $csharpSource -Encoding UTF8 -Force
+  $cscExe = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+  Remove-Item -LiteralPath $exePath -Force -ErrorAction SilentlyContinue
+  if (Test-Path $cscExe) {
+    $cscArgs = @('/nologo', '/target:winexe', "/out:$exePath", '/r:System.dll', '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll')
+    if (Test-Path $dashIco) { $cscArgs += "/win32icon:$dashIco" }
+    $cscArgs += $csFile
+    & $cscExe @cscArgs 2>&1 | Out-Null
+  } else {
+    Add-Type -TypeDefinition $csharpSource `
+      -ReferencedAssemblies @('System.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll') `
+      -OutputAssembly $exePath `
+      -OutputType WindowsApplication `
+      -ErrorAction Stop
+  }
 
   if (Test-Path $exePath) {
     Copy-Item -LiteralPath $exePath -Destination $legacyExePath -Force -ErrorAction SilentlyContinue

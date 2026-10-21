@@ -52,7 +52,7 @@ jobs:
           ./scripts/setup-xydesk.ps1
 
       - name: 7. Run Real Window Launch & Screenshot Capture Suite
-        shell: pwsh
+        shell: powershell
         run: ./scripts/run-qa-screenshots.ps1
 
       - name: 8. Upload QA Screenshots Artifact

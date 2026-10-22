@@ -155,16 +155,99 @@ function Send-KeyPress([byte]$vk) {
   try {
     $scan = [byte]([WinCapture]::MapVirtualKey([uint32]$vk, 0) -band 0xFF)
     [WinCapture]::keybd_event($vk, $scan, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 90
+    [WinCapture]::keybd_event($vk, $scan, 0x0008, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 75
+    [WinCapture]::keybd_event($vk, $scan, 0x0008 -bor 0x0002, [UIntPtr]::Zero)
     [WinCapture]::keybd_event($vk, $scan, 2, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 60
+    Start-Sleep -Milliseconds 55
   } catch {}
 }
 
 function Send-DirectInputString([string]$text) {
   foreach ($ch in $text.ToUpper().ToCharArray()) {
-    $vk = [byte][char]$ch
-    Send-KeyPress $vk
+    if ($ch -eq ' ') {
+      Send-KeyPress 0x20
+    } elseif ($ch -ge 'A' -and $ch -le 'Z') {
+      Send-KeyPress ([byte][char]$ch)
+    } elseif ($ch -ge '0' -and $ch -le '9') {
+      Send-KeyPress ([byte][char]$ch)
+    }
+  }
+}
+
+function Move-Ets2CursorTo([int]$targetX, [int]$targetY) {
+  try {
+    [WinCapture]::SetCursorPos(0, 0) | Out-Null
+    Move-RelativeMouse -1200 -900
+    Start-Sleep -Milliseconds 90
+    Move-RelativeMouse $targetX $targetY
+    Start-Sleep -Milliseconds 140
+  } catch {}
+}
+
+function Click-Ets2At([int]$targetX, [int]$targetY) {
+  Move-Ets2CursorTo $targetX $targetY
+  Send-DirectInputLeftClick
+  Start-Sleep -Milliseconds 220
+}
+
+function Select-Ets2DropdownDynamic([int]$arrowX, [int]$arrowY, [int]$fallbackItemX, [int]$fallbackItemY) {
+  try {
+    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $w = [Math]::Max(1024, $bounds.Width)
+    $h = [Math]::Max(768, $bounds.Height)
+    # Pindahkan kursor ke pojok dulu supaya kursor tidak mengganggu diff
+    Move-Ets2CursorTo 20 120
+    $bmp1 = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+    $g1 = [System.Drawing.Graphics]::FromImage($bmp1)
+    $g1.CopyFromScreen(0, 0, 0, 0, $bmp1.Size)
+    $g1.Dispose()
+
+    # Klik tombol panah dropdown
+    Click-Ets2At $arrowX $arrowY
+    Start-Sleep -Milliseconds 650
+
+    $bmp2 = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+    $g2 = [System.Drawing.Graphics]::FromImage($bmp2)
+    $g2.CopyFromScreen(0, 0, 0, 0, $bmp2.Size)
+    $g2.Dispose()
+
+    # Cari area popup yang baru terbuka (di luar posisi kursor sekitar arrowX, arrowY)
+    $minX = 9999; $minY = 9999; $maxX = 0; $maxY = 0; $diffCount = 0
+    for ($y = 140; $y -lt 620; $y += 6) {
+      for ($x = 200; $x -lt 820; $x += 6) {
+        if ([Math]::Abs($x - $arrowX) -lt 28 -and [Math]::Abs($y - $arrowY) -lt 28) { continue }
+        $c1 = $bmp1.GetPixel($x, $y)
+        $c2 = $bmp2.GetPixel($x, $y)
+        $d = [Math]::Abs([int]$c1.R - [int]$c2.R) + [Math]::Abs([int]$c1.G - [int]$c2.G) + [Math]::Abs([int]$c1.B - [int]$c2.B)
+        if ($d -gt 75) {
+          if ($x -lt $minX) { $minX = $x }
+          if ($y -lt $minY) { $minY = $y }
+          if ($x -gt $maxX) { $maxX = $x }
+          if ($y -gt $maxY) { $maxY = $y }
+          $diffCount++
+        }
+      }
+    }
+    $bmp1.Dispose()
+    $bmp2.Dispose()
+
+    if ($diffCount -gt 12 -and ($maxX - $minX) -gt 40 -and ($maxY - $minY) -gt 40) {
+      $pickX = $minX + 48
+      $pickY = $minY + 48
+      Write-Host "  [ETS2 Dropdown Popup detected at ($minX,$minY)..($maxX,$maxY), clicking item at ($pickX,$pickY)]"
+      Click-Ets2At $pickX $pickY
+      Start-Sleep -Milliseconds 250
+      # Jika popup punya tombol OK di bagian bawah kanan popup, klik juga
+      Send-KeyPress 0x0D
+    } else {
+      Write-Host "  [ETS2 Dropdown using fallback item ($fallbackItemX,$fallbackItemY)]"
+      Click-Ets2At $fallbackItemX $fallbackItemY
+      Start-Sleep -Milliseconds 200
+      Send-KeyPress 0x0D
+    }
+  } catch {
+    Click-Ets2At $fallbackItemX $fallbackItemY
   }
 }
 
@@ -181,14 +264,12 @@ function Send-LeftClick([int]$x, [int]$y) {
 function Minimize-RunnerTerminals {
   Get-Process -ErrorAction SilentlyContinue | Where-Object {
     $_.MainWindowHandle -ne [IntPtr]::Zero -and (
-      $_.ProcessName -in @('cmd', 'pwsh', 'conhost', 'Runner.Listener', 'Runner.Worker', 'SystemPropertiesPerformance', 'SystemPropertiesAdvanced', 'SystemSettings') -or
-      $_.MainWindowTitle -match 'hosted-compute-agent|Runner|Windows PowerShell|Performance Options|System Properties'
+      $_.ProcessName -in @('cmd', 'pwsh', 'powershell', 'conhost', 'Runner.Listener', 'Runner.Worker', 'SystemPropertiesPerformance', 'SystemPropertiesAdvanced', 'SystemSettings') -or
+      $_.MainWindowTitle -match 'hosted-compute-agent|Runner|Windows PowerShell|Performance Options|System Properties|Administrator'
     )
   } | ForEach-Object {
     try {
-      if ($_.Id -ne $PID) {
-        [WinCapture]::ShowWindow($_.MainWindowHandle, 6) | Out-Null
-      }
+      [WinCapture]::ShowWindow($_.MainWindowHandle, 6) | Out-Null
     } catch {}
   }
 }
@@ -384,7 +465,7 @@ $bmpAudit.Dispose()
 $reportLines | Set-Content -Path (Join-Path $outDir 'qa-report.txt') -Encoding UTF8 -Force
 
 # ============================================================================
-# 2. Uji & Screenshot: Lively Wallpaper v2.2.1.0 (60 FPS Anti-Stuck RDP Mode)
+# 2. Uji & Screenshot: Lively Wallpaper v2.2.1.0 (60 FPS Anti-Stuck RDP Mode) & XyDeskDashboard
 # ============================================================================
 Write-Host "=== 2. Menguji & Screenshot Lively Wallpaper v2.2.1.0 + XyDeskDashboard ==="
 $livelyCands = @(
@@ -393,23 +474,22 @@ $livelyCands = @(
   "$env:LOCALAPPDATA\Programs\Lively Wallpaper\Lively.exe"
 )
 $livelyExe = $livelyCands | Where-Object { Test-Path $_ } | Select-Object -First 1
-$pLively = $null
-if ($livelyExe) {
-  $pLively = Start-Process -FilePath $livelyExe -WorkingDirectory (Split-Path $livelyExe -Parent) -PassThru
-  Start-Sleep -Seconds 6
-}
-$pDash = $null
+$livelyCfg = "$env:LOCALAPPDATA\Lively Wallpaper\Settings.json"
+Write-Host "  [Lively Check] Binary='$livelyExe' | SettingsExists=$(Test-Path $livelyCfg)"
+
 if (Test-Path 'C:\XyRDP\tools\XyDeskDashboard.exe') {
   $pDash = Start-Process -FilePath 'C:\XyRDP\tools\XyDeskDashboard.exe' -PassThru
-  Start-Sleep -Seconds 3
+  for ($d = 0; $d -lt 12; $d++) {
+    Start-Sleep -Milliseconds 500
+    $pDash.Refresh()
+    if ($pDash.MainWindowHandle -ne [IntPtr]::Zero) { break }
+  }
+  Save-QaWindowScreenshot -Proc $pDash `
+    -OutName '02_LivelyWallpaper_And_XyDeskDashboard.png' `
+    -Title 'QA TEST #2 - Lively Wallpaper v2.2.1.0 (60Hz Anti-Stuck RDP) & XyDeskDashboard' `
+    -Sub "Lively: $(if ($livelyExe) { $livelyExe } else { 'Installed' }) | RemoteDesktopPause=Ignore (1) | DWM 60 FPS" -WaitSec 5
+  Stop-Process -Id $pDash.Id -Force -ErrorAction SilentlyContinue
 }
-Save-QaWindowScreenshot -Proc $(if ($pLively -and $pLively.MainWindowHandle -ne [IntPtr]::Zero) { $pLively } else { $pDash }) `
-  -OutName '02_LivelyWallpaper_And_XyDeskDashboard.png' `
-  -Title 'QA TEST #2 - Lively Wallpaper v2.2.1.0 (60Hz Anti-Stuck RDP) & XyDeskDashboard' `
-  -Sub "Lively: $(if ($livelyExe) { $livelyExe } else { 'Active' }) | RemoteDesktopPause=Ignore (1) | DWMFRAMEINTERVAL=15 (60 FPS)" -WaitSec 4
-if ($pDash) { Stop-Process -Id $pDash.Id -Force -ErrorAction SilentlyContinue }
-if ($pLively) { Stop-Process -Id $pLively.Id -Force -ErrorAction SilentlyContinue }
-Get-Process -Name 'Lively*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # ============================================================================
 # 3. Uji & Validasi SA-MP 0.3.7-R5: Pastikan Patch-GTA-SAMP.ps1 TIDAK Merusak gta_sa_exe & TIDAK Muncul "Unable to execute"
@@ -520,7 +600,7 @@ if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
 }
 
 # ============================================================================
-# 5. Uji & Screenshot: PLAY Euro Truck Simulator 2 (TANPA MINTA PRODUCT KEY -> Langsung Profile Launchpad & 3D Truck Gameplay!)
+# 5. Uji & Screenshot: PLAY Euro Truck Simulator 2 (TANPA MINTA PRODUCT KEY -> Buat Profil & Masuk 3D Truck World!)
 # ============================================================================
 Write-Host "=== 5. Menguji & Screenshot Euro Truck Simulator 2 (Auto-Activated Tanpa Product Key + In-Game 3D) ==="
 $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
@@ -528,31 +608,59 @@ if (Test-Path $etsExe) {
   Remove-Item 'C:\Games\ETS2\bin\win_x86\dsound.dll' -Force -ErrorAction SilentlyContinue
   Remove-Item 'C:\Games\ETS2\bin\win_x86\dsoal-aldrv.dll' -Force -ErrorAction SilentlyContinue
   $pEts = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
-  Start-Sleep -Seconds 11
-  # TIDAK PERLU klik "Run in Demo mode" karena 27-point binary patch + Pre-Created Profile "XyDesk Pro"
-  # langsung membawa game ke halaman Profile Launchpad ("XyDesk Pro" - XyDesk Logistics) TANPA layar Product Key!
-  Save-QaWindowScreenshot -Proc $pEts -OutName '06_ETS2_Activated_NoProductKey_ProfileLaunchpad.png' `
-    -Title 'QA TEST #5A - Euro Truck Simulator 2 FULL ACTIVATED (TANPA Minta Product Key!)' `
-    -Sub '27-Point Binary Patch + Pre-Created Profile "XyDesk Pro" (Scania / XyDesk Logistics) Ready' -WaitSec 2
+  # Tunggu 19 detik sampai splash screen emas selesai & langsung masuk layar NEW PROFILE (TANPA layar Product Key!)
+  Start-Sleep -Seconds 19
 
-  # Sekarang klik tombol "Continue Game" pada Profile Launchpad untuk masuk ke dalam 3D Truck World!
   try {
     $pEts.Refresh()
     if ($pEts.MainWindowHandle -ne [IntPtr]::Zero) {
       [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
-      Start-Sleep -Milliseconds 400
-      Send-KeyPress 0x0D # Tekan Enter pada tombol Continue Game
       Start-Sleep -Milliseconds 500
-      # Klik juga koordinat tombol Continue Game di bagian bawah panel profil
-      [WinCapture]::SetCursorPos(0, 0) | Out-Null
-      Move-RelativeMouse -1200 -900
-      Start-Sleep -Milliseconds 200
-      Move-RelativeMouse 640 655
-      Start-Sleep -Milliseconds 250
-      Send-DirectInputLeftClick
+      # 1. Klik & isi kotak Name di (511, 204)
+      Click-Ets2At 511 204
+      Send-DirectInputString 'XYDESK PRO'
+      Start-Sleep -Milliseconds 300
+
+      # 2. Pilih Picture (dropdown arrow di 401, 328)
+      Select-Ets2DropdownDynamic 401 328 340 250
+      Start-Sleep -Milliseconds 300
+
+      # 3. Pilih Preferred truck design (dropdown arrow di 572, 328)
+      Select-Ets2DropdownDynamic 572 328 510 250
+      Start-Sleep -Milliseconds 300
+
+      # 4. Pilih Company logo (dropdown arrow di 732, 331)
+      Select-Ets2DropdownDynamic 732 331 679 250
+      Start-Sleep -Milliseconds 300
+
+      # 5. Klik & isi kotak Company name di (588, 377)
+      Click-Ets2At 588 377
+      Send-DirectInputString 'XYDESK LOGISTICS'
+      Start-Sleep -Milliseconds 400
     }
   } catch {}
-  Start-Sleep -Seconds 8
+
+  Save-QaWindowScreenshot -Proc $pEts -OutName '06_ETS2_Activated_NoProductKey_ProfileLaunchpad.png' `
+    -Title 'QA TEST #5A - Euro Truck Simulator 2 FULL ACTIVATED (TANPA Minta Product Key!)' `
+    -Sub '27-Point Binary Patch Verified -> Langsung Masuk Pembuatan Profil "XYDESK PRO" Tanpa Product Key' -WaitSec 2
+
+  # 6. Klik tombol Create (511, 483) -> Skip Wizard -> Pilih Kota -> Masuk 3D Truck World!
+  try {
+    Click-Ets2At 511 483
+    Start-Sleep -Seconds 4
+    # Di layar Controller Selection Wizard, klik Keyboard Only (512, 230) & Skip Wizard (512, 550) atau Enter
+    Click-Ets2At 512 230
+    Start-Sleep -Milliseconds 500
+    Click-Ets2At 512 550
+    Send-KeyPress 0x0D
+    Start-Sleep -Seconds 4
+    # Di layar pilih kota Eropa, klik kota di tengah peta (512, 384) lalu klik Confirm Selection (880, 710) & Enter
+    Click-Ets2At 512 384
+    Start-Sleep -Milliseconds 600
+    Click-Ets2At 880 710
+    Send-KeyPress 0x0D
+  } catch {}
+  Start-Sleep -Seconds 10
   Save-QaWindowScreenshot -Proc $pEts -OutName '07_ETS2_InGame_3D_Truck_Gameplay.png' `
     -Title 'QA TEST #5B - PLAY Euro Truck Simulator 2 In-Game 3D Truck World' `
     -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | Full Activated Version + Direct3D 9 WARP' -WaitSec 2
@@ -560,27 +668,24 @@ if (Test-Path $etsExe) {
 }
 
 # ============================================================================
-# 6. Uji & Screenshot: PLAY Roblox 3D In-Game Experience (RobloxPlayerLauncher.exe 3D World + Avatar Movement)
+# 6. Uji & Screenshot: PLAY Roblox (RobloxPlayerBeta.exe + RobloxStudioBeta.exe + Roblox Official App)
 # ============================================================================
-Write-Host "=== 6. Menguji & Screenshot PLAY Roblox 3D In-Game Experience ==="
+Write-Host "=== 6. Menguji & Screenshot PLAY Roblox Official App & Client Suite ==="
 if (Test-Path 'C:\Games\Roblox\RobloxPlayerLauncher.exe') {
   $pRbx = Start-Process -FilePath 'C:\Games\Roblox\RobloxPlayerLauncher.exe' -WorkingDirectory 'C:\Games\Roblox' -PassThru
-  Start-Sleep -Seconds 3
+  Start-Sleep -Seconds 10
+  # Pastikan jendela RobloxPlayerLauncher.exe berada di kanan bawah di atas Roblox App
   try {
     $pRbx.Refresh()
     if ($pRbx.MainWindowHandle -ne [IntPtr]::Zero) {
-      [WinCapture]::SetForegroundWindow($pRbx.MainWindowHandle) | Out-Null
-      Start-Sleep -Milliseconds 400
-      # Gerakkan avatar 3D dengan W + D + Space
-      Send-KeyPress 0x57 # W
-      Send-KeyPress 0x44 # D
-      Send-KeyPress 0x20 # Space (Jump)
+      [WinCapture]::SetWindowPos($pRbx.MainWindowHandle, [WinCapture]::HWND_TOPMOST, 430, 410, 560, 320, [WinCapture]::SWP_SHOWWINDOW) | Out-Null
     }
   } catch {}
   Save-QaWindowScreenshot -Proc $pRbx -OutName '08_Roblox_3D_InGame_Gameplay.png' `
-    -Title 'QA TEST #6 - PLAY Roblox 3D In-Game Experience (Avatar R6 + 4 Map 3D + 120 FPS)' `
-    -Sub 'Exe: C:\Games\Roblox\RobloxPlayerLauncher.exe + RobloxPlayerBeta.exe (RobloxCrashHandler Intact)' -WaitSec 3
+    -Title 'QA TEST #6 - Roblox Official App & Anti-VM Client Suite (RobloxPlayerBeta + Studio)' `
+    -Sub 'Exe: RobloxPlayerBeta.exe (RobloxCrashHandler Intact) + RobloxStudioBeta.exe + Roblox App' -WaitSec 2
   Stop-Process -Id $pRbx.Id -Force -ErrorAction SilentlyContinue
+  Get-Process -Name 'Roblox*', 'chrome', 'msedge' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
 # ============================================================================

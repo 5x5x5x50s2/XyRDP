@@ -519,8 +519,8 @@ function Set-SampRegistryAllUsers([string]$GtaExePath, [string]$PlayerNameVal, [
         if ($LASTEXITCODE -eq 0) {
           & reg.exe add "HKU\$hiveName\Software\SAMP" /v "gta_sa_exe" /t REG_SZ /d "$GtaExePath" /f 2>&1 | Out-Null
           & reg.exe add "HKU\$hiveName\Software\SAMP" /v "PlayerName" /t REG_SZ /d "$PlayerNameVal" /f 2>&1 | Out-Null
-          & reg.exe add "HKU\$hiveName\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" /v "$GtaExePath" /t REG_SZ /d "~ RUNASINVOKER DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE" /f 2>&1 | Out-Null
-          & reg.exe add "HKU\$hiveName\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" /v "$sampExePath" /t REG_SZ /d "~ RUNASINVOKER HIGHDPIAWARE" /f 2>&1 | Out-Null
+          & reg.exe delete "HKU\$hiveName\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" /v "$GtaExePath" /f 2>&1 | Out-Null
+          & reg.exe delete "HKU\$hiveName\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" /v "$sampExePath" /f 2>&1 | Out-Null
           [gc]::Collect()
           Start-Sleep -Milliseconds 150
           & reg.exe unload "HKU\$hiveName" 2>&1 | Out-Null
@@ -529,15 +529,18 @@ function Set-SampRegistryAllUsers([string]$GtaExePath, [string]$PlayerNameVal, [
     }
   }
 
-  # Kunci AppCompatFlags\Layers di HKLM & HKCU ke RUNASINVOKER agar CreateProcessA dari samp.exe ke gta_sa.exe tidak pernah gagal karena elevation (Unable to execute)
+  # Hapus paksa entri AppCompatFlags\Layers pada gta_sa.exe & samp.exe di HKLM & HKCU
+  # agar CreateProcessA dari samp.exe ke gta_sa.exe tidak pernah gagal karena elevation (Unable to execute)
+  # DAN swapchain D3D11 dgVoodoo2 tidak terganggu oleh shim kompatibilitas Windows!
   foreach ($layerKey in @(
     'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers',
     'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
   )) {
     try {
-      New-Item -Path $layerKey -Force -ErrorAction SilentlyContinue | Out-Null
-      New-ItemProperty -Path $layerKey -Name $GtaExePath -Value '~ RUNASINVOKER DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
-      New-ItemProperty -Path $layerKey -Name $sampExePath -Value '~ RUNASINVOKER HIGHDPIAWARE' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+      if (Test-Path $layerKey) {
+        Remove-ItemProperty -Path $layerKey -Name $GtaExePath -Force -ErrorAction SilentlyContinue
+        Remove-ItemProperty -Path $layerKey -Name $sampExePath -Force -ErrorAction SilentlyContinue
+      }
     } catch {}
   }
 }

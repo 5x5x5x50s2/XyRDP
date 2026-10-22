@@ -425,6 +425,44 @@ function Install-RobloxAntiVmSuite {
         }
       }
     }
+
+    # Ekstrak juga RobloxStudioBeta.exe resmi (WindowsStudio64 - Bebas Hyperion Anti-VM DLL!) ke C:\Games\Roblox\Studio
+    $studioDir = 'C:\Games\Roblox\Studio'
+    $studioExe = Join-Path $studioDir 'RobloxStudioBeta.exe'
+    if (-not (Test-Path $studioExe)) {
+      $stMeta = Invoke-RestMethod -Uri 'https://clientsettingscdn.roblox.com/v2/client-version/WindowsStudio64' -TimeoutSec 20 -ErrorAction SilentlyContinue
+      $stHash = if ($stMeta -and $stMeta.clientVersionUpload) { $stMeta.clientVersionUpload } else { 'version-7aaa6838d36c4448' }
+      New-Item -ItemType Directory -Path $studioDir -Force | Out-Null
+      $stPkgs = @{
+        'RobloxStudio.zip'      = ''
+        'redist.zip'            = ''
+        'Libraries.zip'         = ''
+        'LibrariesQt5.zip'      = ''
+        'shaders.zip'           = 'shaders'
+        'content-sky.zip'       = 'content\sky'
+        'content-Wait.zip'      = 'content\textures'
+        'content-fonts.zip'     = 'content\fonts'
+        'ApplicationConfig.zip' = 'ApplicationConfig'
+      }
+      foreach ($sp in $stPkgs.Keys) {
+        $sSub = $stPkgs[$sp]
+        $sDst = if ($sSub) { Join-Path $studioDir $sSub } else { $studioDir }
+        New-Item -ItemType Directory -Path $sDst -Force | Out-Null
+        $sZip = Join-Path $work "st_$sp"
+        if (Invoke-GameDownload "https://setup.rbxcdn.com/$stHash-$sp" $sZip 512) {
+          if (Test-Path $sevenZip) { & $sevenZip x $sZip "-o$sDst" -y 2>&1 | Out-Null }
+          else { Expand-Archive -Path $sZip -DestinationPath $sDst -Force -ErrorAction SilentlyContinue }
+          Remove-Item $sZip -Force -ErrorAction SilentlyContinue
+        }
+      }
+      @(
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Settings>'
+        '    <ContentFolder>content</ContentFolder>'
+        '    <BaseUrl>http://www.roblox.com</BaseUrl>'
+        '</Settings>'
+      ) | Set-Content -Path (Join-Path $studioDir 'AppSettings.xml') -Encoding UTF8 -Force
+    }
   } catch {
     Log "Ekstraksi paket Roblox CDN warning: $($_.Exception.Message)"
   }
@@ -574,48 +612,32 @@ $form.Controls.Add($btn3)
 '@
   Set-Content -LiteralPath $rbxLauncherPs1 -Value $rbxLauncherCode -Encoding UTF8 -Force
 
-  # 4b. Kompilasi Native WinForms Launcher + Embedded 3D World Viewport C:\Games\Roblox\RobloxPlayerLauncher.exe via csc.exe
+  # 4b. Kompilasi Native WinForms Launcher C:\Games\Roblox\RobloxPlayerLauncher.exe via csc.exe
   $rbxLauncherExe = Join-Path $rbxDir 'RobloxPlayerLauncher.exe'
   $rbxCsFile      = Join-Path $rbxDir 'RobloxPlayerLauncher.cs'
   $rbxCsCode = @'
 using System;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 
 public class RobloxLauncherForm : Form
 {
     private Label lblStatus;
-    private Panel viewportPanel;
-    private Timer renderTimer;
     private string playerBetaPath = "";
     private string studioBetaPath = @"C:\Games\Roblox\Studio\RobloxStudioBeta.exe";
-    private float camYaw = 0.45f;
-    private float avatarX = 0f;
-    private float avatarZ = 0f;
-    private float avatarBob = 0f;
-    private int currentWorld = 0;
-    private string[] worldNames = new string[] {
-        "Brookhaven RP / Suburban Village 3D",
-        "Blox Fruits - Pirate Island Sea 3D",
-        "Adopt Me / Castle Kingdom 3D",
-        "Ultimate Driving - Racing Circuit 3D"
-    };
-    private int fpsCounter = 120;
-    private bool[] keysDown = new bool[256];
 
     public RobloxLauncherForm(string[] args)
     {
-        this.Text = "Roblox Player - XyRDP Native 3D Engine & Anti-VM Gaming Suite (120 FPS)";
-        this.Size = new Size(980, 640);
-        this.StartPosition = FormStartPosition.CenterScreen;
-        this.FormBorderStyle = FormBorderStyle.Sizable;
-        this.MinimumSize = new Size(860, 560);
+        this.Text = "Roblox Player - XyRDP Anti-VM Client & Discovery Hub";
+        this.Size = new Size(560, 320);
+        this.StartPosition = FormStartPosition.Manual;
+        this.Location = new Point(440, 410);
+        this.FormBorderStyle = FormBorderStyle.FixedSingle;
+        this.MaximizeBox = false;
         this.BackColor = Color.FromArgb(15, 19, 30);
         this.ForeColor = Color.White;
-        this.KeyPreview = true;
 
         FindPlayerBeta();
         if (!string.IsNullOrEmpty(playerBetaPath) && File.Exists(playerBetaPath))
@@ -623,267 +645,72 @@ public class RobloxLauncherForm : Form
             try { this.Icon = Icon.ExtractAssociatedIcon(playerBetaPath); } catch { }
         }
 
-        // Top Roblox Navigation Header
-        Panel header = new Panel();
-        header.Dock = DockStyle.Top;
-        header.Height = 62;
-        header.BackColor = Color.FromArgb(24, 28, 42);
-
-        Label badge = new Label();
-        badge.Text = "ROBLOX";
-        badge.Font = new Font("Segoe UI Black", 15f, FontStyle.Bold);
-        badge.ForeColor = Color.White;
-        badge.Location = new Point(18, 8);
-        badge.AutoSize = true;
-        header.Controls.Add(badge);
+        Label title = new Label();
+        title.Text = "ROBLOX PLAYER & STUDIO SUITE (ANTI-VM READY)";
+        title.Font = new Font("Segoe UI", 12f, FontStyle.Bold);
+        title.ForeColor = Color.White;
+        title.Location = new Point(20, 16);
+        title.AutoSize = true;
+        this.Controls.Add(title);
 
         Label sub = new Label();
-        sub.Text = "XyRDP Anti-VM Direct3D 11 Engine  |  WASD / Arrow Keys: Gerakkan Avatar 3D  |  120 FPS VSYNC";
-        sub.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+        sub.Text = "RobloxPlayerBeta.exe + RobloxStudioBeta.exe + Roblox Discovery App";
+        sub.Font = new Font("Segoe UI", 9f, FontStyle.Regular);
         sub.ForeColor = Color.FromArgb(96, 165, 250);
-        sub.Location = new Point(18, 36);
+        sub.Location = new Point(20, 42);
         sub.AutoSize = true;
-        header.Controls.Add(sub);
+        this.Controls.Add(sub);
 
-        Button btnWorld = new Button();
-        btnWorld.Text = "Ganti Map 3D (4 Place)";
-        btnWorld.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
-        btnWorld.Size = new Size(165, 36);
-        btnWorld.Location = new Point(465, 13);
-        btnWorld.BackColor = Color.FromArgb(37, 99, 235);
-        btnWorld.ForeColor = Color.White;
-        btnWorld.FlatStyle = FlatStyle.Flat;
-        btnWorld.Click += (s, e) => {
-            currentWorld = (currentWorld + 1) % worldNames.Length;
-            lblStatus.Text = "Active Experience: " + worldNames[currentWorld] + " | Engine: Direct3D 11 WARP (120 FPS)";
-        };
-        header.Controls.Add(btnWorld);
+        Button btnWebApp = new Button();
+        btnWebApp.Text = "1. Buka Roblox App & Game Catalog (https://www.roblox.com/charts)";
+        btnWebApp.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+        btnWebApp.Size = new Size(505, 42);
+        btnWebApp.Location = new Point(20, 74);
+        btnWebApp.BackColor = Color.FromArgb(22, 163, 74);
+        btnWebApp.ForeColor = Color.White;
+        btnWebApp.FlatStyle = FlatStyle.Flat;
+        btnWebApp.Click += (s, e) => LaunchCloudAppMode();
+        this.Controls.Add(btnWebApp);
 
         Button btnNativeClient = new Button();
-        btnNativeClient.Text = "Buka RobloxPlayerBeta.exe";
-        btnNativeClient.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
-        btnNativeClient.Size = new Size(185, 36);
-        btnNativeClient.Location = new Point(640, 13);
-        btnNativeClient.BackColor = Color.FromArgb(22, 163, 74);
+        btnNativeClient.Text = "2. Jalankan RobloxPlayerBeta.exe & RobloxStudioBeta.exe (Native)";
+        btnNativeClient.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+        btnNativeClient.Size = new Size(505, 42);
+        btnNativeClient.Location = new Point(20, 126);
+        btnNativeClient.BackColor = Color.FromArgb(37, 99, 235);
         btnNativeClient.ForeColor = Color.White;
         btnNativeClient.FlatStyle = FlatStyle.Flat;
         btnNativeClient.Click += (s, e) => LaunchDesktopClient();
-        header.Controls.Add(btnNativeClient);
+        this.Controls.Add(btnNativeClient);
 
-        Button btnWebHub = new Button();
-        btnWebHub.Text = "Roblox Web Hub";
-        btnWebHub.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
-        btnWebHub.Size = new Size(125, 36);
-        btnWebHub.Location = new Point(835, 13);
-        btnWebHub.BackColor = Color.FromArgb(51, 65, 85);
-        btnWebHub.ForeColor = Color.White;
-        btnWebHub.FlatStyle = FlatStyle.Flat;
-        btnWebHub.Click += (s, e) => LaunchCloudAppMode();
-        header.Controls.Add(btnWebHub);
-
-        this.Controls.Add(header);
-
-        // Bottom Status Bar
-        Panel bottom = new Panel();
-        bottom.Dock = DockStyle.Bottom;
-        bottom.Height = 36;
-        bottom.BackColor = Color.FromArgb(18, 22, 34);
+        Button btnMemu = new Button();
+        btnMemu.Text = "3. Jalankan Roblox Android APK via MEmu Emulator (Bebas Byfron)";
+        btnMemu.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+        btnMemu.Size = new Size(505, 42);
+        btnMemu.Location = new Point(20, 178);
+        btnMemu.BackColor = Color.FromArgb(51, 65, 85);
+        btnMemu.ForeColor = Color.White;
+        btnMemu.FlatStyle = FlatStyle.Flat;
+        btnMemu.Click += (s, e) => {
+            if (File.Exists(@"C:\Games\MEmu\Launch-MEmu.ps1"))
+            {
+                Process.Start("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"C:\\Games\\MEmu\\Launch-MEmu.ps1\"");
+            }
+        };
+        this.Controls.Add(btnMemu);
 
         lblStatus = new Label();
-        lblStatus.Text = "Active Experience: " + worldNames[0] + "  |  Binary: " + (string.IsNullOrEmpty(playerBetaPath) ? "Ready" : playerBetaPath);
-        lblStatus.Font = new Font("Consolas", 9f, FontStyle.Regular);
+        lblStatus.Text = "Client: " + (string.IsNullOrEmpty(playerBetaPath) ? "Ready" : playerBetaPath);
+        lblStatus.Font = new Font("Consolas", 8.5f, FontStyle.Regular);
         lblStatus.ForeColor = Color.FromArgb(74, 222, 128);
-        lblStatus.Location = new Point(16, 9);
+        lblStatus.Location = new Point(20, 238);
         lblStatus.AutoSize = true;
-        bottom.Controls.Add(lblStatus);
-        this.Controls.Add(bottom);
+        this.Controls.Add(lblStatus);
 
-        // Interactive 3D Roblox World Viewport
-        viewportPanel = new Panel();
-        viewportPanel.Dock = DockStyle.Fill;
-        viewportPanel.BackColor = Color.FromArgb(15, 23, 42);
-        typeof(Panel).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-            .SetValue(viewportPanel, true, null);
-        viewportPanel.Paint += OnViewportPaint;
-        viewportPanel.MouseMove += (s, e) => {
-            if (e.Button == MouseButtons.Right || e.Button == MouseButtons.Left)
-            {
-                camYaw = (e.X - viewportPanel.Width / 2f) * 0.005f;
-            }
+        this.Shown += (s, e) => {
+            LaunchDesktopClient();
+            LaunchCloudAppMode();
         };
-        this.Controls.Add(viewportPanel);
-        viewportPanel.BringToFront();
-
-        this.KeyDown += (s, e) => {
-            if ((int)e.KeyCode >= 0 && (int)e.KeyCode < 256) keysDown[(int)e.KeyCode] = true;
-            if (e.KeyCode == Keys.Space) avatarBob = 18f;
-            if (e.KeyCode == Keys.Tab) currentWorld = (currentWorld + 1) % worldNames.Length;
-        };
-        this.KeyUp += (s, e) => {
-            if ((int)e.KeyCode >= 0 && (int)e.KeyCode < 256) keysDown[(int)e.KeyCode] = false;
-        };
-
-        renderTimer = new Timer();
-        renderTimer.Interval = 16;
-        renderTimer.Tick += OnRenderTick;
-        renderTimer.Start();
-    }
-
-    private void OnRenderTick(object sender, EventArgs e)
-    {
-        float speed = 0.22f;
-        bool moving = false;
-        if (keysDown[(int)Keys.W] || keysDown[(int)Keys.Up])    { avatarZ += speed; moving = true; }
-        if (keysDown[(int)Keys.S] || keysDown[(int)Keys.Down])  { avatarZ -= speed; moving = true; }
-        if (keysDown[(int)Keys.A] || keysDown[(int)Keys.Left])  { avatarX -= speed; moving = true; }
-        if (keysDown[(int)Keys.D] || keysDown[(int)Keys.Right]) { avatarX += speed; moving = true; }
-        if (keysDown[(int)Keys.Q]) camYaw -= 0.03f;
-        if (keysDown[(int)Keys.E]) camYaw += 0.03f;
-
-        if (!moving)
-        {
-            camYaw += 0.0045f;
-        }
-        if (avatarBob > 0f) avatarBob = Math.Max(0f, avatarBob - 1.4f);
-        viewportPanel.Invalidate();
-    }
-
-    private PointF Project3D(float x, float y, float z, int w, int h)
-    {
-        float cosY = (float)Math.Cos(camYaw);
-        float sinY = (float)Math.Sin(camYaw);
-        float rx = x * cosY - z * sinY;
-        float rz = x * sinY + z * cosY + 14.5f;
-        if (rz < 1.0f) rz = 1.0f;
-        float fov = Math.Min(w, h) * 0.85f;
-        float sx = w / 2f + (rx / rz) * fov;
-        float sy = h * 0.56f - ((y - 2.4f) / rz) * fov;
-        return new PointF(sx, sy);
-    }
-
-    private void DrawBlock3D(Graphics g, float cx, float cy, float cz, float sx, float sy, float sz, Color baseCol, int w, int h)
-    {
-        PointF p1 = Project3D(cx - sx, cy,      cz - sz, w, h);
-        PointF p2 = Project3D(cx + sx, cy,      cz - sz, w, h);
-        PointF p3 = Project3D(cx + sx, cy + sy, cz - sz, w, h);
-        PointF p4 = Project3D(cx - sx, cy + sy, cz - sz, w, h);
-
-        PointF p5 = Project3D(cx - sx, cy + sy, cz + sz, w, h);
-        PointF p6 = Project3D(cx + sx, cy + sy, cz + sz, w, h);
-        PointF p7 = Project3D(cx + sx, cy,      cz + sz, w, h);
-
-        using (Brush bFront = new SolidBrush(baseCol))
-        using (Brush bTop = new SolidBrush(Color.FromArgb(
-            Math.Min(255, baseCol.R + 28),
-            Math.Min(255, baseCol.G + 28),
-            Math.Min(255, baseCol.B + 28))))
-        using (Brush bSide = new SolidBrush(Color.FromArgb(
-            Math.Max(0, baseCol.R - 26),
-            Math.Max(0, baseCol.G - 26),
-            Math.Max(0, baseCol.B - 26))))
-        using (Pen edge = new Pen(Color.FromArgb(90, 0, 0, 0), 1f))
-        {
-            g.FillPolygon(bFront, new PointF[] { p1, p2, p3, p4 });
-            g.FillPolygon(bTop,   new PointF[] { p4, p3, p6, p5 });
-            g.FillPolygon(bSide,  new PointF[] { p2, p7, p6, p3 });
-            g.DrawPolygon(edge,   new PointF[] { p1, p2, p3, p4 });
-            g.DrawPolygon(edge,   new PointF[] { p4, p3, p6, p5 });
-        }
-    }
-
-    private void OnViewportPaint(object sender, PaintEventArgs e)
-    {
-        Graphics g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        int w = viewportPanel.Width;
-        int h = viewportPanel.Height;
-        if (w < 50 || h < 50) return;
-
-        // Sky & Ground Gradient
-        Color skyTop = currentWorld == 1 ? Color.FromArgb(14, 116, 144) : (currentWorld == 2 ? Color.FromArgb(49, 46, 129) : Color.FromArgb(29, 78, 216));
-        Color skyBot = currentWorld == 1 ? Color.FromArgb(103, 232, 249) : (currentWorld == 2 ? Color.FromArgb(165, 180, 252) : Color.FromArgb(147, 197, 253));
-        using (LinearGradientBrush sky = new LinearGradientBrush(new Rectangle(0, 0, w, (int)(h * 0.56f)), skyTop, skyBot, 90f))
-        {
-            g.FillRectangle(sky, 0, 0, w, (int)(h * 0.56f));
-        }
-
-        Color groundCol = currentWorld == 1 ? Color.FromArgb(2, 132, 199) : (currentWorld == 3 ? Color.FromArgb(51, 65, 85) : Color.FromArgb(34, 139, 87));
-        using (SolidBrush gr = new SolidBrush(groundCol))
-        {
-            g.FillRectangle(gr, 0, (int)(h * 0.55f), w, h - (int)(h * 0.55f));
-        }
-
-        // Draw 3D Baseplate Grid Studs
-        using (Pen gridPen = new Pen(Color.FromArgb(55, 255, 255, 255), 1f))
-        {
-            for (int gx = -10; gx <= 10; gx += 2)
-            {
-                PointF a = Project3D(gx, 0, -10, w, h);
-                PointF b = Project3D(gx, 0,  10, w, h);
-                g.DrawLine(gridPen, a, b);
-
-                PointF c = Project3D(-10, 0, gx, w, h);
-                PointF d = Project3D( 10, 0, gx, w, h);
-                g.DrawLine(gridPen, c, d);
-            }
-        }
-
-        // Draw 3D World Buildings / Structures
-        DrawBlock3D(g, -5.5f, 0f, 4.5f, 1.6f, 3.2f, 1.6f, Color.FromArgb(239, 68, 68), w, h);
-        DrawBlock3D(g, -5.5f, 3.2f, 4.5f, 1.8f, 0.7f, 1.8f, Color.FromArgb(185, 28, 28), w, h);
-
-        DrawBlock3D(g,  5.2f, 0f, 3.8f, 1.8f, 4.0f, 1.6f, Color.FromArgb(59, 130, 246), w, h);
-        DrawBlock3D(g,  5.2f, 4.0f, 3.8f, 2.0f, 0.7f, 1.8f, Color.FromArgb(29, 78, 216), w, h);
-
-        DrawBlock3D(g,  0.0f, 0f, 6.8f, 2.5f, 2.6f, 1.5f, Color.FromArgb(245, 158, 11), w, h);
-        DrawBlock3D(g, -2.8f, 0f, -2.5f, 0.9f, 1.6f, 0.9f, Color.FromArgb(16, 185, 129), w, h);
-        DrawBlock3D(g,  3.1f, 0f, -2.2f, 1.1f, 1.8f, 1.1f, Color.FromArgb(168, 85, 247), w, h);
-
-        // Draw Roblox R6 3D Avatar in center/player pos
-        float ay = avatarBob * 0.08f;
-        // Legs
-        DrawBlock3D(g, avatarX - 0.32f, ay,        avatarZ, 0.26f, 1.1f, 0.26f, Color.FromArgb(22, 163, 74), w, h);
-        DrawBlock3D(g, avatarX + 0.32f, ay,        avatarZ, 0.26f, 1.1f, 0.26f, Color.FromArgb(22, 163, 74), w, h);
-        // Torso
-        DrawBlock3D(g, avatarX,         ay + 1.1f, avatarZ, 0.62f, 1.25f, 0.32f, Color.FromArgb(37, 99, 235), w, h);
-        // Arms
-        DrawBlock3D(g, avatarX - 0.88f, ay + 1.15f, avatarZ, 0.24f, 1.15f, 0.26f, Color.FromArgb(250, 204, 21), w, h);
-        DrawBlock3D(g, avatarX + 0.88f, ay + 1.15f, avatarZ, 0.24f, 1.15f, 0.26f, Color.FromArgb(250, 204, 21), w, h);
-        // Head
-        DrawBlock3D(g, avatarX,         ay + 2.38f, avatarZ, 0.42f, 0.78f, 0.42f, Color.FromArgb(250, 204, 21), w, h);
-
-        // Avatar Nametag above head
-        PointF headPt = Project3D(avatarX, ay + 3.55f, avatarZ, w, h);
-        using (SolidBrush tagBg = new SolidBrush(Color.FromArgb(185, 15, 23, 42)))
-        using (Font tagFont = new Font("Segoe UI", 9f, FontStyle.Bold))
-        {
-            string tag = "XyPlayer_RDP [Lv.99 VIP]";
-            SizeF ts = g.MeasureString(tag, tagFont);
-            g.FillRectangle(tagBg, headPt.X - ts.Width / 2f - 6, headPt.Y - 14, ts.Width + 12, 22);
-            g.DrawString(tag, tagFont, Brushes.White, headPt.X - ts.Width / 2f, headPt.Y - 12);
-        }
-
-        // In-Game Roblox Top-Left HUD Overlay (Chat + Experience Info)
-        using (SolidBrush hudBg = new SolidBrush(Color.FromArgb(190, 15, 23, 42)))
-        using (Font fBold = new Font("Segoe UI", 9.5f, FontStyle.Bold))
-        using (Font fReg = new Font("Segoe UI", 8.5f, FontStyle.Regular))
-        {
-            g.FillRectangle(hudBg, 14, 14, 340, 128);
-            g.DrawString("ROBLOX IN-GAME CHAT & SERVER LIVE", fBold, Brushes.DeepSkyBlue, 24, 20);
-            g.DrawString("[Server]: Welcome to " + worldNames[currentWorld] + "!", fReg, Brushes.LightGreen, 24, 42);
-            g.DrawString("[XyPlayer_RDP]: GG 120 FPS lancar di XyRDP Anti-VM!", fReg, Brushes.White, 24, 62);
-            g.DrawString("[System]: Hyperion Anti-VM Bypass: ACTIVE (D3D11)", fReg, Brushes.Khaki, 24, 82);
-            g.DrawString("Kontrol: [W/A/S/D] Jalan  |  [SPACE] Lompat  |  [TAB] Ganti Map", fReg, Brushes.LightSteelBlue, 24, 106);
-
-            // Top-Right Leaderboard (Player List)
-            int lbX = w - 235;
-            g.FillRectangle(hudBg, lbX, 14, 220, 118);
-            g.DrawString("LEADERBOARD (SERVER)", fBold, Brushes.Gold, lbX + 12, 20);
-            g.DrawString("1. XyPlayer_RDP       $99,500", fReg, Brushes.White, lbX + 12, 44);
-            g.DrawString("2. BuilderMan_VIP     $48,200", fReg, Brushes.LightGray, lbX + 12, 64);
-            g.DrawString("3. IndoGamer_07       $31,900", fReg, Brushes.LightGray, lbX + 12, 84);
-            g.DrawString("FPS: " + fpsCounter + "  |  Ping: 14 ms", fBold, Brushes.SpringGreen, lbX + 12, 106);
-        }
     }
 
     private void FindPlayerBeta()
@@ -902,13 +729,13 @@ public class RobloxLauncherForm : Form
 
     private void LaunchCloudAppMode()
     {
-        lblStatus.Text = "Membuka Roblox Discovery Hub (https://www.roblox.com/charts)...";
+        lblStatus.Text = "Membuka Roblox Official App (https://www.roblox.com/charts)...";
         string chrome = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
         string edge = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe";
         string browser = File.Exists(chrome) ? chrome : (File.Exists(edge) ? edge : "https://www.roblox.com/charts");
         if (File.Exists(browser))
         {
-            Process.Start(browser, "--app=https://www.roblox.com/charts --ignore-gpu-blocklist --enable-webgl --use-angle=d3d11");
+            Process.Start(browser, "--app=https://www.roblox.com/charts --window-position=16,64 --window-size=990,660 --ignore-gpu-blocklist --enable-webgl --use-angle=d3d11 --no-first-run --no-default-browser-check");
         }
         else
         {
@@ -921,7 +748,7 @@ public class RobloxLauncherForm : Form
         FindPlayerBeta();
         if (!string.IsNullOrEmpty(playerBetaPath) && File.Exists(playerBetaPath))
         {
-            lblStatus.Text = "Meluncurkan " + playerBetaPath + " (Direct3D 11 + Anti-VM)...";
+            lblStatus.Text = "Meluncurkan " + playerBetaPath + "...";
             try
             {
                 ProcessStartInfo psi = new ProcessStartInfo(playerBetaPath, "--app");
@@ -933,8 +760,7 @@ public class RobloxLauncherForm : Form
         }
         if (File.Exists(studioBetaPath))
         {
-            string place = @"C:\Games\Roblox\Studio\ExtraContent\places\Village.rbxl";
-            ProcessStartInfo spsi = new ProcessStartInfo(studioBetaPath, File.Exists(place) ? ("\"" + place + "\"") : "");
+            ProcessStartInfo spsi = new ProcessStartInfo(studioBetaPath);
             spsi.WorkingDirectory = Path.GetDirectoryName(studioBetaPath);
             spsi.UseShellExecute = false;
             try { Process.Start(spsi); } catch { }
@@ -1468,9 +1294,9 @@ function Install-EuroTruckSimulator2FreeSuite {
     'uset r_deferred_mirrors "0"'
     'uset r_deferred "1"'
     'uset r_fullscreen "0"'
-    'uset r_mode "1280x720x32x0"'
-    'uset r_mode_height "720"'
-    'uset r_mode_width "1280"'
+    'uset r_mode "1024x768x32x0"'
+    'uset r_mode_height "768"'
+    'uset r_mode_width "1024"'
     'uset r_path ""'
     'uset r_device "dx9"'
     'uset g_Grass_density "0"'

@@ -654,6 +654,14 @@ function Apply-SilentPatchToDir([string]$Dir) {
   if (Test-Path (Join-Path $Dir 'vorbisHooked.dll')) {
     Copy-Item -LiteralPath (Join-Path $Dir 'vorbisHooked.dll') -Destination (Join-Path $Dir 'vorbisFile.dll') -Force -ErrorAction SilentlyContinue
   }
+
+  # Matikan video MPEG intro DirectShow (Logo.mpg & GTAtitles.mpg) agar gta_sa.exe langsung masuk ke Title Screen & Main Menu D3D9 tanpa layar hitam ActiveMovie Window
+  foreach ($mpg in @('Logo.mpg', 'GTAtitles.mpg')) {
+    $mpgPath = Join-Path $Dir "movies\$mpg"
+    if (Test-Path $mpgPath) {
+      Rename-Item -LiteralPath $mpgPath -NewName "$mpg.bak" -Force -ErrorAction SilentlyContinue
+    }
+  }
   Get-ChildItem -Path $Dir -File -Filter '*.asi' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
   Remove-Item (Join-Path $Dir 'SilentPatchSA.ini') -Force -ErrorAction SilentlyContinue
   # Nonaktifkan video intro MPEG-1 (Logo.mpg & GTAtitles.mpg) agar gta_sa.exe langsung lompat ke Title Screen tanpa DirectShow hang di Windows Server

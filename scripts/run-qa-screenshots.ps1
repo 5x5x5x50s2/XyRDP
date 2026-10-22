@@ -46,7 +46,7 @@ public class WinCapture {
     }
 
     [DllImport("user32.dll")]
-    public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+    public static extern void mouse_event(uint dwFlags, int dx, int dy, uint dwData, UIntPtr dwExtraInfo);
 
     [DllImport("user32.dll")]
     public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
@@ -132,13 +132,15 @@ function Move-RelativeMouse([int]$dx, [int]$dy) {
       $stepY = [int][Math]::Round($targetY - $curY)
       $curX += $stepX
       $curY += $stepY
-      [WinCapture]::mouse_event([WinCapture]::MOUSEEVENTF_MOVE, [uint32]$stepX, [uint32]$stepY, 0, [UIntPtr]::Zero)
+      [WinCapture]::mouse_event([WinCapture]::MOUSEEVENTF_MOVE, [int]$stepX, [int]$stepY, 0, [UIntPtr]::Zero)
       if ($i % 4 -eq 0) { Start-Sleep -Milliseconds 5 }
     }
     $pt = New-Object WinCapture+POINT
     [WinCapture]::GetCursorPos([ref]$pt) | Out-Null
     Write-Host "  [Mouse moved ($dx, $dy) -> Win32 Cursor now at ($($pt.X), $($pt.Y))]"
-  } catch {}
+  } catch {
+    Write-Host "  [Move-RelativeMouse Error: $($_.Exception.Message)]"
+  }
 }
 
 function Send-DirectInputLeftClick {
@@ -212,9 +214,9 @@ function Select-Ets2DropdownDynamic([int]$arrowX, [int]$arrowY, [int]$fallbackIt
     $g2.CopyFromScreen(0, 0, 0, 0, $bmp2.Size)
     $g2.Dispose()
 
-    # Cari area popup yang baru terbuka (di luar posisi kursor sekitar arrowX, arrowY)
+    # Cari area popup yang baru terbuka (di bawah y=250 agar kedipan kursor teks Name di y=204 tidak ikut terhitung)
     $minX = 9999; $minY = 9999; $maxX = 0; $maxY = 0; $diffCount = 0
-    for ($y = 140; $y -lt 620; $y += 6) {
+    for ($y = 255; $y -lt 660; $y += 6) {
       for ($x = 200; $x -lt 820; $x += 6) {
         if ([Math]::Abs($x - $arrowX) -lt 28 -and [Math]::Abs($y - $arrowY) -lt 28) { continue }
         $c1 = $bmp1.GetPixel($x, $y)
@@ -233,12 +235,11 @@ function Select-Ets2DropdownDynamic([int]$arrowX, [int]$arrowY, [int]$fallbackIt
     $bmp2.Dispose()
 
     if ($diffCount -gt 12 -and ($maxX - $minX) -gt 40 -and ($maxY - $minY) -gt 40) {
-      $pickX = $minX + 48
-      $pickY = $minY + 48
+      $pickX = $minX + 55
+      $pickY = $minY + 55
       Write-Host "  [ETS2 Dropdown Popup detected at ($minX,$minY)..($maxX,$maxY), clicking item at ($pickX,$pickY)]"
       Click-Ets2At $pickX $pickY
       Start-Sleep -Milliseconds 250
-      # Jika popup punya tombol OK di bagian bawah kanan popup, klik juga
       Send-KeyPress 0x0D
     } else {
       Write-Host "  [ETS2 Dropdown using fallback item ($fallbackItemX,$fallbackItemY)]"
@@ -269,7 +270,7 @@ function Minimize-RunnerTerminals {
     )
   } | ForEach-Object {
     try {
-      [WinCapture]::ShowWindow($_.MainWindowHandle, 6) | Out-Null
+      [WinCapture]::ShowWindow($_.MainWindowHandle, 0) | Out-Null
     } catch {}
   }
 }
@@ -557,15 +558,16 @@ if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   } else {
     $pGta = $pWarm
   }
-  for ($w = 0; $w -lt 14; $w++) {
+  for ($w = 0; $w -lt 25; $w++) {
     Start-Sleep -Seconds 1
     $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pGta.Id)
     if ($gtaHwnd -ne [IntPtr]::Zero) {
       [WinCapture]::ShowWindow($gtaHwnd, 9) | Out-Null
       [WinCapture]::SetForegroundWindow($gtaHwnd) | Out-Null
-      if ($w -in @(5, 9, 12)) {
+      if ($w -in @(17, 20, 22, 24)) {
         Send-KeyPress 0x0D
         Send-KeyPress 0x20
+        Send-DirectInputLeftClick
       }
     }
   }
@@ -580,13 +582,13 @@ if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
     $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pGta.Id)
     if ($gtaHwnd -ne [IntPtr]::Zero) {
       [WinCapture]::SetForegroundWindow($gtaHwnd) | Out-Null
-      Start-Sleep -Milliseconds 400
+      Start-Sleep -Milliseconds 500
       Send-KeyPress 0x0D # Klik Start Game
       Start-Sleep -Seconds 2
       Send-KeyPress 0x0D # Klik New Game
-      for ($s = 0; $s -lt 18; $s++) {
+      for ($s = 0; $s -lt 22; $s++) {
         Start-Sleep -Seconds 1
-        if ($s -in @(8, 11, 14, 16)) {
+        if ($s -in @(12, 16, 19)) {
           Send-KeyPress 0x0D # Skip cutscene
           Send-KeyPress 0x20 # Space
         }
@@ -621,16 +623,16 @@ if (Test-Path $etsExe) {
       Send-DirectInputString 'XYDESK PRO'
       Start-Sleep -Milliseconds 300
 
-      # 2. Pilih Picture (dropdown arrow di 401, 328)
-      Select-Ets2DropdownDynamic 401 328 340 250
+      # 2. Pilih Picture (dropdown arrow di 401, 328 -> item pertama di 260, 390)
+      Select-Ets2DropdownDynamic 401 328 260 390
       Start-Sleep -Milliseconds 300
 
-      # 3. Pilih Preferred truck design (dropdown arrow di 572, 328)
-      Select-Ets2DropdownDynamic 572 328 510 250
+      # 3. Pilih Preferred truck design (dropdown arrow di 572, 328 -> item pertama di 450, 390)
+      Select-Ets2DropdownDynamic 572 328 450 390
       Start-Sleep -Milliseconds 300
 
-      # 4. Pilih Company logo (dropdown arrow di 732, 331)
-      Select-Ets2DropdownDynamic 732 331 679 250
+      # 4. Pilih Company logo (dropdown arrow di 732, 331 -> item pertama di 550, 390)
+      Select-Ets2DropdownDynamic 732 331 550 390
       Start-Sleep -Milliseconds 300
 
       # 5. Klik & isi kotak Company name di (588, 377)
@@ -654,13 +656,17 @@ if (Test-Path $etsExe) {
     Click-Ets2At 512 550
     Send-KeyPress 0x0D
     Start-Sleep -Seconds 4
-    # Di layar pilih kota Eropa, klik kota di tengah peta (512, 384) lalu klik Confirm Selection (880, 710) & Enter
+    # Di layar pilih kota Eropa, klik kota di tengah peta (512, 384) & (545, 410) lalu klik Confirm Selection (880, 710) & Enter
     Click-Ets2At 512 384
+    Start-Sleep -Milliseconds 400
+    Click-Ets2At 545 410
     Start-Sleep -Milliseconds 600
     Click-Ets2At 880 710
     Send-KeyPress 0x0D
+    Start-Sleep -Seconds 3
+    Send-KeyPress 0x0D
   } catch {}
-  Start-Sleep -Seconds 10
+  Start-Sleep -Seconds 12
   Save-QaWindowScreenshot -Proc $pEts -OutName '07_ETS2_InGame_3D_Truck_Gameplay.png' `
     -Title 'QA TEST #5B - PLAY Euro Truck Simulator 2 In-Game 3D Truck World' `
     -Sub 'Exe: C:\Games\ETS2\bin\win_x86\eurotrucks2.exe | Full Activated Version + Direct3D 9 WARP' -WaitSec 2
@@ -671,10 +677,14 @@ if (Test-Path $etsExe) {
 # 6. Uji & Screenshot: PLAY Roblox (RobloxPlayerBeta.exe + RobloxStudioBeta.exe + Roblox Official App)
 # ============================================================================
 Write-Host "=== 6. Menguji & Screenshot PLAY Roblox Official App & Client Suite ==="
+$pStudio = $null
+if (Test-Path 'C:\Games\Roblox\Studio\RobloxStudioBeta.exe') {
+  $pStudio = Start-Process -FilePath 'C:\Games\Roblox\Studio\RobloxStudioBeta.exe' -WorkingDirectory 'C:\Games\Roblox\Studio' -PassThru
+}
 if (Test-Path 'C:\Games\Roblox\RobloxPlayerLauncher.exe') {
   $pRbx = Start-Process -FilePath 'C:\Games\Roblox\RobloxPlayerLauncher.exe' -WorkingDirectory 'C:\Games\Roblox' -PassThru
   Start-Sleep -Seconds 10
-  # Pastikan jendela RobloxPlayerLauncher.exe berada di kanan bawah di atas Roblox App
+  # Pastikan jendela RobloxPlayerLauncher.exe berada di kanan bawah di atas Roblox App & Studio
   try {
     $pRbx.Refresh()
     if ($pRbx.MainWindowHandle -ne [IntPtr]::Zero) {
@@ -685,6 +695,7 @@ if (Test-Path 'C:\Games\Roblox\RobloxPlayerLauncher.exe') {
     -Title 'QA TEST #6 - Roblox Official App & Anti-VM Client Suite (RobloxPlayerBeta + Studio)' `
     -Sub 'Exe: RobloxPlayerBeta.exe (RobloxCrashHandler Intact) + RobloxStudioBeta.exe + Roblox App' -WaitSec 2
   Stop-Process -Id $pRbx.Id -Force -ErrorAction SilentlyContinue
+  if ($pStudio) { Stop-Process -Id $pStudio.Id -Force -ErrorAction SilentlyContinue }
   Get-Process -Name 'Roblox*', 'chrome', 'msedge' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 

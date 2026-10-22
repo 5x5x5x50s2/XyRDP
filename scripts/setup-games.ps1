@@ -434,22 +434,28 @@ function Install-RobloxAntiVmSuite {
       $stHash = if ($stMeta -and $stMeta.clientVersionUpload) { $stMeta.clientVersionUpload } else { 'version-7aaa6838d36c4448' }
       New-Item -ItemType Directory -Path $studioDir -Force | Out-Null
       $stPkgs = @{
-        'RobloxStudio.zip'      = ''
-        'redist.zip'            = ''
-        'Libraries.zip'         = ''
-        'LibrariesQt5.zip'      = ''
-        'shaders.zip'           = 'shaders'
-        'content-sky.zip'       = 'content\sky'
-        'content-textures2.zip' = 'content\textures'
-        'content-fonts.zip'     = 'content\fonts'
-        'ApplicationConfig.zip' = 'ApplicationConfig'
+        'RobloxStudio.zip'                = ''
+        'redist.zip'                      = ''
+        'Libraries.zip'                   = ''
+        'LibrariesQt5.zip'                = ''
+        'WebView2.zip'                    = ''
+        'Plugins.zip'                     = 'Plugins'
+        'StudioFonts.zip'                 = 'StudioFonts'
+        'ssl.zip'                         = 'ssl'
+        'shaders.zip'                     = 'shaders'
+        'content-sky.zip'                 = 'content\sky'
+        'content-textures2.zip'           = 'content\textures'
+        'content-studio_svg_textures.zip' = 'content\studio_svg_textures'
+        'content-fonts.zip'               = 'content\fonts'
+        'content-configs.zip'             = 'content\configs'
+        'ApplicationConfig.zip'           = 'ApplicationConfig'
       }
       foreach ($sp in $stPkgs.Keys) {
         $sSub = $stPkgs[$sp]
         $sDst = if ($sSub) { Join-Path $studioDir $sSub } else { $studioDir }
         New-Item -ItemType Directory -Path $sDst -Force | Out-Null
         $sZip = Join-Path $work "st_$sp"
-        if (Invoke-GameDownload "https://setup.rbxcdn.com/$stHash-$sp" $sZip 512) {
+        if (Invoke-GameDownload "https://setup.rbxcdn.com/$stHash-$sp" $sZip 10) {
           if (Test-Path $sevenZip) { & $sevenZip x $sZip "-o$sDst" -y 2>&1 | Out-Null }
           else { Expand-Archive -Path $sZip -DestinationPath $sDst -Force -ErrorAction SilentlyContinue }
           Remove-Item $sZip -Force -ErrorAction SilentlyContinue

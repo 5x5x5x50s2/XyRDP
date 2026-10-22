@@ -34,6 +34,18 @@ public class WinCapture {
     public static extern bool SetCursorPos(int X, int Y);
 
     [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
     public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
 
     [DllImport("user32.dll")]
@@ -99,15 +111,33 @@ public class WinCapture {
 }
 "@
 
+# Matikan Windows Mouse Acceleration (Enhance Pointer Precision) agar gerakan System Cursor & DirectInput Cursor 100% 1:1!
+try {
+  Set-ItemProperty -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseSpeed' -Value '0' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseThreshold1' -Value '0' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseThreshold2' -Value '0' -ErrorAction SilentlyContinue
+  [WinCapture]::SystemParametersInfo(0x0004, 0, @(0, 0, 0), 2) | Out-Null
+} catch {}
+
 function Move-RelativeMouse([int]$dx, [int]$dy) {
   try {
-    $steps = 10
-    $sx = [int][Math]::Round($dx / [double]$steps)
-    $sy = [int][Math]::Round($dy / [double]$steps)
-    for ($i = 0; $i -lt $steps; $i++) {
-      [WinCapture]::mouse_event([WinCapture]::MOUSEEVENTF_MOVE, [uint32]$sx, [uint32]$sy, 0, [UIntPtr]::Zero)
-      Start-Sleep -Milliseconds 30
+    $maxDelta = [Math]::Max([Math]::Abs($dx), [Math]::Abs($dy))
+    $steps = [Math]::Max(1, [int][Math]::Ceiling($maxDelta / 4.0))
+    $curX = 0.0
+    $curY = 0.0
+    for ($i = 1; $i -le $steps; $i++) {
+      $targetX = ($dx * $i) / [double]$steps
+      $targetY = ($dy * $i) / [double]$steps
+      $stepX = [int][Math]::Round($targetX - $curX)
+      $stepY = [int][Math]::Round($targetY - $curY)
+      $curX += $stepX
+      $curY += $stepY
+      [WinCapture]::mouse_event([WinCapture]::MOUSEEVENTF_MOVE, [uint32]$stepX, [uint32]$stepY, 0, [UIntPtr]::Zero)
+      if ($i % 4 -eq 0) { Start-Sleep -Milliseconds 5 }
     }
+    $pt = New-Object WinCapture+POINT
+    [WinCapture]::GetCursorPos([ref]$pt) | Out-Null
+    Write-Host "  [Mouse moved ($dx, $dy) -> Win32 Cursor now at ($($pt.X), $($pt.Y))]"
   } catch {}
 }
 
@@ -419,8 +449,17 @@ if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
     if (Test-Path $mp) { Move-Item -LiteralPath $mp -Destination "$mp.bak" -Force -ErrorAction SilentlyContinue }
   }
   $env:__COMPAT_LAYER = ''
-  $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
-  $gtaHwnd = [IntPtr]::Zero
+  # Pemanasan D3D11/Audio cache 5 detik seperti di Run #15 lalu jalankan gta_sa.exe agar langsung membuka Main Menu (HWND != 0)!
+  $pWarm = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
+  Start-Sleep -Seconds 5
+  $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pWarm.Id)
+  if ($gtaHwnd -eq [IntPtr]::Zero) {
+    Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+    $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
+  } else {
+    $pGta = $pWarm
+  }
   for ($w = 0; $w -lt 15; $w++) {
     Start-Sleep -Seconds 1
     $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pGta.Id)
@@ -548,44 +587,28 @@ if (Test-Path $etsExe) {
   Remove-Item 'C:\Games\ETS2\bin\win_x86\dsound.dll' -Force -ErrorAction SilentlyContinue
   Remove-Item 'C:\Games\ETS2\bin\win_x86\dsoal-aldrv.dll' -Force -ErrorAction SilentlyContinue
   if (Test-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack\dgVoodoo.conf') {
-    Copy-Item 'C:\Games\GTA-SAMP\SilentPatch-Pack\dgVoodoo.conf' -Destination 'C:\Games\ETS2\bin\win_x86\dgVoodoo.conf' -Force -ErrorAction SilentlyContinue
+    $etsConf = Get-Content -Path 'C:\Games\GTA-SAMP\SilentPatch-Pack\dgVoodoo.conf' -Raw
+    $etsConf = $etsConf -replace '(?m)^FullScreenMode\s*=.*$', 'FullScreenMode = false'
+    $etsConf = $etsConf -replace '(?m)^ApplicationControlledScreenMode\s*=.*$', 'ApplicationControlledScreenMode = false'
+    Set-Content -Path 'C:\Games\ETS2\bin\win_x86\dgVoodoo.conf' -Value $etsConf -Encoding ASCII -Force
   }
-  # Tahap 1: Jalankan singkat 7 detik agar eurotrucks2.exe meng-generate Documents\Euro Truck Simulator 2\controls.sii
-  $pEtsInit = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
-  Start-Sleep -Seconds 7
-  Stop-Process -Id $pEtsInit.Id -Force -ErrorAction SilentlyContinue
-  Start-Sleep -Seconds 2
-  # Tambahkan binding keyboard.space & keyboard.enter ke mix mlclick di seluruh controls.sii agar tombol UI (Run in Demo mode) dapat diklik dengan Space/Enter!
-  Get-ChildItem -Path "$env:USERPROFILE\Documents", "C:\Users" -Recurse -Filter 'controls.sii' -ErrorAction SilentlyContinue | ForEach-Object {
-    try {
-      Write-Host "Patching ETS2 controls.sii: $($_.FullName)"
-      $cTxt = Get-Content -Path $_.FullName -Raw
-      $cTxt = $cTxt -replace 'mix mlclick `([^`]+)`', 'mix mlclick `$1 | keyboard.space?0 | keyboard.enter?0`'
-      Set-Content -Path $_.FullName -Value $cTxt -Encoding ASCII -Force
-    } catch {}
-  }
-  # Tahap 2: Jalankan eurotrucks2.exe dengan controls.sii yang sudah dipatch, arahkan kursor ke "Run in Demo mode" dan tekan Space/Enter/Click!
   $pEts = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
-  Start-Sleep -Seconds 10
+  Start-Sleep -Seconds 11
   try {
     $pEts.Refresh()
     if ($pEts.MainWindowHandle -ne [IntPtr]::Zero) {
       [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
       Start-Sleep -Milliseconds 500
-      # 1. Reset DirectInput cursor ke pojok kiri atas window
-      Move-RelativeMouse -1200 -900
-      Start-Sleep -Milliseconds 200
-      # 2. Gerakkan tepat ke tombol "Run in Demo mode" (dx=+640, dy=+538)
-      Move-RelativeMouse 640 538
-      Start-Sleep -Milliseconds 300
-      # 3. Pastikan kursor Win32 berada di tengah jendela game (bukan di Taskbar!) lalu trigger mlclick via Space, Enter, dan LeftClick!
-      [WinCapture]::SetCursorPos(512, 384) | Out-Null
-      [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
+      # 1. Reset System Cursor & DirectInput Cursor ke pojok kiri atas (0, 0) dengan presisi 1:1 (tanpa Mouse Acceleration!)
+      [WinCapture]::SetCursorPos(0, 0) | Out-Null
+      Move-RelativeMouse -1100 -850
       Start-Sleep -Milliseconds 250
-      Send-KeyPress 0x20 # Space -> triggers mix mlclick!
+      # 2. Gerakkan tepat ke tombol "Run in Demo mode" (640, 535) dengan langkah <= 4px (Win32 & DirectInput 100% sinkron!)
+      Move-RelativeMouse 640 535
       Start-Sleep -Milliseconds 300
-      Send-KeyPress 0x0D # Enter -> triggers mix mlclick!
-      Start-Sleep -Milliseconds 300
+      # 3. Klik tombol "Run in Demo mode"!
+      Send-DirectInputLeftClick
+      Start-Sleep -Milliseconds 400
       Send-DirectInputLeftClick
     }
   } catch {}

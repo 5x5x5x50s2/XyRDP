@@ -342,14 +342,8 @@ function Install-CompleteSampSuite {
         if (Test-Path $origConf) {
           $confTxt = Get-Content -Path $origConf -Raw
           $confTxt = $confTxt -replace '(?m)^OutputAPI\s*=.*$', 'OutputAPI = d3d11warp'
-          $confTxt = $confTxt -replace '(?m)^FullScreenMode\s*=.*$', 'FullScreenMode = false'
-          $confTxt = $confTxt -replace '(?m)^ApplicationControlledScreenMode\s*=.*$', 'ApplicationControlledScreenMode = false'
           $confTxt = $confTxt -replace '(?m)^dgVoodooWatermark\s*=.*$', 'dgVoodooWatermark = false'
           $confTxt = $confTxt -replace '(?m)^VRAM\s*=.*$', 'VRAM = 512'
-          $confTxt = $confTxt -replace '(?m)^CaptureMouse\s*=.*$', 'CaptureMouse = false'
-          $confTxt = $confTxt -replace '(?m)^CenterAppWindow\s*=.*$', 'CenterAppWindow = true'
-          $confTxt = $confTxt -replace '(?m)^KeepWindowAspectRatio\s*=.*$', 'KeepWindowAspectRatio = false'
-          $confTxt = $confTxt -replace '(?m)^Resolution\s*=.*$', 'Resolution = h:1024, v:768'
           Set-Content -Path (Join-Path $modsDir 'dgVoodoo.conf') -Value $confTxt -Encoding ASCII -Force
         }
         Log 'dgVoodoo2 x86 LENGKAP (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll -> D3D11 WARP) berhasil dipasang (Anti-Crash 0x00746929)!'

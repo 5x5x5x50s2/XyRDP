@@ -254,16 +254,17 @@ if ($cfg.wallpaper) {
 $resLively = 'skip'
 try {
   Log 'LIVELY WALLPAPER: mengoptimalkan DWM 60Hz & memasang Lively Wallpaper v2.2.1.0 Anti-Stuck RDP...'
-  # 1. Buka kebijakan RDP Wallpaper & Desktop Composition 60 FPS agar WorkerW Lively Wallpaper tidak diblokir/stuck di RDP
-  foreach ($tsPath in @(
-    'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services',
-    'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
-  )) {
-    New-Item -Path $tsPath -Force -ErrorAction SilentlyContinue | Out-Null
-    Set-ItemProperty -Path $tsPath -Name 'fDisableWallpaper' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path $tsPath -Name 'fNoFontSmoothing' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path $tsPath -Name 'DWMFRAMEINTERVAL' -Value 15 -Type DWord -Force -ErrorAction SilentlyContinue
+  # 1. Buka kebijakan RDP Wallpaper & Desktop Composition 60 FPS via Policy & WinStations root
+  #    PENTING: JANGAN PERNAH memanggil New-Item -Force atau menulis ke WinStations\RDP-Tcp
+  #    karena akan menghapus konfigurasi listener RDP 3389 (membuat step Tailscale gagal)!
+  $tsPolPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+  if (-not (Test-Path $tsPolPath)) {
+    New-Item -Path $tsPolPath -Force -ErrorAction SilentlyContinue | Out-Null
   }
+  Set-ItemProperty -Path $tsPolPath -Name 'fDisableWallpaper' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsPolPath -Name 'fNoRemoteDesktopWallpaper' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $tsPolPath -Name 'fNoFontSmoothing' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name 'DWMFRAMEINTERVAL' -Value 15 -Type DWord -Force -ErrorAction SilentlyContinue
   Set-RegBoth 'Software\Microsoft\Windows\DWM' 'Composition' 1 'DWord' | Out-Null
   Set-RegBoth 'Software\Microsoft\Windows\DWM' 'CompositionPolicy' 2 'DWord' | Out-Null
 

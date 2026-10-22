@@ -110,6 +110,7 @@ jobs:
         run: |
           set -eux
           cp -f xyrdp/qa-android-ui/SessionControls.kt xydesk-remote/client/Android/Studio/app/src/main/kotlin/id/xydesk/remote/ui/SessionControls.kt
+          cp -f xyrdp/qa-android-ui/XyDiscordVoiceStage.kt xydesk-remote/client/Android/Studio/app/src/main/kotlin/id/xydesk/remote/ui/XyDiscordVoiceStage.kt
           cp -f xyrdp/qa-android-ui/RdpOptions.kt xydesk-remote/client/Android/Studio/core-rdp/src/main/kotlin/id/xydesk/remote/core/RdpOptions.kt
           cp -f xyrdp/qa-android-ui/RdpOptionsTest.kt xydesk-remote/client/Android/Studio/core-rdp/src/test/kotlin/id/xydesk/remote/core/RdpOptionsTest.kt
           mkdir -p xydesk-remote/client/Android/Studio/app/src/test/kotlin/id/xydesk/remote/ui

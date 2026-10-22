@@ -646,8 +646,8 @@ fun SessionControls(
                         Modifier
                             .widthIn(min = 224.dp, max = 262.dp)
                             .clip(RoundedCornerShape(18.dp))
-                            .background(Color(0xF210141F), RoundedCornerShape(18.dp))
-                            .border(1.2.dp, Color(0xFF2B3654), RoundedCornerShape(18.dp))
+                            .background(Color(0xF5101013), RoundedCornerShape(18.dp))
+                            .border(1.2.dp, Color(0xFF3C3C42), RoundedCornerShape(18.dp))
                             .padding(horizontal = 9.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
@@ -660,7 +660,7 @@ fun SessionControls(
                         ) {
                             Text(
                                 text = xy("AKSI CEPAT OVERLAY", "QUICK OVERLAY ACTIONS"),
-                                color = Color(0xFF38BDF8),
+                                color = Color(0xFFF3F3F5),
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 letterSpacing = 0.9.sp,
@@ -668,12 +668,13 @@ fun SessionControls(
                             Box(
                                 Modifier
                                     .clip(RoundedCornerShape(50))
-                                    .background(Color(0xFF17253B))
+                                    .background(Color(0xFF232327))
+                                    .border(1.dp, Color(0xFF3C3C42), RoundedCornerShape(50))
                                     .padding(horizontal = 6.dp, vertical = 2.dp),
                             ) {
                                 Text(
                                     text = "RAIL",
-                                    color = Color(0xFF93C5FD),
+                                    color = Color(0xFFE4E4E8),
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
@@ -1421,15 +1422,15 @@ private fun LiveTelemetryPill(
 ) {
     val rtt = telemetry.rttMs
     val rttColor = when {
-        rtt <= 0 -> Color(0xFF34D399)
-        rtt < 45 -> Color(0xFF34D399)
-        rtt < 120 -> Color(0xFFFBBF24)
-        else -> Color(0xFFFB7185)
+        rtt <= 0 -> Color(0xFFF2F2F4)
+        rtt < 45 -> Color(0xFFE4E4E8)
+        rtt < 120 -> Color(0xFFAAAAAA)
+        else -> Color(0xFF858585)
     }
     val fpsColor = when {
-        telemetry.fps >= 45 -> Color(0xFF34D399)
-        telemetry.fps >= 24 -> Color(0xFFFBBF24)
-        telemetry.fps > 0 -> Color(0xFFFB923C)
+        telemetry.fps >= 45 -> Color(0xFFF2F2F4)
+        telemetry.fps >= 24 -> Color(0xFFE4E4E8)
+        telemetry.fps > 0 -> Color(0xFFAAAAAA)
         else -> Color(0xFFE4E4E8)
     }
     val textShadow = Shadow(
@@ -1456,13 +1457,13 @@ private fun LiveTelemetryPill(
     )
     val rttLabel = if (rtt > 0) "${rtt} ms" else "-- ms"
     val resLabel = if (telemetry.width > 0) "${telemetry.width}x${telemetry.height}" else "--"
-    val netColor = if (telemetry.udpActive) Color(0xFF38BDF8) else Color(0xFFFBBF24)
+    val netColor = if (telemetry.udpActive) Color(0xFFF2F2F4) else Color(0xFFB2B2B8)
     val items = listOf(
         Triple("UI/s", "${telemetry.fps}", fpsColor),
         Triple("LATENCY", rttLabel, rttColor),
-        Triple("RESOLUSI", resLabel, Color(0xFFE0F2FE)),
-        Triple("ENCODE", telemetry.codecLabel.replace("FreeRDP", "XyRDP"), Color(0xFF38BDF8)),
-        Triple("RELAY", telemetry.relayLabel.replace("FreeRDP", "XyRDP"), Color(0xFFC084FC)),
+        Triple("RESOLUSI", resLabel, Color(0xFFF2F2F4)),
+        Triple("ENCODE", telemetry.codecLabel.replace("FreeRDP", "XyRDP"), Color(0xFFF2F2F4)),
+        Triple("RELAY", telemetry.relayLabel.replace("FreeRDP", "XyRDP"), Color(0xFFE4E4E8)),
         Triple("NETWORK", telemetry.networkLabel, netColor),
     )
 
@@ -1522,8 +1523,8 @@ private fun RailMenuItem(
 ) {
     val ink = MaterialTheme.colorScheme.onSurface
     val rowBg = when {
-        danger -> Color(0xFF281219)
-        active -> Color(0xFF17233A)
+        danger -> Color(0xFF1A1A1E)
+        active -> Color(0xFF232327)
         else -> Color.Transparent
     }
     Row(
@@ -1540,8 +1541,8 @@ private fun RailMenuItem(
             icon,
             contentDescription = null,
             tint = when {
-                danger -> Color(0xFFFB7185)
-                active -> Color(0xFF38BDF8)
+                danger -> Color(0xFFB2B2B8)
+                active -> Color(0xFFFFFFFF)
                 else -> ink
             },
             modifier = Modifier.size(16.dp),
@@ -1552,8 +1553,8 @@ private fun RailMenuItem(
             style = MaterialTheme.typography.labelLarge,
             fontSize = 12.sp,
             color = when {
-                danger -> Color(0xFFFDA4AF)
-                active -> Color(0xFFF8FAFC)
+                danger -> Color(0xFFD4D4D8)
+                active -> Color(0xFFFFFFFF)
                 else -> ink
             },
             maxLines = 1,
@@ -1564,18 +1565,18 @@ private fun RailMenuItem(
                 Modifier
                     .clip(RoundedCornerShape(50))
                     .background(
-                        if (active) Color(0xFF064E3B) else Color(0xFF1E293B),
+                        if (active) Color(0xFFF2F2F4) else Color(0xFF1A1A1E),
                     )
                     .border(
                         1.dp,
-                        if (active) Color(0xFF10B981) else Color(0xFF334155),
+                        if (active) Color(0xFFFFFFFF) else Color(0xFF3C3C42),
                         RoundedCornerShape(50),
                     )
                     .padding(horizontal = 7.dp, vertical = 2.dp),
             ) {
                 Text(
                     text = badge,
-                    color = if (active) Color(0xFF6EE7B7) else Color(0xFF94A3B8),
+                    color = if (active) Color(0xFF111114) else Color(0xFFB2B2B8),
                     fontSize = 8.5.sp,
                     fontWeight = FontWeight.ExtraBold,
                 )
@@ -1599,8 +1600,8 @@ private fun PanelHandle(
             Modifier
                 .shadow(10.dp, XyPill)
                 .clip(XyPill)
-                .background(Color(0xF010141F))
-                .border(1.2.dp, Color(0xFF3B82F6).copy(alpha = 0.65f), XyPill)
+                .background(Color(0xF2101013))
+                .border(1.2.dp, Color(0xFF3C3C42), XyPill)
                 .padding(horizontal = 11.dp, vertical = 14.dp),
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1608,19 +1609,19 @@ private fun PanelHandle(
                     Modifier
                         .size(6.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF10B981)),
+                        .background(Color(0xFFF2F2F4)),
                 )
                 Spacer(Modifier.height(6.dp))
                 Icon(
                     XyIcons.Sliders,
                     contentDescription = xy("Buka panel sesi", "Open session panel"),
-                    tint = Color(0xFFF8FAFC),
+                    tint = Color(0xFFF3F3F5),
                     modifier = Modifier.size(17.dp),
                 )
                 Spacer(Modifier.height(5.dp))
                 Text(
                     xy("MENU", "MENU"),
-                    color = Color(0xFF93C5FD),
+                    color = Color(0xFFE4E4E8),
                     fontSize = 8.5.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 0.9.sp,
@@ -1886,8 +1887,8 @@ private fun SessionPanel(
                     if (drawerMode) translationX = panelSlide * size.width
                 }
                 .clip(panelShape)
-                .background(Color(0xFF10131C), panelShape)
-                .border(1.2.dp, Color(0xFF28324B), panelShape)
+                .background(Color(0xFF101013), panelShape)
+                .border(1.2.dp, Color(0xFF3C3C42), panelShape)
                 .pointerInput(Unit) {}
                 .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1896,8 +1897,8 @@ private fun SessionPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF151A28), RoundedCornerShape(16.dp))
-                    .border(1.dp, Color(0xFF28324B), RoundedCornerShape(16.dp))
+                    .background(Color(0xFF1A1A1E), RoundedCornerShape(16.dp))
+                    .border(1.dp, Color(0xFF3C3C42), RoundedCornerShape(16.dp))
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1906,14 +1907,14 @@ private fun SessionPanel(
                     Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(11.dp))
-                        .background(Color(0xFF1E293B))
-                        .border(1.dp, Color(0xFF3B82F6).copy(alpha = 0.55f), RoundedCornerShape(11.dp)),
+                        .background(Color(0xFF232327))
+                        .border(1.dp, Color(0xFF3C3C42), RoundedCornerShape(11.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         XyIcons.Monitor,
                         contentDescription = null,
-                        tint = Color(0xFF60A5FA),
+                        tint = Color(0xFFF3F3F5),
                         modifier = Modifier.size(18.dp),
                     )
                 }
@@ -1933,13 +1934,13 @@ private fun SessionPanel(
                         Box(
                             Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(Color(0xFF064E3B))
-                                .border(1.dp, Color(0xFF10B981), RoundedCornerShape(50))
+                                .background(Color(0xFFF2F2F4))
+                                .border(1.dp, Color(0xFFFFFFFF), RoundedCornerShape(50))
                                 .padding(horizontal = 7.dp, vertical = 2.dp),
                         ) {
                             Text(
                                 text = "60Hz LIVELY SYNC",
-                                color = Color(0xFF6EE7B7),
+                                color = Color(0xFF111114),
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.ExtraBold,
                             )
@@ -2943,8 +2944,8 @@ private fun PanelTabTiles(
         modifier = modifier
             .shadow(14.dp, RoundedCornerShape(50))
             .clip(RoundedCornerShape(50))
-            .background(Color(0xF011131A))
-            .border(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f), RoundedCornerShape(50))
+            .background(Color(0xF5101013))
+            .border(1.2.dp, Color(0xFF3C3C42), RoundedCornerShape(50))
             .padding(horizontal = 6.dp, vertical = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -3089,18 +3090,18 @@ private fun QuickActionPill(
     onClick: () -> Unit,
 ) {
     val bg = when {
-        danger -> Color(0xFF3F151C)
-        active -> MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
-        else -> Color(0xFF181C28)
+        danger -> Color(0xFF232327)
+        active -> Color(0xFFF2F2F4)
+        else -> Color(0xFF1A1A1E)
     }
     val borderCol = when {
-        danger -> Color(0xFFF43F5E).copy(alpha = 0.65f)
-        active -> MaterialTheme.colorScheme.primary
-        else -> Color(0xFF2A3248)
+        danger -> Color(0xFF858585)
+        active -> Color(0xFFFFFFFF)
+        else -> Color(0xFF3C3C42)
     }
     val fg = when {
-        danger -> Color(0xFFFDA4AF)
-        active -> Color(0xFFFFFFFF)
+        danger -> Color(0xFFE4E4E8)
+        active -> Color(0xFF111114)
         else -> Color(0xFFD4D4D8)
     }
     Row(
@@ -3180,8 +3181,8 @@ internal fun PanelSectionGrid(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xFF161A26), RoundedCornerShape(14.dp))
-                        .border(1.dp, Color(0xFF28324B), RoundedCornerShape(14.dp))
+                        .background(Color(0xFF1A1A1E), RoundedCornerShape(14.dp))
+                        .border(1.dp, Color(0xFF3C3C42), RoundedCornerShape(14.dp))
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {

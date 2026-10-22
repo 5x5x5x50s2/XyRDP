@@ -341,7 +341,7 @@ function Install-CompleteSampSuite {
         $origConf = Join-Path $dgvExt 'dgVoodoo.conf'
         if (Test-Path $origConf) {
           $confTxt = Get-Content -Path $origConf -Raw
-          $confTxt = $confTxt -replace '(?m)^OutputAPI\s*=.*$', 'OutputAPI = d3d11warp'
+          $confTxt = $confTxt -replace '(?m)^OutputAPI\s*=.*$', 'OutputAPI = bestavailable'
           $confTxt = $confTxt -replace '(?m)^dgVoodooWatermark\s*=.*$', 'dgVoodooWatermark = false'
           $confTxt = $confTxt -replace '(?m)^VRAM\s*=.*$', 'VRAM = 512'
           Set-Content -Path (Join-Path $modsDir 'dgVoodoo.conf') -Value $confTxt -Encoding ASCII -Force

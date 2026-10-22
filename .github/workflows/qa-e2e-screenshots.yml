@@ -2,12 +2,18 @@ name: QA E2E & Screenshot Verification
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Target QA job (all / windows / android-ui)"
+        required: false
+        default: "all"
 
 permissions:
   contents: read
 
 jobs:
   qa-windows:
+    if: ${{ github.event.inputs.target == '' || github.event.inputs.target == 'all' || github.event.inputs.target == 'windows' }}
     name: QA E2E Windows Server 2022 + Real Screenshots
     runs-on: windows-2022
     timeout-minutes: 25
@@ -64,6 +70,7 @@ jobs:
           retention-days: 7
 
   qa-android-ui:
+    if: ${{ github.event.inputs.target == '' || github.event.inputs.target == 'all' || github.event.inputs.target == 'android-ui' }}
     name: QA Real Render Android APK UI (Jetpack Compose + Robolectric Native)
     runs-on: ubuntu-latest
     timeout-minutes: 20

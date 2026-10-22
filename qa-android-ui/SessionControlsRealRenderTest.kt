@@ -35,7 +35,11 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], qualifiers = "w854dp-h480dp-land-xhdpi")
+@Config(
+    sdk = [34],
+    application = android.app.Application::class,
+    qualifiers = "w854dp-h480dp-land-xhdpi",
+)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SessionControlsRealRenderTest {
 

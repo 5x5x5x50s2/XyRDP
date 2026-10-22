@@ -224,6 +224,18 @@ while ([DateTime]::UtcNow -lt $exp) {
     if (Test-Path $patchSamp) {
       try { & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $patchSamp 2>&1 | Out-Null } catch {}
     }
+    foreach ($lu in @('xyadmin', 'runneradmin')) {
+      $lSet = "C:\Users\$lu\AppData\Local\Lively Wallpaper\Settings.json"
+      if (Test-Path $lSet) {
+        $rawL = Get-Content -LiteralPath $lSet -Raw -ErrorAction SilentlyContinue
+        if ($rawL -and $rawL -match '"RemoteDesktopPause"\s*:\s*0') {
+          $rawL = $rawL -replace '"RemoteDesktopPause"\s*:\s*0', '"RemoteDesktopPause": 1'
+          $rawL = $rawL -replace '"AppFocusPause"\s*:\s*0', '"AppFocusPause": 1'
+          $rawL = $rawL -replace '"AppFullscreenPause"\s*:\s*0', '"AppFullscreenPause": 1'
+          Set-Content -LiteralPath $lSet -Value $rawL -Encoding UTF8 -Force -ErrorAction SilentlyContinue
+        }
+      }
+    }
   }
 
   # 3. Setiap 5 menit: log detak jantung + cek Tailscale

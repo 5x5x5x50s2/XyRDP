@@ -485,8 +485,66 @@ $sampCache = Join-Path $kitRoot 'SAMP-Client'
 $instDir   = Join-Path $kitRoot 'Installers'
 $defGame   = 'C:\Games\GTA San Andreas'
 
+function Set-SampRegistryAllUsers([string]$GtaExePath, [string]$PlayerNameVal, [switch]$ForcePlayerName) {
+  if (-not $GtaExePath -or -not (Test-Path $GtaExePath)) {
+    $GtaExePath = 'C:\Games\GTA San Andreas\gta_sa.exe'
+  }
+  $sampExePath = Join-Path (Split-Path -Parent $GtaExePath) 'samp.exe'
+  $regPaths = @('HKCU:\Software\SAMP')
+  try {
+    Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object {
+      $_.PSChildName -notmatch '_Classes$' -and $_.PSChildName -ne '.DEFAULT'
+    } | ForEach-Object {
+      $regPaths += "Registry::HKEY_USERS\$($_.PSChildName)\Software\SAMP"
+    }
+  } catch {}
+
+  foreach ($sKey in ($regPaths | Select-Object -Unique)) {
+    try {
+      New-Item -Path $sKey -Force -ErrorAction SilentlyContinue | Out-Null
+      New-ItemProperty -Path $sKey -Name 'gta_sa_exe' -Value $GtaExePath -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+      $curP = (Get-ItemProperty -Path $sKey -Name 'PlayerName' -ErrorAction SilentlyContinue).PlayerName
+      if ($ForcePlayerName -or -not $curP -or $curP -eq 'runneradmin') {
+        New-ItemProperty -Path $sKey -Name 'PlayerName' -Value $PlayerNameVal -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+      }
+    } catch {}
+  }
+
+  # Tulis juga ke NTUSER.DAT milik xyadmin & Default bila belum dimuat di HKEY_USERS
+  foreach ($ntUser in @('C:\Users\xyadmin\NTUSER.DAT', 'C:\Users\Default\NTUSER.DAT')) {
+    if (Test-Path $ntUser) {
+      $hiveName = "XY_SAMP_$(Get-Random -Min 1000 -Max 9999)"
+      try {
+        & reg.exe load "HKU\$hiveName" "$ntUser" 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+          & reg.exe add "HKU\$hiveName\Software\SAMP" /v "gta_sa_exe" /t REG_SZ /d "$GtaExePath" /f 2>&1 | Out-Null
+          & reg.exe add "HKU\$hiveName\Software\SAMP" /v "PlayerName" /t REG_SZ /d "$PlayerNameVal" /f 2>&1 | Out-Null
+          & reg.exe add "HKU\$hiveName\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" /v "$GtaExePath" /t REG_SZ /d "~ RUNASINVOKER DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE" /f 2>&1 | Out-Null
+          & reg.exe add "HKU\$hiveName\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" /v "$sampExePath" /t REG_SZ /d "~ RUNASINVOKER HIGHDPIAWARE" /f 2>&1 | Out-Null
+          [gc]::Collect()
+          Start-Sleep -Milliseconds 150
+          & reg.exe unload "HKU\$hiveName" 2>&1 | Out-Null
+        }
+      } catch {}
+    }
+  }
+
+  # Kunci AppCompatFlags\Layers di HKLM & HKCU ke RUNASINVOKER agar CreateProcessA dari samp.exe ke gta_sa.exe tidak pernah gagal karena elevation (Unable to execute)
+  foreach ($layerKey in @(
+    'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers',
+    'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+  )) {
+    try {
+      New-Item -Path $layerKey -Force -ErrorAction SilentlyContinue | Out-Null
+      New-ItemProperty -Path $layerKey -Name $GtaExePath -Value '~ RUNASINVOKER DISABLEDXMAXIMIZEDWINDOWEDMODE HIGHDPIAWARE' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+      New-ItemProperty -Path $layerKey -Name $sampExePath -Value '~ RUNASINVOKER HIGHDPIAWARE' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+    } catch {}
+  }
+}
+
 function Invoke-SampAntiBanAndAntiVpn([string]$BaseDir, [switch]$ForceNewGpci) {
-  if (-not $BaseDir -or -not (Test-Path $BaseDir)) { $BaseDir = $defGame }
+  if (-not $BaseDir -or -not (Test-Path (Join-Path $BaseDir 'gta_sa.exe'))) { $BaseDir = $defGame }
+  if (-not (Test-Path (Join-Path $BaseDir 'gta_sa.exe'))) { return $BaseDir }
   try {
     # 1. Isolasi adapter VPN (Tailscale / OpenVPN / TAP-Windows / Wintun) dengan Metric 5000
     #    agar trafik keluar UDP SA-MP (:7777) selalu lewat Ethernet langsung & tidak terdeteksi VPN tunnel
@@ -506,8 +564,8 @@ function Invoke-SampAntiBanAndAntiVpn([string]$BaseDir, [switch]$ForceNewGpci) {
 
   # 2. Spoof MachineGuid, ProductId & HwProfileGuid supaya HWID tiap sesi VM berbeda (Anti-Ban Serial/GPCI)
   $gpciStateFile = Join-Path $kitRoot '.xyrdp_gpci_junction.txt'
-  $existingJunction = if (Test-Path $gpciStateFile) { (Get-Content $gpciStateFile -Raw -ErrorAction SilentlyContinue).Trim() } else { '' }
-  if ($ForceNewGpci -or -not $existingJunction -or -not (Test-Path $existingJunction)) {
+  $existingJunction = $BaseDir
+  if ($ForceNewGpci) {
     try {
       $newGuid = [guid]::NewGuid().ToString()
       $newHwGuid = "{$([guid]::NewGuid().ToString())}"
@@ -517,41 +575,14 @@ function Invoke-SampAntiBanAndAntiVpn([string]$BaseDir, [switch]$ForceNewGpci) {
       Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'ProductId' -Value $randProd -ErrorAction SilentlyContinue
       Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\IDConfigDB\Hardware Profiles\0001' -Name 'HwProfileGuid' -Value $newHwGuid -ErrorAction SilentlyContinue
     } catch {}
-
-    # Buat junction direktori unik C:\Games\SAMP_Client_<RandomHex> -> $BaseDir
-    # SA-MP menghitung hash GPCI (GetPlayerClientID) dari full path gta_sa.exe + Volume Serial.
-    # Dengan junction unik ini, setiap VM & setiap klik Reset menghasilkan hash GPCI 100% baru!
-    try {
-      Get-ChildItem -Path 'C:\Games' -Directory -Filter 'SAMP_Client_*' -ErrorAction SilentlyContinue | ForEach-Object {
-        & cmd.exe /c "rmdir `"$($_.FullName)`"" 2>&1 | Out-Null
-      }
-      $hexTag = -join ((1..6) | ForEach-Object { '{0:X}' -f (Get-Random -Min 0 -Max 16) })
-      $juncDir = "C:\Games\SAMP_Client_$hexTag"
-      & cmd.exe /c "mklink /J `"$juncDir`" `"$BaseDir`"" 2>&1 | Out-Null
-      if (Test-Path (Join-Path $juncDir 'gta_sa.exe')) {
-        $existingJunction = $juncDir
-        Set-Content -Path $gpciStateFile -Value $existingJunction -Encoding ASCII -Force -ErrorAction SilentlyContinue
-      } else {
-        $existingJunction = $BaseDir
-      }
-    } catch {
-      $existingJunction = $BaseDir
-    }
   }
 
-  # 3. Simpan path gta_sa.exe unik ke HKCU:\Software\SAMP dan seluruh profil HKEY_USERS
-  $targetGtaExe = Join-Path $existingJunction 'gta_sa.exe'
-  if (-not (Test-Path $targetGtaExe)) { $targetGtaExe = Join-Path $BaseDir 'gta_sa.exe' }
-  $randPlayer = "Player_$(Get-Random -Min 1000 -Max 9999)"
-  foreach ($sKey in @('HKCU:\Software\SAMP')) {
-    New-Item -Path $sKey -Force -ErrorAction SilentlyContinue | Out-Null
-    New-ItemProperty -Path $sKey -Name 'gta_sa_exe' -Value $targetGtaExe -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
-    $curP = (Get-ItemProperty -Path $sKey -Name 'PlayerName' -ErrorAction SilentlyContinue).PlayerName
-    if ($ForceNewGpci -or -not $curP -or $curP -eq 'runneradmin') {
-      New-ItemProperty -Path $sKey -Name 'PlayerName' -Value $randPlayer -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
-    }
-  }
-  return $existingJunction
+  # 3. Simpan path gta_sa.exe langsung (C:\Games\GTA San Andreas\gta_sa.exe) ke semua profil user
+  #    agar samp.exe TIDAK PERNAH mengalami error "Unable to execute" akibat junction terhapus atau beda akun user!
+  $targetGtaExe = Join-Path $BaseDir 'gta_sa.exe'
+  $randPlayer = "XyPlayer_$(Get-Random -Min 1000 -Max 9999)"
+  Set-SampRegistryAllUsers -GtaExePath $targetGtaExe -PlayerNameVal $randPlayer -ForcePlayerName:$ForceNewGpci
+  return $BaseDir
 }
 
 function Enable-CloudflareWarpSafeSplitTunnel {
@@ -585,7 +616,7 @@ function Patch-GtaSaExeDirectDrawBypass([string]$ExePath) {
 }
 
 function Apply-SilentPatchToDir([string]$Dir) {
-  if (-not $Dir -or -not (Test-Path $Dir)) { return $false }
+  if (-not $Dir -or -not (Test-Path (Join-Path $Dir 'gta_sa.exe'))) { return $false }
 
   # Jangan menimpa file bila gta_sa.exe sedang aktif berjalan
   if (Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue) { return $true }
@@ -729,12 +760,14 @@ if ($deskPath) { $candidates += (Join-Path $deskPath 'GTA San Andreas') }
 
 $activeDir = $defGame
 foreach ($c in $candidates) {
-  if (Test-Path $c) {
+  if (Test-Path (Join-Path $c 'gta_sa.exe')) {
     Apply-SilentPatchToDir $c | Out-Null
-    if (Test-Path (Join-Path $c 'gta_sa.exe')) {
-      $activeDir = $c
-    }
+    $activeDir = $c
   }
+}
+if (Test-Path (Join-Path $defGame 'gta_sa.exe')) {
+  $activeDir = $defGame
+  Set-SampRegistryAllUsers -GtaExePath (Join-Path $defGame 'gta_sa.exe') -PlayerNameVal 'XyPlayer_RDP'
 }
 
 if (-not $Interactive) {

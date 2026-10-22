@@ -250,6 +250,108 @@ if ($cfg.wallpaper) {
   }
 }
 
+# ---------- 4b. LIVELY WALLPAPER v2.2.1.0 (60 FPS ANTI-STUCK RDP OPTIMIZATION) ----------
+$resLively = 'skip'
+try {
+  Log 'LIVELY WALLPAPER: mengoptimalkan DWM 60Hz & memasang Lively Wallpaper v2.2.1.0 Anti-Stuck RDP...'
+  # 1. Buka kebijakan RDP Wallpaper & Desktop Composition 60 FPS agar WorkerW Lively Wallpaper tidak diblokir/stuck di RDP
+  foreach ($tsPath in @(
+    'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services',
+    'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+  )) {
+    New-Item -Path $tsPath -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $tsPath -Name 'fDisableWallpaper' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $tsPath -Name 'fNoFontSmoothing' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $tsPath -Name 'DWMFRAMEINTERVAL' -Value 15 -Type DWord -Force -ErrorAction SilentlyContinue
+  }
+  Set-RegBoth 'Software\Microsoft\Windows\DWM' 'Composition' 1 'DWord' | Out-Null
+  Set-RegBoth 'Software\Microsoft\Windows\DWM' 'CompositionPolicy' 2 'DWord' | Out-Null
+
+  # 2. Cari atau pasang Lively Wallpaper v2.2.1.0 resmi
+  function Find-LivelyExe {
+    foreach ($cand in @(
+      'C:\Program Files (x86)\Lively Wallpaper\Lively.exe',
+      'C:\Program Files\Lively Wallpaper\Lively.exe',
+      "$env:LOCALAPPDATA\Programs\Lively Wallpaper\Lively.exe",
+      "C:\Users\$u\AppData\Local\Programs\Lively Wallpaper\Lively.exe"
+    )) {
+      if ($cand -and (Test-Path $cand)) { return $cand }
+    }
+    return $null
+  }
+
+  $livelyExe = Find-LivelyExe
+  if (-not $livelyExe) {
+    $livelySetup = Join-Path $env:RUNNER_TEMP 'lively_setup_x86_full_v2210.exe'
+    if (Get-File 'https://github.com/lively-community/lively/releases/download/v2.2.1.0/lively_setup_x86_full_v2210.exe' $livelySetup 240) {
+      $lProc = Start-Process -FilePath $livelySetup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS') -PassThru -WindowStyle Hidden
+      if ($lProc) { $lProc.WaitForExit(180000) | Out-Null }
+      Remove-Item $livelySetup -Force -ErrorAction SilentlyContinue
+      $livelyExe = Find-LivelyExe
+    }
+  }
+
+  # 3. Tulis Settings.json Lively Wallpaper dengan RemoteDesktopPause = 1 (AppRules.ignore)
+  #    agar Live Wallpaper TIDAK PERNAH PAUSE / STUCK saat diakses dari RDP maupun APK Android!
+  $livelySettingsJson = @'
+{
+  "AppVersion": "2.2.1.0",
+  "Language": "en-US",
+  "Startup": true,
+  "IsFirstRun": false,
+  "ControlPanelOpened": true,
+  "AppFocusPause": 1,
+  "AppFullscreenPause": 1,
+  "BatteryPause": 1,
+  "RemoteDesktopPause": 1,
+  "PowerSaveModePause": 1,
+  "DisplayPauseRule": 0,
+  "PauseAlgorithm": 0,
+  "VideoPlayer": 0,
+  "VideoPlayerHwAccel": false,
+  "GifPlayer": 0,
+  "WebBrowser": 0,
+  "KeepAwakeUI": true,
+  "LivelyGUIRendering": 1,
+  "WallpaperArrangement": 0,
+  "SysTrayIcon": true,
+  "WebDebugPort": "",
+  "AutoDetectOnlineStreams": false,
+  "ExtractStreamMetaData": false,
+  "WallpaperBundleVersion": 3,
+  "AudioVolumeGlobal": 50,
+  "AudioOnlyOnDesktop": false,
+  "RememberSelectedScreen": true
+}
+'@
+  foreach ($profUser in @($u, 'runneradmin', 'xyadmin', 'Default')) {
+    if (-not $profUser) { continue }
+    $livelyDataDir = "C:\Users\$profUser\AppData\Local\Lively Wallpaper"
+    New-Item -ItemType Directory -Path $livelyDataDir -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-Content -LiteralPath (Join-Path $livelyDataDir 'Settings.json') -Value $livelySettingsJson -Encoding UTF8 -Force
+  }
+
+  # 4. Buat Shortcut Lively Wallpaper di Desktop dengan ikon asli Lively.exe
+  if ($livelyExe -and (Test-Path $livelyExe)) {
+    Log "  Lively Wallpaper siap di: $livelyExe (RemoteDesktopPause=Ignore / 60Hz Anti-Stuck)"
+    foreach ($desk in @("C:\Users\$u\Desktop", "C:\Users\Public\Desktop", "C:\Users\Default\Desktop")) {
+      New-Item -ItemType Directory -Path $desk -Force -ErrorAction SilentlyContinue | Out-Null
+      try {
+        $wsh = New-Object -ComObject WScript.Shell
+        $lnk = $wsh.CreateShortcut((Join-Path $desk 'Lively Wallpaper.lnk'))
+        $lnk.TargetPath = $livelyExe
+        $lnk.WorkingDirectory = Split-Path $livelyExe -Parent
+        $lnk.IconLocation = "$livelyExe,0"
+        $lnk.Description = 'Lively Wallpaper (60 FPS Live Wallpaper Anti-Stuck RDP)'
+        $lnk.Save()
+      } catch {}
+    }
+    $resLively = 'ok'
+  }
+} catch {
+  Log "  Lively Wallpaper setup warning: $($_.Exception.Message)"
+}
+
 # ---------- 5. VERIFIKASI: sesi harus ADMIN ----------
 Log 'VERIFIKASI HAK AKSES:'
 $adminOk = $false

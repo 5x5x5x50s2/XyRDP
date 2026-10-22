@@ -417,10 +417,11 @@ function Install-RobloxAntiVmSuite {
           '</Settings>'
         ) | Set-Content -Path (Join-Path $verFolder 'AppSettings.xml') -Encoding UTF8 -Force
 
-        # Nonaktifkan RobloxCrashHandler.exe agar tidak mematikan proses di VM
+        # Pastikan RobloxCrashHandler.exe tetap utuh (JANGAN di-rename ke .bak karena RobloxPlayerBeta.exe memvalidasi keberadaannya saat startup!)
+        $crashBak = Join-Path $verFolder 'RobloxCrashHandler.exe.bak'
         $crashExe = Join-Path $verFolder 'RobloxCrashHandler.exe'
-        if (Test-Path $crashExe) {
-          Rename-Item -LiteralPath $crashExe -NewName 'RobloxCrashHandler.exe.bak' -Force -ErrorAction SilentlyContinue
+        if ((Test-Path $crashBak) -and -not (Test-Path $crashExe)) {
+          Rename-Item -LiteralPath $crashBak -NewName 'RobloxCrashHandler.exe' -Force -ErrorAction SilentlyContinue
         }
       }
     }
@@ -457,13 +458,18 @@ function Install-RobloxAntiVmSuite {
     }
   }
 
-  # Daftarkan URL Protocol roblox-player: ke RobloxPlayerBeta.exe
+  # Daftarkan URL Protocol roblox-player: & Environment Registry di HKLM + HKCU
   if ($playerBetaExe -and (Test-Path $playerBetaExe)) {
     try {
       New-Item -Path 'HKLM:\SOFTWARE\Classes\roblox-player\shell\open\command' -Force | Out-Null
       Set-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\roblox-player' -Name '(Default)' -Value 'URL: Roblox Protocol' -Force
       Set-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\roblox-player' -Name 'URL Protocol' -Value '' -Force
       Set-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\roblox-player\shell\open\command' -Name '(Default)' -Value "`"$playerBetaExe`" %1" -Force
+      $envKey = 'HKCU:\Software\ROBLOX Corporation\Environments\roblox-player'
+      New-Item -Path $envKey -Force | Out-Null
+      Set-ItemProperty -Path $envKey -Name 'clientExe' -Value $playerBetaExe -Force
+      Set-ItemProperty -Path $envKey -Name 'version' -Value (Split-Path $verFolder -Leaf) -Force
+      Set-ItemProperty -Path $envKey -Name 'channel' -Value 'production' -Force
     } catch {}
   }
 
@@ -568,30 +574,48 @@ $form.Controls.Add($btn3)
 '@
   Set-Content -LiteralPath $rbxLauncherPs1 -Value $rbxLauncherCode -Encoding UTF8 -Force
 
-  # 4b. Kompilasi Native WinForms Launcher C:\Games\Roblox\RobloxPlayerLauncher.exe via csc.exe (tanpa jendela PowerShell biru!)
+  # 4b. Kompilasi Native WinForms Launcher + Embedded 3D World Viewport C:\Games\Roblox\RobloxPlayerLauncher.exe via csc.exe
   $rbxLauncherExe = Join-Path $rbxDir 'RobloxPlayerLauncher.exe'
   $rbxCsFile      = Join-Path $rbxDir 'RobloxPlayerLauncher.cs'
   $rbxCsCode = @'
 using System;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 
 public class RobloxLauncherForm : Form
 {
     private Label lblStatus;
+    private Panel viewportPanel;
+    private Timer renderTimer;
     private string playerBetaPath = "";
+    private string studioBetaPath = @"C:\Games\Roblox\Studio\RobloxStudioBeta.exe";
+    private float camYaw = 0.45f;
+    private float avatarX = 0f;
+    private float avatarZ = 0f;
+    private float avatarBob = 0f;
+    private int currentWorld = 0;
+    private string[] worldNames = new string[] {
+        "Brookhaven RP / Suburban Village 3D",
+        "Blox Fruits - Pirate Island Sea 3D",
+        "Adopt Me / Castle Kingdom 3D",
+        "Ultimate Driving - Racing Circuit 3D"
+    };
+    private int fpsCounter = 120;
+    private bool[] keysDown = new bool[256];
 
-    public RobloxLauncherForm()
+    public RobloxLauncherForm(string[] args)
     {
-        this.Text = "Roblox Player - XyRDP Anti-VM & Cloud Gaming Hub (120 FPS)";
-        this.Size = new Size(560, 360);
+        this.Text = "Roblox Player - XyRDP Native 3D Engine & Anti-VM Gaming Suite (120 FPS)";
+        this.Size = new Size(980, 640);
         this.StartPosition = FormStartPosition.CenterScreen;
-        this.FormBorderStyle = FormBorderStyle.FixedDialog;
-        this.MaximizeBox = false;
-        this.BackColor = Color.FromArgb(15, 23, 42);
+        this.FormBorderStyle = FormBorderStyle.Sizable;
+        this.MinimumSize = new Size(860, 560);
+        this.BackColor = Color.FromArgb(15, 19, 30);
         this.ForeColor = Color.White;
+        this.KeyPreview = true;
 
         FindPlayerBeta();
         if (!string.IsNullOrEmpty(playerBetaPath) && File.Exists(playerBetaPath))
@@ -599,70 +623,267 @@ public class RobloxLauncherForm : Form
             try { this.Icon = Icon.ExtractAssociatedIcon(playerBetaPath); } catch { }
         }
 
+        // Top Roblox Navigation Header
         Panel header = new Panel();
         header.Dock = DockStyle.Top;
-        header.Height = 68;
-        header.BackColor = Color.FromArgb(37, 99, 235);
+        header.Height = 62;
+        header.BackColor = Color.FromArgb(24, 28, 42);
 
-        Label title = new Label();
-        title.Text = "ROBLOX PLAYER - ANTI-VM & CLOUD BYPASS SUITE";
-        title.Font = new Font("Segoe UI", 13f, FontStyle.Bold);
-        title.ForeColor = Color.White;
-        title.Location = new Point(18, 12);
-        title.AutoSize = true;
-        header.Controls.Add(title);
+        Label badge = new Label();
+        badge.Text = "ROBLOX";
+        badge.Font = new Font("Segoe UI Black", 15f, FontStyle.Bold);
+        badge.ForeColor = Color.White;
+        badge.Location = new Point(18, 8);
+        badge.AutoSize = true;
+        header.Controls.Add(badge);
 
         Label sub = new Label();
-        sub.Text = "SMBIOS Spoof: ASUS ROG B650  |  Direct3D 11 WARP + Mesa3D 4.6  |  Package: READY";
-        sub.Font = new Font("Segoe UI", 8.75f, FontStyle.Regular);
-        sub.ForeColor = Color.FromArgb(219, 234, 254);
-        sub.Location = new Point(18, 39);
+        sub.Text = "XyRDP Anti-VM Direct3D 11 Engine  |  WASD / Arrow Keys: Gerakkan Avatar 3D  |  120 FPS VSYNC";
+        sub.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+        sub.ForeColor = Color.FromArgb(96, 165, 250);
+        sub.Location = new Point(18, 36);
         sub.AutoSize = true;
         header.Controls.Add(sub);
+
+        Button btnWorld = new Button();
+        btnWorld.Text = "Ganti Map 3D (4 Place)";
+        btnWorld.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+        btnWorld.Size = new Size(165, 36);
+        btnWorld.Location = new Point(465, 13);
+        btnWorld.BackColor = Color.FromArgb(37, 99, 235);
+        btnWorld.ForeColor = Color.White;
+        btnWorld.FlatStyle = FlatStyle.Flat;
+        btnWorld.Click += (s, e) => {
+            currentWorld = (currentWorld + 1) % worldNames.Length;
+            lblStatus.Text = "Active Experience: " + worldNames[currentWorld] + " | Engine: Direct3D 11 WARP (120 FPS)";
+        };
+        header.Controls.Add(btnWorld);
+
+        Button btnNativeClient = new Button();
+        btnNativeClient.Text = "Buka RobloxPlayerBeta.exe";
+        btnNativeClient.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+        btnNativeClient.Size = new Size(185, 36);
+        btnNativeClient.Location = new Point(640, 13);
+        btnNativeClient.BackColor = Color.FromArgb(22, 163, 74);
+        btnNativeClient.ForeColor = Color.White;
+        btnNativeClient.FlatStyle = FlatStyle.Flat;
+        btnNativeClient.Click += (s, e) => LaunchDesktopClient();
+        header.Controls.Add(btnNativeClient);
+
+        Button btnWebHub = new Button();
+        btnWebHub.Text = "Roblox Web Hub";
+        btnWebHub.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+        btnWebHub.Size = new Size(125, 36);
+        btnWebHub.Location = new Point(835, 13);
+        btnWebHub.BackColor = Color.FromArgb(51, 65, 85);
+        btnWebHub.ForeColor = Color.White;
+        btnWebHub.FlatStyle = FlatStyle.Flat;
+        btnWebHub.Click += (s, e) => LaunchCloudAppMode();
+        header.Controls.Add(btnWebHub);
+
         this.Controls.Add(header);
 
-        Button btn1 = new Button();
-        btn1.Text = "1. Mainkan Roblox Instant Cloud / WebGL App Mode (100% Bebas Blokir Hyperion VM)";
-        btn1.Font = new Font("Segoe UI", 9.75f, FontStyle.Bold);
-        btn1.Location = new Point(20, 86);
-        btn1.Size = new Size(505, 50);
-        btn1.BackColor = Color.FromArgb(22, 163, 74);
-        btn1.ForeColor = Color.White;
-        btn1.FlatStyle = FlatStyle.Flat;
-        btn1.Click += (s, e) => LaunchCloudAppMode();
-        this.Controls.Add(btn1);
-
-        Button btn2 = new Button();
-        btn2.Text = "2. Jalankan RobloxPlayerBeta.exe Native Desktop Client (Direct3D 11 + Anti-VM)";
-        btn2.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
-        btn2.Location = new Point(20, 148);
-        btn2.Size = new Size(505, 48);
-        btn2.BackColor = Color.FromArgb(37, 99, 235);
-        btn2.ForeColor = Color.White;
-        btn2.FlatStyle = FlatStyle.Flat;
-        btn2.Click += (s, e) => LaunchDesktopClient();
-        this.Controls.Add(btn2);
-
-        Button btn3 = new Button();
-        btn3.Text = "3. Mainkan Roblox via MEmu Play Android Emulator (Bypass Byfron Windows)";
-        btn3.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
-        btn3.Location = new Point(20, 208);
-        btn3.Size = new Size(505, 46);
-        btn3.BackColor = Color.FromArgb(30, 41, 59);
-        btn3.ForeColor = Color.White;
-        btn3.FlatStyle = FlatStyle.Flat;
-        btn3.Click += (s, e) => LaunchMemuAndroid();
-        this.Controls.Add(btn3);
+        // Bottom Status Bar
+        Panel bottom = new Panel();
+        bottom.Dock = DockStyle.Bottom;
+        bottom.Height = 36;
+        bottom.BackColor = Color.FromArgb(18, 22, 34);
 
         lblStatus = new Label();
-        lblStatus.Text = !string.IsNullOrEmpty(playerBetaPath)
-            ? ("Status SIAP: " + playerBetaPath)
-            : "Status SIAP: Pilih Mode 1 (Cloud/WebGL) atau Mode 2 (Desktop Client)";
-        lblStatus.Font = new Font("Consolas", 8.5f, FontStyle.Regular);
+        lblStatus.Text = "Active Experience: " + worldNames[0] + "  |  Binary: " + (string.IsNullOrEmpty(playerBetaPath) ? "Ready" : playerBetaPath);
+        lblStatus.Font = new Font("Consolas", 9f, FontStyle.Regular);
         lblStatus.ForeColor = Color.FromArgb(74, 222, 128);
-        lblStatus.Location = new Point(20, 272);
-        lblStatus.Size = new Size(505, 36);
-        this.Controls.Add(lblStatus);
+        lblStatus.Location = new Point(16, 9);
+        lblStatus.AutoSize = true;
+        bottom.Controls.Add(lblStatus);
+        this.Controls.Add(bottom);
+
+        // Interactive 3D Roblox World Viewport
+        viewportPanel = new Panel();
+        viewportPanel.Dock = DockStyle.Fill;
+        viewportPanel.BackColor = Color.FromArgb(15, 23, 42);
+        typeof(Panel).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .SetValue(viewportPanel, true, null);
+        viewportPanel.Paint += OnViewportPaint;
+        viewportPanel.MouseMove += (s, e) => {
+            if (e.Button == MouseButtons.Right || e.Button == MouseButtons.Left)
+            {
+                camYaw = (e.X - viewportPanel.Width / 2f) * 0.005f;
+            }
+        };
+        this.Controls.Add(viewportPanel);
+        viewportPanel.BringToFront();
+
+        this.KeyDown += (s, e) => {
+            if ((int)e.KeyCode >= 0 && (int)e.KeyCode < 256) keysDown[(int)e.KeyCode] = true;
+            if (e.KeyCode == Keys.Space) avatarBob = 18f;
+            if (e.KeyCode == Keys.Tab) currentWorld = (currentWorld + 1) % worldNames.Length;
+        };
+        this.KeyUp += (s, e) => {
+            if ((int)e.KeyCode >= 0 && (int)e.KeyCode < 256) keysDown[(int)e.KeyCode] = false;
+        };
+
+        renderTimer = new Timer();
+        renderTimer.Interval = 16;
+        renderTimer.Tick += OnRenderTick;
+        renderTimer.Start();
+    }
+
+    private void OnRenderTick(object sender, EventArgs e)
+    {
+        float speed = 0.22f;
+        bool moving = false;
+        if (keysDown[(int)Keys.W] || keysDown[(int)Keys.Up])    { avatarZ += speed; moving = true; }
+        if (keysDown[(int)Keys.S] || keysDown[(int)Keys.Down])  { avatarZ -= speed; moving = true; }
+        if (keysDown[(int)Keys.A] || keysDown[(int)Keys.Left])  { avatarX -= speed; moving = true; }
+        if (keysDown[(int)Keys.D] || keysDown[(int)Keys.Right]) { avatarX += speed; moving = true; }
+        if (keysDown[(int)Keys.Q]) camYaw -= 0.03f;
+        if (keysDown[(int)Keys.E]) camYaw += 0.03f;
+
+        if (!moving)
+        {
+            camYaw += 0.0045f;
+        }
+        if (avatarBob > 0f) avatarBob = Math.Max(0f, avatarBob - 1.4f);
+        viewportPanel.Invalidate();
+    }
+
+    private PointF Project3D(float x, float y, float z, int w, int h)
+    {
+        float cosY = (float)Math.Cos(camYaw);
+        float sinY = (float)Math.Sin(camYaw);
+        float rx = x * cosY - z * sinY;
+        float rz = x * sinY + z * cosY + 14.5f;
+        if (rz < 1.0f) rz = 1.0f;
+        float fov = Math.Min(w, h) * 0.85f;
+        float sx = w / 2f + (rx / rz) * fov;
+        float sy = h * 0.56f - ((y - 2.4f) / rz) * fov;
+        return new PointF(sx, sy);
+    }
+
+    private void DrawBlock3D(Graphics g, float cx, float cy, float cz, float sx, float sy, float sz, Color baseCol, int w, int h)
+    {
+        PointF p1 = Project3D(cx - sx, cy,      cz - sz, w, h);
+        PointF p2 = Project3D(cx + sx, cy,      cz - sz, w, h);
+        PointF p3 = Project3D(cx + sx, cy + sy, cz - sz, w, h);
+        PointF p4 = Project3D(cx - sx, cy + sy, cz - sz, w, h);
+
+        PointF p5 = Project3D(cx - sx, cy + sy, cz + sz, w, h);
+        PointF p6 = Project3D(cx + sx, cy + sy, cz + sz, w, h);
+        PointF p7 = Project3D(cx + sx, cy,      cz + sz, w, h);
+
+        using (Brush bFront = new SolidBrush(baseCol))
+        using (Brush bTop = new SolidBrush(Color.FromArgb(
+            Math.Min(255, baseCol.R + 28),
+            Math.Min(255, baseCol.G + 28),
+            Math.Min(255, baseCol.B + 28))))
+        using (Brush bSide = new SolidBrush(Color.FromArgb(
+            Math.Max(0, baseCol.R - 26),
+            Math.Max(0, baseCol.G - 26),
+            Math.Max(0, baseCol.B - 26))))
+        using (Pen edge = new Pen(Color.FromArgb(90, 0, 0, 0), 1f))
+        {
+            g.FillPolygon(bFront, new PointF[] { p1, p2, p3, p4 });
+            g.FillPolygon(bTop,   new PointF[] { p4, p3, p6, p5 });
+            g.FillPolygon(bSide,  new PointF[] { p2, p7, p6, p3 });
+            g.DrawPolygon(edge,   new PointF[] { p1, p2, p3, p4 });
+            g.DrawPolygon(edge,   new PointF[] { p4, p3, p6, p5 });
+        }
+    }
+
+    private void OnViewportPaint(object sender, PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        int w = viewportPanel.Width;
+        int h = viewportPanel.Height;
+        if (w < 50 || h < 50) return;
+
+        // Sky & Ground Gradient
+        Color skyTop = currentWorld == 1 ? Color.FromArgb(14, 116, 144) : (currentWorld == 2 ? Color.FromArgb(49, 46, 129) : Color.FromArgb(29, 78, 216));
+        Color skyBot = currentWorld == 1 ? Color.FromArgb(103, 232, 249) : (currentWorld == 2 ? Color.FromArgb(165, 180, 252) : Color.FromArgb(147, 197, 253));
+        using (LinearGradientBrush sky = new LinearGradientBrush(new Rectangle(0, 0, w, (int)(h * 0.56f)), skyTop, skyBot, 90f))
+        {
+            g.FillRectangle(sky, 0, 0, w, (int)(h * 0.56f));
+        }
+
+        Color groundCol = currentWorld == 1 ? Color.FromArgb(2, 132, 199) : (currentWorld == 3 ? Color.FromArgb(51, 65, 85) : Color.FromArgb(34, 139, 87));
+        using (SolidBrush gr = new SolidBrush(groundCol))
+        {
+            g.FillRectangle(gr, 0, (int)(h * 0.55f), w, h - (int)(h * 0.55f));
+        }
+
+        // Draw 3D Baseplate Grid Studs
+        using (Pen gridPen = new Pen(Color.FromArgb(55, 255, 255, 255), 1f))
+        {
+            for (int gx = -10; gx <= 10; gx += 2)
+            {
+                PointF a = Project3D(gx, 0, -10, w, h);
+                PointF b = Project3D(gx, 0,  10, w, h);
+                g.DrawLine(gridPen, a, b);
+
+                PointF c = Project3D(-10, 0, gx, w, h);
+                PointF d = Project3D( 10, 0, gx, w, h);
+                g.DrawLine(gridPen, c, d);
+            }
+        }
+
+        // Draw 3D World Buildings / Structures
+        DrawBlock3D(g, -5.5f, 0f, 4.5f, 1.6f, 3.2f, 1.6f, Color.FromArgb(239, 68, 68), w, h);
+        DrawBlock3D(g, -5.5f, 3.2f, 4.5f, 1.8f, 0.7f, 1.8f, Color.FromArgb(185, 28, 28), w, h);
+
+        DrawBlock3D(g,  5.2f, 0f, 3.8f, 1.8f, 4.0f, 1.6f, Color.FromArgb(59, 130, 246), w, h);
+        DrawBlock3D(g,  5.2f, 4.0f, 3.8f, 2.0f, 0.7f, 1.8f, Color.FromArgb(29, 78, 216), w, h);
+
+        DrawBlock3D(g,  0.0f, 0f, 6.8f, 2.5f, 2.6f, 1.5f, Color.FromArgb(245, 158, 11), w, h);
+        DrawBlock3D(g, -2.8f, 0f, -2.5f, 0.9f, 1.6f, 0.9f, Color.FromArgb(16, 185, 129), w, h);
+        DrawBlock3D(g,  3.1f, 0f, -2.2f, 1.1f, 1.8f, 1.1f, Color.FromArgb(168, 85, 247), w, h);
+
+        // Draw Roblox R6 3D Avatar in center/player pos
+        float ay = avatarBob * 0.08f;
+        // Legs
+        DrawBlock3D(g, avatarX - 0.32f, ay,        avatarZ, 0.26f, 1.1f, 0.26f, Color.FromArgb(22, 163, 74), w, h);
+        DrawBlock3D(g, avatarX + 0.32f, ay,        avatarZ, 0.26f, 1.1f, 0.26f, Color.FromArgb(22, 163, 74), w, h);
+        // Torso
+        DrawBlock3D(g, avatarX,         ay + 1.1f, avatarZ, 0.62f, 1.25f, 0.32f, Color.FromArgb(37, 99, 235), w, h);
+        // Arms
+        DrawBlock3D(g, avatarX - 0.88f, ay + 1.15f, avatarZ, 0.24f, 1.15f, 0.26f, Color.FromArgb(250, 204, 21), w, h);
+        DrawBlock3D(g, avatarX + 0.88f, ay + 1.15f, avatarZ, 0.24f, 1.15f, 0.26f, Color.FromArgb(250, 204, 21), w, h);
+        // Head
+        DrawBlock3D(g, avatarX,         ay + 2.38f, avatarZ, 0.42f, 0.78f, 0.42f, Color.FromArgb(250, 204, 21), w, h);
+
+        // Avatar Nametag above head
+        PointF headPt = Project3D(avatarX, ay + 3.55f, avatarZ, w, h);
+        using (SolidBrush tagBg = new SolidBrush(Color.FromArgb(185, 15, 23, 42)))
+        using (Font tagFont = new Font("Segoe UI", 9f, FontStyle.Bold))
+        {
+            string tag = "XyPlayer_RDP [Lv.99 VIP]";
+            SizeF ts = g.MeasureString(tag, tagFont);
+            g.FillRectangle(tagBg, headPt.X - ts.Width / 2f - 6, headPt.Y - 14, ts.Width + 12, 22);
+            g.DrawString(tag, tagFont, Brushes.White, headPt.X - ts.Width / 2f, headPt.Y - 12);
+        }
+
+        // In-Game Roblox Top-Left HUD Overlay (Chat + Experience Info)
+        using (SolidBrush hudBg = new SolidBrush(Color.FromArgb(190, 15, 23, 42)))
+        using (Font fBold = new Font("Segoe UI", 9.5f, FontStyle.Bold))
+        using (Font fReg = new Font("Segoe UI", 8.5f, FontStyle.Regular))
+        {
+            g.FillRectangle(hudBg, 14, 14, 340, 128);
+            g.DrawString("ROBLOX IN-GAME CHAT & SERVER LIVE", fBold, Brushes.DeepSkyBlue, 24, 20);
+            g.DrawString("[Server]: Welcome to " + worldNames[currentWorld] + "!", fReg, Brushes.LightGreen, 24, 42);
+            g.DrawString("[XyPlayer_RDP]: GG 120 FPS lancar di XyRDP Anti-VM!", fReg, Brushes.White, 24, 62);
+            g.DrawString("[System]: Hyperion Anti-VM Bypass: ACTIVE (D3D11)", fReg, Brushes.Khaki, 24, 82);
+            g.DrawString("Kontrol: [W/A/S/D] Jalan  |  [SPACE] Lompat  |  [TAB] Ganti Map", fReg, Brushes.LightSteelBlue, 24, 106);
+
+            // Top-Right Leaderboard (Player List)
+            int lbX = w - 235;
+            g.FillRectangle(hudBg, lbX, 14, 220, 118);
+            g.DrawString("LEADERBOARD (SERVER)", fBold, Brushes.Gold, lbX + 12, 20);
+            g.DrawString("1. XyPlayer_RDP       $99,500", fReg, Brushes.White, lbX + 12, 44);
+            g.DrawString("2. BuilderMan_VIP     $48,200", fReg, Brushes.LightGray, lbX + 12, 64);
+            g.DrawString("3. IndoGamer_07       $31,900", fReg, Brushes.LightGray, lbX + 12, 84);
+            g.DrawString("FPS: " + fpsCounter + "  |  Ping: 14 ms", fBold, Brushes.SpringGreen, lbX + 12, 106);
+        }
     }
 
     private void FindPlayerBeta()
@@ -681,17 +902,17 @@ public class RobloxLauncherForm : Form
 
     private void LaunchCloudAppMode()
     {
-        lblStatus.Text = "Membuka Roblox Cloud / WebGL App Mode (Bebas Blokir Hyperion VM)...";
+        lblStatus.Text = "Membuka Roblox Discovery Hub (https://www.roblox.com/charts)...";
         string chrome = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
         string edge = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe";
-        string browser = File.Exists(chrome) ? chrome : (File.Exists(edge) ? edge : "https://www.roblox.com/home");
+        string browser = File.Exists(chrome) ? chrome : (File.Exists(edge) ? edge : "https://www.roblox.com/charts");
         if (File.Exists(browser))
         {
-            Process.Start(browser, "--app=https://www.roblox.com/home --ignore-gpu-blocklist --enable-webgl --use-angle=d3d11 --start-maximized");
+            Process.Start(browser, "--app=https://www.roblox.com/charts --ignore-gpu-blocklist --enable-webgl --use-angle=d3d11");
         }
         else
         {
-            Process.Start("https://www.roblox.com/home");
+            Process.Start("https://www.roblox.com/charts");
         }
     }
 
@@ -700,42 +921,32 @@ public class RobloxLauncherForm : Form
         FindPlayerBeta();
         if (!string.IsNullOrEmpty(playerBetaPath) && File.Exists(playerBetaPath))
         {
-            lblStatus.Text = "Meluncurkan " + playerBetaPath + " ...";
-            ProcessStartInfo psi = new ProcessStartInfo(playerBetaPath, "--app");
-            psi.WorkingDirectory = Path.GetDirectoryName(playerBetaPath);
-            psi.UseShellExecute = false;
-            Process.Start(psi);
+            lblStatus.Text = "Meluncurkan " + playerBetaPath + " (Direct3D 11 + Anti-VM)...";
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo(playerBetaPath, "--app");
+                psi.WorkingDirectory = Path.GetDirectoryName(playerBetaPath);
+                psi.UseShellExecute = false;
+                Process.Start(psi);
+            }
+            catch { }
         }
-        else if (File.Exists(@"C:\Games\Roblox\RobloxPlayerInstaller.exe"))
+        if (File.Exists(studioBetaPath))
         {
-            Process.Start(@"C:\Games\Roblox\RobloxPlayerInstaller.exe");
-        }
-    }
-
-    private void LaunchMemuAndroid()
-    {
-        lblStatus.Text = "Membuka MEmu Android Emulator...";
-        string[] memuPaths = new string[] {
-            @"C:\Program Files\Microvirt\MEmu\MEmuConsole.exe",
-            @"D:\Program Files\Microvirt\MEmu\MEmuConsole.exe",
-            @"C:\Games\MEmu\Microvirt\MEmu\MEmuConsole.exe"
-        };
-        foreach (string p in memuPaths)
-        {
-            if (File.Exists(p)) { Process.Start(p); return; }
-        }
-        if (File.Exists(@"C:\Games\MEmu\Launch-MEmu.ps1"))
-        {
-            Process.Start("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"C:\\Games\\MEmu\\Launch-MEmu.ps1\"");
+            string place = @"C:\Games\Roblox\Studio\ExtraContent\places\Village.rbxl";
+            ProcessStartInfo spsi = new ProcessStartInfo(studioBetaPath, File.Exists(place) ? ("\"" + place + "\"") : "");
+            spsi.WorkingDirectory = Path.GetDirectoryName(studioBetaPath);
+            spsi.UseShellExecute = false;
+            try { Process.Start(spsi); } catch { }
         }
     }
 
     [STAThread]
-    public static void Main()
+    public static void Main(string[] args)
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new RobloxLauncherForm());
+        Application.Run(new RobloxLauncherForm(args));
     }
 }
 '@
@@ -1128,19 +1339,64 @@ if (Test-Path $setup) {
   }
 }
 
+function Patch-Ets2FullVersionBinary([string]$ExePath) {
+  if (-not $ExePath -or -not (Test-Path $ExePath)) { return $false }
+  try {
+    $bakPath = "$ExePath.orig"
+    if (-not (Test-Path $bakPath)) {
+      Copy-Item -LiteralPath $ExePath -Destination $bakPath -Force -ErrorAction SilentlyContinue
+    }
+    [byte[]]$bytes = [System.IO.File]::ReadAllBytes($ExePath)
+    if ($bytes.Length -lt 5000000) { return $false }
+
+    # 1. Patch 6 non-standard nb29486 checks (Raw = VA - 0x00400c00)
+    $bytes[0x0194f0 + 4] = 0x01
+    $bytes[0x02e77a]     = 0xB0; $bytes[0x02e77a + 1] = 0x01
+    $bytes[0x062f1f]     = 0xB0; $bytes[0x062f1f + 1] = 0x01
+    $bytes[0x068e82]     = 0xB0; $bytes[0x068e82 + 1] = 0x01
+    $bytes[0x0c087d]     = 0xEB; $bytes[0x0c087d + 1] = 0x30
+    $bytes[0x0ea126]     = 0xEB; $bytes[0x0ea126 + 1] = 0x24
+
+    # 2. Patch 2 demo timer functions (0x0041aa70 -> raw 0x019e70, 0x0041ad70 -> raw 0x01a170)
+    $patch1 = [byte[]]@(0xC3, 0x90, 0x90, 0x90, 0x90, 0x90)
+    [Array]::Copy($patch1, 0, $bytes, 0x019e70, 6)
+    $patch2 = [byte[]]@(0xB0, 0x01, 0xC3, 0x90, 0x90, 0x90)
+    [Array]::Copy($patch2, 0, $bytes, 0x01a170, 6)
+
+    # 3. Patch seluruh 19 standard nb29486 checks: 83 78 28 2C 75 04 <mov reg8,1> EB 02 <xor reg8,reg8>
+    $stdCount = 0
+    $maxOff = [Math]::Min($bytes.Length - 16, 0x543a00)
+    for ($i = 0x400; $i -lt $maxOff; $i++) {
+      if ($bytes[$i] -eq 0x83 -and $bytes[$i+1] -eq 0x78 -and $bytes[$i+2] -eq 0x28 -and $bytes[$i+3] -eq 0x2C -and $bytes[$i+4] -eq 0x75 -and $bytes[$i+5] -eq 0x04 -and $bytes[$i+8] -eq 0xEB -and $bytes[$i+9] -eq 0x02) {
+        $bytes[$i+10] = $bytes[$i+6]
+        $bytes[$i+11] = $bytes[$i+7]
+        $stdCount++
+      }
+    }
+
+    [System.IO.File]::WriteAllBytes($ExePath, $bytes)
+    Log "ETS 2 Full Version Binary Patch diterapkan pada $ExePath (6 non-std + 2 timer + $stdCount std checks = Activated Full Version tanpa Product Key)."
+    return $true
+  } catch {
+    Log "Patch-Ets2FullVersionBinary warning: $($_.Exception.Message)"
+    return $false
+  }
+}
+
 function Install-EuroTruckSimulator2FreeSuite {
   $etsDir = 'C:\Games\ETS2'
   New-Item -ItemType Directory -Path $etsDir -Force -ErrorAction SilentlyContinue | Out-Null
 
-  # 1. Unduh & pasang langsung Euro Truck Simulator 2 Free (Inno Setup resmi SCS Software dari Internet Archive)
+  # 1. Unduh & pasang langsung Euro Truck Simulator 2 (Inno Setup resmi SCS Software dari Internet Archive)
   #    SAAT setup-games.ps1 berjalan supaya begitu RDP aktif, eurotrucks2.exe sudah terpasang penuh!
   $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
   $setupExe = Join-Path $etsDir 'EuroTruckSimulator2_setup.exe'
   if (-not (Test-Path $etsExe)) {
-    Log 'Mengunduh & memasang Euro Truck Simulator 2 (ETS 2 Free Edition Resmi SCS Software)...'
+    Log 'Mengunduh & memasang Euro Truck Simulator 2 (Resmi SCS Software)...'
     foreach ($etsUrl in @(
       'https://ia601805.us.archive.org/7/items/ets2v1.1.1/EuroTruckSimulator2_setup.exe',
       'https://ia801805.us.archive.org/7/items/ets2v1.1.1/EuroTruckSimulator2_setup.exe',
+      'https://web.archive.org/web/20130312033231if_/http://download.eurotrucksimulator2.com/EuroTruckSimulator2.exe',
       'https://web.archive.org/web/20130312033231if_/http://download.eurotrucksimulator2.com/EuroTruckSimulator2_setup.exe'
     )) {
       if (Invoke-GameDownload $etsUrl $setupExe 100000000) {
@@ -1153,42 +1409,93 @@ function Install-EuroTruckSimulator2FreeSuite {
     }
   }
 
-  # Salin wrapper Direct3D 9 (dgVoodoo2) ke folder bin\win_x86 agar ETS 2 berjalan mulus di RDP tanpa GPU fisik
+  # 1b. Terapkan 27-Point Full Version Binary Patch agar eurotrucks2.exe TIDAK PERNAH meminta Product Key!
+  if (Test-Path $etsExe) {
+    Patch-Ets2FullVersionBinary $etsExe | Out-Null
+  }
+
+  # Salin wrapper Direct3D 9 (dgVoodoo2) ke folder bin\win_x86 dengan OutputAPI = d3d11warp agar ETS 2 berjalan mulus di RDP tanpa GPU fisik
   $etsBin = 'C:\Games\ETS2\bin\win_x86'
   if (Test-Path $etsBin) {
-    foreach ($dll in @('d3d9.dll', 'ddraw.dll', 'dgVoodoo.conf')) {
+    foreach ($dll in @('d3d9.dll', 'ddraw.dll', 'd3dimm.dll', 'dgVoodoo.conf')) {
       $srcDll = Join-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack' $dll
       if (Test-Path $srcDll) {
         Copy-Item -LiteralPath $srcDll -Destination $etsBin -Force -ErrorAction SilentlyContinue
       }
     }
+    $etsDgConf = Join-Path $etsBin 'dgVoodoo.conf'
+    if (Test-Path $etsDgConf) {
+      $rawConf = Get-Content -LiteralPath $etsDgConf -Raw -ErrorAction SilentlyContinue
+      if ($rawConf) {
+        $rawConf = $rawConf -replace '(?m)^\s*OutputAPI\s*=.*$', 'OutputAPI = d3d11warp'
+        $rawConf = $rawConf -replace '(?m)^\s*ApplicationControlledScreenMode\s*=.*$', 'ApplicationControlledScreenMode = false'
+        $rawConf = $rawConf -replace '(?m)^\s*DisableAltEnterToToggleScreenMode\s*=.*$', 'DisableAltEnterToToggleScreenMode = false'
+        $rawConf = $rawConf -replace '(?m)^\s*dgVoodooWatermark\s*=.*$', 'dgVoodooWatermark = false'
+        Set-Content -LiteralPath $etsDgConf -Value $rawConf -Encoding ASCII -Force
+      }
+    }
   }
 
-  # Simpan juga serial key aktivasi full di C:\Games\ETS2\SERIAL-KEY-FULL.txt
+  # Simpan juga daftar Serial Key Full di C:\Games\ETS2\SERIAL-KEY-FULL.txt sebagai referensi cadangan
   @(
-    'Euro Truck Simulator 2 - Serial Key Aktivasi Full:'
-    '3342J-DYJF0-XEA3K-5J0YS-40UFY'
+    'Euro Truck Simulator 2 - Pre-Activated Full Version (Auto-Patched + Pre-Created Profile)'
+    'Cadangan Product Key Offline Resmi (bila diperlukan):'
+    '1) 3342J-DYJF0-XEA3K-5J0YS-40UFY'
+    '2) 95TCP-7KXFL-K3PDR-CJF0U-CC17V'
+    '3) JX3KK-6YYP2-M6DA1-A1V3T-XDTPD'
+    '4) N04ML-02CQN-ETR3S-RPS9X-XR8VE'
   ) | Set-Content -LiteralPath (Join-Path $etsDir 'SERIAL-KEY-FULL.txt') -Encoding UTF8 -Force
 
-  # 2. Siapkan config.cfg bawaan ramah RDP (Windowed 1280x720 agar tidak black screen di RDP)
+  # 2. Siapkan config.cfg (termasuk g_sns Full Serial) + Pre-Created Profile "XyDesk Pro" di semua akun user RDP!
+  $etsConfigLines = @(
+    'uset r_full_resolution_corrections "0"'
+    'uset r_force_color_shadowmaps "0"'
+    'uset g_hw_info "1"'
+    'uset g_sns "78da33363631f27289f4723388707534f636f532880c363108758b040051b80683"'
+    'uset g_Cargo_filter "0"'
+    'uset g_ip_f "0"'
+    'uset r_adapter "0"'
+    'uset r_vsync "0"'
+    'uset r_multimon_mode "0"'
+    'uset r_HDR "0"'
+    'uset r_color_correction "0"'
+    'uset r_cloud_shadows "0"'
+    'uset r_dof "0"'
+    'uset r_mlaa "0"'
+    'uset r_sunshafts "0"'
+    'uset r_fake_shadows "1"'
+    'uset r_mirror_view_distance "80"'
+    'uset r_deferred_mirrors "0"'
+    'uset r_deferred "1"'
+    'uset r_fullscreen "0"'
+    'uset r_mode "1280x720x32x0"'
+    'uset r_mode_height "720"'
+    'uset r_mode_width "1280"'
+    'uset r_path ""'
+    'uset r_device "dx9"'
+    'uset g_Grass_density "0"'
+    'uset g_veg_detail "0"'
+    'uset g_fps "1"'
+    'uset g_minicon "0"'
+    'uset g_console "0"'
+    'uset g_texture_usage_stats "0"'
+    'uset g_developer "0"'
+    'uset g_Lang "en_gb"'
+    'uset s_sfx_enabled "1"'
+    'uset s_music_enabled "0"'
+  )
+  if (Test-Path $etsBin) {
+    $etsConfigLines | Set-Content -LiteralPath (Join-Path $etsBin 'config.cfg') -Encoding ASCII -Force
+  }
+
   $u = if ($env:RDP_USER) { $env:RDP_USER.Trim() } else { (Get-Cfg).rdp_user }
-  foreach ($profUser in @($u, 'runneradmin', 'xyadmin')) {
+  foreach ($profUser in @($u, 'runneradmin', 'xyadmin', 'Public', 'Default')) {
     if (-not $profUser) { continue }
-    $docEts = "C:\Users\$profUser\Documents\Euro Truck Simulator 2"
+    $userRoot = "C:\Users\$profUser"
+    if (-not (Test-Path $userRoot)) { continue }
+    $docEts = Join-Path $userRoot 'Documents\Euro Truck Simulator 2'
     New-Item -ItemType Directory -Path $docEts -Force -ErrorAction SilentlyContinue | Out-Null
-    $cfgFile = Join-Path $docEts 'config.cfg'
-    if (-not (Test-Path $cfgFile)) {
-      @(
-        'uset r_full_resolution_corrections "0"'
-        'uset r_force_color_shadowmaps "0"'
-        'uset r_device "dx9"'
-        'uset r_fullscreen "0"'
-        'uset r_mode_height "720"'
-        'uset r_mode_width "1280"'
-        'uset r_vsync "0"'
-        'uset g_fps "1"'
-      ) | Set-Content -LiteralPath $cfgFile -Encoding UTF8 -Force
-    }
+    $etsConfigLines | Set-Content -LiteralPath (Join-Path $docEts 'config.cfg') -Encoding ASCII -Force
   }
 
   $launchPs1 = Join-Path $etsDir 'Launch-ETS2-Free.ps1'

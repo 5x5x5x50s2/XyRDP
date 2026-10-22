@@ -284,31 +284,11 @@ function Install-CompleteSampSuite {
     } catch { Log "Unduh SilentPatchSA warning: $($_.Exception.Message)" }
   }
 
-  # 3. Unduh III.VC.SA.WindowedMode.asi resmi (v3.0.0) agar GTA SA & SA-MP berjalan mulus di Windowed / Borderless RDP (Alt+Enter untuk Fullscreen)
-  $wmZip = Join-Path $work 'III.VC.SA.WindowedMode.zip'
-  if (-not (Test-Path (Join-Path $scriptsDir 'III.VC.SA.WindowedMode.asi'))) {
-    try {
-      if (Invoke-DownloadWithRetry 'https://github.com/ThirteenAG/III.VC.SA.WindowedMode/releases/download/v3.0.0/III.VC.SA.WindowedMode.zip' $wmZip 2) {
-        if (Test-Path $sevenZip) { & $sevenZip x $wmZip "-o$scriptsDir" -y 2>&1 | Out-Null }
-        else { Expand-Archive -Path $wmZip -DestinationPath $scriptsDir -Force }
-        Log 'III.VC.SA.WindowedMode.asi berhasil disiapkan.'
-      }
-    } catch {}
-  }
-  @(
-    '[MAIN]'
-    'WindowMode = 1'
-    'ConfineCursor = 0'
-    'PauseOnFocusLoss = 0'
-    'ResumeOnFocus = 1'
-    ''
-    '[WINDOW]'
-    'Width = 920'
-    'Height = 620'
-    'Maximized = 0'
-    'PositionX = 52'
-    'PositionY = 72'
-  ) | Set-Content -Path (Join-Path $scriptsDir 'III.VC.SA.WindowedMode.cfg') -Encoding ASCII -Force
+  # 3. Hapus III.VC.SA.WindowedMode.asi lama jika ada karena dgVoodoo2 (FullScreenMode=false) sudah menangani Windowed Mode & Alt+Enter secara native tanpa bentrok hook D3D9!
+  Remove-Item (Join-Path $scriptsDir 'III.VC.SA.WindowedMode.asi') -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $scriptsDir 'III.VC.SA.WindowedMode.cfg') -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $modsDir 'III.VC.SA.WindowedMode.asi') -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $modsDir 'III.VC.SA.WindowedMode.cfg') -Force -ErrorAction SilentlyContinue
 
   # 4. Unduh GTASA.WidescreenFix.asi & tulis GTASA.WidescreenFix.ini
   $wsZip = Join-Path $work 'GTASA.WidescreenFix.zip'
@@ -386,13 +366,14 @@ function Install-CompleteSampSuite {
     '[GeneralExt]'
     'DesktopResolution                    = 1024x768'
     'FreeMouse                            = true'
+    'WindowedAttributes                   = borderless'
     '[DirectX]'
     'DisableAndPassThru                   = false'
     'VideoCard                            = internal3D'
     'VRAM                                 = 512'
     'Filtering                            = appdriven'
     'Mipmapping                           = appdriven'
-    'Resolution                           = unforced'
+    'Resolution                           = h:920, v:620'
     'Antialiasing                         = off'
     'ApplicationControlledScreenMode      = false'
     'AppControlledScreenMode              = false'
@@ -718,20 +699,17 @@ function Apply-SilentPatchToDir([string]$Dir) {
     Set-Content -Path $markerFile -Value 'fullscreen-v3' -Encoding ASCII -Force -ErrorAction SilentlyContinue
   }
 
-  # 5. Atur Registry AppCompat + DEP Exception + SAMP gta_sa_exe path
-  #    PENTING: JANGAN memasang DISABLEDXMAXIMIZEDWINDOWEDMODE agar Fullscreen berfungsi penuh!
+  # 5. Bersihkan AppCompatFlags\Layers yang memicu apphelp.dll / GameUX hang pada Windows Server 2022,
+  #    dan nonaktifkan GameUX / AppCompat Shim Engine untuk gta_sa.exe
   $gtaExe  = Join-Path $Dir 'gta_sa.exe'
   $sampExe = Join-Path $Dir 'samp.exe'
   foreach ($regBase in @(
     'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers',
     'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
   )) {
-    New-Item -Path $regBase -Force -ErrorAction SilentlyContinue | Out-Null
-    if (Test-Path $gtaExe) {
-      New-ItemProperty -Path $regBase -Name $gtaExe -Value '~ HIGHDPIAWARE DisableNXShowUI' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
-    }
-    if (Test-Path $sampExe) {
-      New-ItemProperty -Path $regBase -Name $sampExe -Value '~ HIGHDPIAWARE DisableNXShowUI' -PropertyType String -Force -ErrorAction SilentlyContinue | Out-Null
+    if (Test-Path $regBase) {
+      Remove-ItemProperty -Path $regBase -Name $gtaExe -Force -ErrorAction SilentlyContinue
+      Remove-ItemProperty -Path $regBase -Name $sampExe -Force -ErrorAction SilentlyContinue
     }
   }
 

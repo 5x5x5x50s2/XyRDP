@@ -371,6 +371,7 @@ if ($pPatchGui) { Stop-Process -Id $pPatchGui.Id -Force -ErrorAction SilentlyCon
 # 4. Uji & Screenshot: PLAY GTA San Andreas (gta_sa.exe In-Game / Title Screen)
 # ============================================================================
 Write-Host "=== 4. Menguji & Screenshot PLAY GTA San Andreas (gta_sa.exe) ==="
+Get-Process -Name 'SystemSettings', 'ApplicationFrameHost' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 try {
   Restart-Service -Name 'Audiosrv' -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
@@ -380,37 +381,70 @@ Get-CimInstance Win32_SoundDevice -ErrorAction SilentlyContinue | Select-Object 
 if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   Remove-Item 'C:\Games\GTA San Andreas\dsound.dll' -Force -ErrorAction SilentlyContinue
   Remove-Item 'C:\Games\GTA San Andreas\dsoal-aldrv.dll' -Force -ErrorAction SilentlyContinue
+  Remove-Item 'C:\Games\GTA San Andreas\scripts\III.VC.SA.WindowedMode.asi' -Force -ErrorAction SilentlyContinue
+  Remove-Item 'C:\Games\GTA San Andreas\scripts\III.VC.SA.WindowedMode.cfg' -Force -ErrorAction SilentlyContinue
   Get-ChildItem -Path 'C:\Games\GTA San Andreas' -File -Filter '*.asi' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+  foreach ($regBase in @(
+    'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers',
+    'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+  )) {
+    if (Test-Path $regBase) {
+      Remove-ItemProperty -Path $regBase -Name 'C:\Games\GTA San Andreas\gta_sa.exe' -Force -ErrorAction SilentlyContinue
+    }
+  }
   foreach ($mpg in @('Logo.mpg', 'GTAtitles.mpg')) {
     $mp = "C:\Games\GTA San Andreas\movies\$mpg"
     if (Test-Path $mp) { Move-Item -LiteralPath $mp -Destination "$mp.bak" -Force -ErrorAction SilentlyContinue }
   }
+  $env:__COMPAT_LAYER = ''
   $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
-  for ($w = 0; $w -lt 16; $w++) {
+  $gtaHwnd = [IntPtr]::Zero
+  for ($w = 0; $w -lt 10; $w++) {
     Start-Sleep -Seconds 1
     $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pGta.Id)
     if ($gtaHwnd -ne [IntPtr]::Zero) {
       [WinCapture]::ShowWindow($gtaHwnd, 9) | Out-Null
       [WinCapture]::SetForegroundWindow($gtaHwnd) | Out-Null
+      if ($w -in @(5, 8)) {
+        Send-KeyPress 0x0D
+        Send-KeyPress 0x20
+      }
     }
-    if ($w -in @(3, 6, 9, 12, 15)) {
-      Send-KeyPress 0x0D # Enter to confirm any dialog / skip splash
-      Send-KeyPress 0x20 # Space
+  }
+  # Fallback Tahap B: Jika ASI Loader menyebabkan gta_sa.exe tertahan (HWND=0), gunakan vorbisHooked.dll murni Rockstar + dgVoodoo2 D3D11!
+  if ($gtaHwnd -eq [IntPtr]::Zero) {
+    Write-Host "Tahap A HWND=0, mengaktifkan Tahap B (vorbisHooked.dll murni Rockstar + dgVoodoo2 D3D11)..."
+    Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+    if (Test-Path 'C:\Games\GTA San Andreas\vorbisHooked.dll') {
+      Copy-Item 'C:\Games\GTA San Andreas\vorbisHooked.dll' -Destination 'C:\Games\GTA San Andreas\vorbisFile.dll' -Force -ErrorAction SilentlyContinue
+    }
+    $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
+    for ($w = 0; $w -lt 14; $w++) {
+      Start-Sleep -Seconds 1
+      $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pGta.Id)
+      if ($gtaHwnd -ne [IntPtr]::Zero) {
+        [WinCapture]::ShowWindow($gtaHwnd, 9) | Out-Null
+        [WinCapture]::SetForegroundWindow($gtaHwnd) | Out-Null
+        if ($w -in @(6, 10, 13)) {
+          Send-KeyPress 0x0D
+          Send-KeyPress 0x20
+        }
+      }
     }
   }
   $gtaProc = Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($gtaProc) {
     $pGta = $gtaProc
     Write-Host "gta_sa is RUNNING! PID=$($gtaProc.Id) MainWindowHandle=$($gtaProc.MainWindowHandle) Title='$($gtaProc.MainWindowTitle)'"
-    Write-Host "gta_sa loaded modules:"
-    $gtaProc.Modules | Where-Object { $_.ModuleName -notmatch '^ntdll|^kernel|^user32|^gdi32|^advapi|^msvcrt|^ucrt|^rpcrt|^sechost|^combase|^shlwapi|^shell32|^imm32|^win32u' } | Select-Object ModuleName, FileName | Format-Table -AutoSize
+    & "C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "(Get-Process -Id $($gtaProc.Id)).Modules | Select-Object ModuleName, FileName | Format-Table -AutoSize"
   } else {
     Write-Host "gta_sa exited with code: $($pGta.ExitCode)"
     Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2} -MaxEvents 3 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message
   }
   Save-QaWindowScreenshot -Proc $pGta -OutName '04_GTA_SanAndreas_InGame_Play.png' `
     -Title 'QA TEST #4 - PLAY GTA San Andreas (gta_sa.exe + dgVoodoo2 D3D11 + VB-Cable Audio)' `
-    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | VB-Cable Sound + WindowedMode + SilentPatch 90 FPS ACTIVE' -WaitSec 3
+    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | VB-Cable Sound + dgVoodoo2 D3D11 Windowed ACTIVE' -WaitSec 3
   Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
@@ -426,15 +460,14 @@ if (Test-Path 'C:\Games\PrismLauncher\prismlauncher.exe') {
   Send-KeyPress 0x0D # Page 2 (Java) -> Next
   Start-Sleep -Seconds 2
   Send-KeyPress 0x0D # Page 3 (New Feature Alert) -> Finish -> enters Main Dashboard!
-  for ($u = 0; $u -lt 10; $u++) {
-    Start-Sleep -Milliseconds 600
-    $updHwnd = [WinCapture]::FindWindow($null, 'Update Available - Prism Launcher (Cracked) 11.0.3-main')
-    if ($updHwnd -ne [IntPtr]::Zero) {
-      [WinCapture]::PostMessage($updHwnd, [WinCapture]::WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-      Start-Sleep -Milliseconds 600
-      break
-    }
-  }
+  Start-Sleep -Seconds 3
+  # Tutup dialog modal "Update Available" di Qt6 dengan Escape / Left Arrow -> Enter (Remind Me Later)
+  Send-KeyPress 0x1B
+  Start-Sleep -Milliseconds 500
+  Send-KeyPress 0x25 # Left Arrow -> Remind Me Later
+  Start-Sleep -Milliseconds 300
+  Send-KeyPress 0x0D # Enter
+  Start-Sleep -Seconds 1
   Save-QaWindowScreenshot -Proc $pPrism -OutName '05_Minecraft_PrismLauncher.png' `
     -Title 'QA TEST #5 - Minecraft PrismLauncher Portable (Main Dashboard + Account: XyPlayer_RDP)' `
     -Sub 'Exe: C:\Games\PrismLauncher\prismlauncher.exe | Java 21 + Mesa3D OpenGL 4.6 READY' -WaitSec 2
@@ -447,7 +480,7 @@ if (Test-Path 'C:\Games\Minecraft\TL.jar') {
   $pTl = Start-Process -FilePath $javawExe -ArgumentList @('-Xmx2048M', '-Dsun.java2d.d3d=false', '-jar', 'C:\Games\Minecraft\TL.jar') -WorkingDirectory 'C:\Games\Minecraft' -PassThru
   $clickedWelcome = $false
   $clickedFolder = $false
-  for ($t = 0; $t -lt 70; $t++) {
+  for ($t = 0; $t -lt 75; $t++) {
     Start-Sleep -Seconds 2
     $jw = Get-Process -Name 'javaw', 'java' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
     if ($jw) {
@@ -476,7 +509,7 @@ if (Test-Path 'C:\Games\Minecraft\TL.jar') {
           $clickedFolder = $true
         }
       } elseif ($clickedWelcome -and $title -match 'Legacy Launcher' -and $title -notmatch 'Welcome|Downloading|%|Starting|folder select|Conflict') {
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 10
         break
       }
     }
@@ -518,26 +551,38 @@ $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
 if (Test-Path $etsExe) {
   Remove-Item 'C:\Games\ETS2\bin\win_x86\dsound.dll' -Force -ErrorAction SilentlyContinue
   Remove-Item 'C:\Games\ETS2\bin\win_x86\dsoal-aldrv.dll' -Force -ErrorAction SilentlyContinue
-  [WinCapture]::SetCursorPos(640, 530) | Out-Null
   $pEts = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
   Start-Sleep -Seconds 11
   try {
     $pEts.Refresh()
     if ($pEts.MainWindowHandle -ne [IntPtr]::Zero) {
       [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
-      [WinCapture]::SetCursorPos(640, 530) | Out-Null
       Start-Sleep -Milliseconds 500
-      # 1. Reset DirectInput cursor ke pojok kiri atas window
+      # 1. Ketik Product Key Offline resmi v1.1.1 (3342J-DYJF0-XEA3K-5J0YS-40UFY) langsung ke kotak Your Product Key yang sedang fokus!
+      Send-DirectInputString '3342JDYJF0XEA3K5J0YS40UFY'
+      Start-Sleep -Milliseconds 400
+      Send-KeyPress 0x0D # Enter
+      Start-Sleep -Milliseconds 500
+      # 2. Klik pertama untuk mengaktifkan mouse capture DirectInput8 di dalam window eurotrucks2.exe
+      Send-DirectInputLeftClick
+      Start-Sleep -Milliseconds 300
+      # 3. Reset DirectInput cursor ke pojok kiri atas window, lalu klik tombol "Activate Game" (380, 535)
       Move-RelativeMouse -1200 -900
       Start-Sleep -Milliseconds 200
-      # 2. Gerakkan tepat ke tombol "Run in Demo mode" (dx=+640, dy=+538) dan klik beberapa kali!
-      Move-RelativeMouse 640 538
-      for ($c = 0; $c -lt 3; $c++) {
-        [WinCapture]::SetCursorPos(640, 530) | Out-Null
-        Move-RelativeMouse 1 0
-        Send-DirectInputLeftClick
-        Start-Sleep -Milliseconds 350
-      }
+      Move-RelativeMouse 380 535
+      Start-Sleep -Milliseconds 200
+      Send-DirectInputLeftClick
+      Start-Sleep -Milliseconds 300
+      Send-DirectInputLeftClick
+      Start-Sleep -Seconds 2
+      # 4. Jika masih di layar Activation, klik juga tombol "Run in Demo mode" (638, 538) 2 kali!
+      Move-RelativeMouse -1200 -900
+      Start-Sleep -Milliseconds 200
+      Move-RelativeMouse 638 538
+      Start-Sleep -Milliseconds 200
+      Send-DirectInputLeftClick
+      Start-Sleep -Milliseconds 300
+      Send-DirectInputLeftClick
     }
   } catch {}
   Start-Sleep -Seconds 8

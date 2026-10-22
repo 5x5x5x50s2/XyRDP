@@ -440,7 +440,7 @@ function Install-RobloxAntiVmSuite {
         'LibrariesQt5.zip'      = ''
         'shaders.zip'           = 'shaders'
         'content-sky.zip'       = 'content\sky'
-        'content-Wait.zip'      = 'content\textures'
+        'content-textures2.zip' = 'content\textures'
         'content-fonts.zip'     = 'content\fonts'
         'ApplicationConfig.zip' = 'ApplicationConfig'
       }

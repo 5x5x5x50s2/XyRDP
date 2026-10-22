@@ -195,13 +195,18 @@ class SessionControlsRealRenderTest {
         // STATE 1: HUD Utama + Rail Kanan Bawah (Panah + Keyboard) Terpisah dari Handle MENU Kanan Atas
         saveRealComposeScreenshot(outDir, "11_APK_UI_State1_HUD_Dan_Rail_Terpisah.png")
 
-        // STATE 2: Klik Tombol Panah di atas Keyboard -> Membuka Bubble Aksi Cepat (TANPA membuka Menu Popup Utama!)
+        // STATE 2: Klik Tombol Panah di atas Keyboard -> Membuka Bubble Aksi Cepat di Sebelah Kiri Tombol Panah (TANPA membuka Menu Popup Utama!)
         composeRule.onNodeWithContentDescription("Buka aksi cepat di atas keyboard").performClick()
+        composeRule.mainClock.advanceTimeBy(350L)
         composeRule.waitForIdle()
         saveRealComposeScreenshot(outDir, "12_APK_UI_State2_BubblePanahKeyboard_AksiCepat.png")
 
-        // STATE 3: Klik Handle MENU di Kanan Atas -> Membuka Menu Popup Utama (SessionPanel + Lively 60Hz) & Menutup Bubble Panah!
-        composeRule.onNodeWithText("MENU").performClick()
+        // STATE 3: Tutup Bubble Panah lalu Klik Handle MENU di Kanan Atas -> Membuka Menu Popup Utama (SessionPanel + Lively 60Hz)
+        composeRule.onNodeWithContentDescription("Tutup aksi cepat").performClick()
+        composeRule.mainClock.advanceTimeBy(250L)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Buka panel sesi").performClick()
+        composeRule.mainClock.advanceTimeBy(400L)
         composeRule.waitForIdle()
         saveRealComposeScreenshot(outDir, "13_APK_UI_State3_MenuPopup_PanelUtama_Lively60Hz.png")
     }

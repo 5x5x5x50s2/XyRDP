@@ -814,7 +814,7 @@ data class RdpOptions(
                 asyncChannels = sp.getBoolean("$deviceId.async_ch", true),
                 compressionLevel = sp.getInt("$deviceId.comp_lvl", 1).coerceIn(0, 2),
                 fontSmoothing = if (migratedV3) sp.getBoolean("$deviceId.fonts", true) else true,
-                desktopWallpaper = sp.getBoolean("$deviceId.wallpaper", false),
+                desktopWallpaper = if (isDataSaver) sp.getBoolean("$deviceId.wallpaper", false) else sp.getBoolean("$deviceId.wallpaper", true),
                 windowDrag = sp.getBoolean("$deviceId.windrag", false),
                 menuAnimations = sp.getBoolean("$deviceId.menuanim", false),
                 visualThemes = sp.getBoolean("$deviceId.themes", true),

@@ -437,16 +437,16 @@ function Install-CompleteSampSuite {
     try {
       $gtaArc = Join-Path $work 'gta_sa_portable.archive'
       $gtaUrls = @(
-        'https://ia800103.us.archive.org/5/items/gta-san-andreas_20220115/GTA%20San%20Andreas.rar',
         'https://ia600103.us.archive.org/5/items/gta-san-andreas_20220115/GTA%20San%20Andreas.rar',
-        'https://archive.org/download/gta-san-andreas_20220115/GTA%20San%20Andreas.rar'
+        'https://archive.org/download/gta-san-andreas_20220115/GTA%20San%20Andreas.rar',
+        'https://ia800103.us.archive.org/5/items/gta-san-andreas_20220115/GTA%20San%20Andreas.rar'
       )
       if ($env:GTA_SA_URL -and $env:GTA_SA_URL.Trim()) { $gtaUrls = @($env:GTA_SA_URL.Trim()) + $gtaUrls }
       foreach ($uGta in $gtaUrls) {
         Log "Mengunduh GTA San Andreas Portable ($uGta)..."
         Remove-Item $gtaArc -Force -ErrorAction SilentlyContinue
-        & curl.exe -fL -A "Mozilla/5.0" --retry 3 --retry-all-errors --connect-timeout 20 --max-time 240 -sS $uGta -o $gtaArc
-        if ((Test-Path $gtaArc) -and (Get-Item $gtaArc).Length -gt 50000000) {
+        & curl.exe -fL -A "Mozilla/5.0" --retry 1 --connect-timeout 15 --speed-time 15 --speed-limit 500000 --max-time 240 -sS $uGta -o $gtaArc
+        if ((Test-Path $gtaArc) -and (Get-Item $gtaArc).Length -gt 500000000) {
           break
         }
       }

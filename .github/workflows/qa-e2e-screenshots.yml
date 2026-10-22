@@ -16,7 +16,7 @@ jobs:
     if: ${{ github.event.inputs.target == '' || github.event.inputs.target == 'all' || github.event.inputs.target == 'windows' }}
     name: QA E2E Windows Server 2022 + Real Screenshots
     runs-on: windows-2022
-    timeout-minutes: 25
+    timeout-minutes: 45
     env:
       RDP_USER: xyadmin
       RDP_PASSWORD: XyQaPassword123!

@@ -611,31 +611,31 @@ fun SessionControls(
         // tombol tetap — pembuka menu bubble (panah atas) dan keyboard di
         // paling bawah. Sisanya pindah ke dalam bubble popup.
         if (!panelOpen && !monitorGridOpen && !mappingMode) {
-            Column(
+            Row(
                 Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
                     .displayCutoutPadding()
-                    .padding(end = 10.dp, bottom = 24.dp)
+                    .padding(end = 10.dp, bottom = 18.dp)
                     .zIndex(24f),
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                // Bubble rail "disedot" keluar dari tombol panah: scale dari
-                // titik bawah (posisi tombol) + fade, masuk dan keluar.
+                // Bubble rail muncul rapi di sebelah kiri tombol panah & keyboard
+                // sehingga tidak mendorong tombol keyboard ke bawah dan tidak menutupi handle MENU di kanan atas.
                 AnimatedVisibility(
                     visible = railMenuOpen,
                     enter = fadeIn(androidx.compose.animation.core.tween(140)) +
                         scaleIn(
                             androidx.compose.animation.core.tween(230, easing = androidx.compose.animation.core.FastOutSlowInEasing),
                             initialScale = 0.25f,
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f),
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.85f),
                         ),
                     exit = fadeOut(androidx.compose.animation.core.tween(120)) +
                         scaleOut(
                             androidx.compose.animation.core.tween(170, easing = androidx.compose.animation.core.FastOutLinearInEasing),
                             targetScale = 0.2f,
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f),
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.85f),
                         ),
                 ) {
                     val railOpts = remember(deviceId, railMenuOpen) { id.xydesk.remote.core.RdpOptions.of(context, deviceId) }
@@ -644,12 +644,12 @@ fun SessionControls(
                     }
                     Column(
                         Modifier
-                            .widthIn(min = 228.dp, max = 268.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0xF210141F), RoundedCornerShape(20.dp))
-                            .border(1.2.dp, Color(0xFF2B3654), RoundedCornerShape(20.dp))
-                            .padding(horizontal = 10.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                            .widthIn(min = 224.dp, max = 262.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color(0xF210141F), RoundedCornerShape(18.dp))
+                            .border(1.2.dp, Color(0xFF2B3654), RoundedCornerShape(18.dp))
+                            .padding(horizontal = 9.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Row(
                             modifier = Modifier
@@ -766,23 +766,28 @@ fun SessionControls(
                         }
                     }
                 }
-                RailButton(
-                    icon = if (railMenuOpen) XyIcons.ChevronDown else XyIcons.ChevronUp,
-                    active = railMenuOpen,
-                    description = if (railMenuOpen) {
-                        xy("Tutup aksi cepat", "Close quick actions")
-                    } else {
-                        xy("Buka aksi cepat di atas keyboard", "Open quick actions above keyboard")
-                    },
-                    plate = plate,
-                    onClick = { railMenuOpen = !railMenuOpen },
-                )
-                RailButton(
-                    icon = XyIcons.Keyboard,
-                    active = false,
-                    description = xy("Buka keyboard HP", "Open phone keyboard"),
-                    plate = plate,
-                ) { onOpenKeyboard() }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    RailButton(
+                        icon = if (railMenuOpen) XyIcons.ChevronDown else XyIcons.ChevronUp,
+                        active = railMenuOpen,
+                        description = if (railMenuOpen) {
+                            xy("Tutup aksi cepat", "Close quick actions")
+                        } else {
+                            xy("Buka aksi cepat di atas keyboard", "Open quick actions above keyboard")
+                        },
+                        plate = plate,
+                        onClick = { railMenuOpen = !railMenuOpen },
+                    )
+                    RailButton(
+                        icon = XyIcons.Keyboard,
+                        active = false,
+                        description = xy("Buka keyboard HP", "Open phone keyboard"),
+                        plate = plate,
+                    ) { onOpenKeyboard() }
+                }
             }
         }
 
@@ -1524,12 +1529,12 @@ private fun RailMenuItem(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(rowBg, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .background(rowBg, RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 11.dp, vertical = 8.dp),
+            .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         Icon(
             icon,
@@ -2146,9 +2151,8 @@ private fun ScreenTab(
     PanelSectionGrid(openKey = openKey, onOpenKey = onOpenKey) {
     section(
         "telemetri-kontrol-monitor-fisik-pc",
-        if (pcConnectMode) xy("Telemetri & Kontrol Monitor Fisik PC", "Live Telemetry & Physical PC Monitor")
-        else xy("Telemetri & Multi-Monitor / Sesi RDP", "Live Telemetry & Multi-Monitor / RDP Sessions"),
-        advanced = true,
+        if (pcConnectMode) xy("Lively Wallpaper 60Hz & Monitor Fisik PC", "Lively Wallpaper 60Hz & Physical PC Monitor")
+        else xy("Lively Live Wallpaper 60Hz & Multi-Sesi RDP", "Lively Live Wallpaper 60Hz & Multi-Session RDP"),
     ) {
             XyToggleRow(
                 title = xy("Status telemetri live (Update UI, Latency, Network)", "Live telemetry status (UI updates, latency, network)"),

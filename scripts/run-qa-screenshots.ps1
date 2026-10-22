@@ -25,6 +25,9 @@ public class WinCapture {
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
+    public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
@@ -270,7 +273,7 @@ function Minimize-RunnerTerminals {
     )
   } | ForEach-Object {
     try {
-      [WinCapture]::ShowWindow($_.MainWindowHandle, 0) | Out-Null
+      [WinCapture]::ShowWindowAsync($_.MainWindowHandle, 0) | Out-Null
     } catch {}
   }
 }
@@ -281,7 +284,8 @@ function Save-QaWindowScreenshot {
     [Parameter(Mandatory=$true)][string]$OutName,
     [Parameter(Mandatory=$true)][string]$Title,
     [Parameter(Mandatory=$true)][string]$Sub,
-    [int]$WaitSec = 6
+    [int]$WaitSec = 6,
+    [switch]$SkipWindowManip
   )
 
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -303,10 +307,10 @@ function Save-QaWindowScreenshot {
 
   Minimize-RunnerTerminals
 
-  if ($hwnd -ne [IntPtr]::Zero) {
+  if ($hwnd -ne [IntPtr]::Zero -and -not $SkipWindowManip) {
     try {
-      [WinCapture]::ShowWindow($hwnd, 9) | Out-Null
-      [WinCapture]::SetWindowPos($hwnd, [WinCapture]::HWND_TOPMOST, 0, 0, 0, 0, ([WinCapture]::SWP_NOMOVE -bor [WinCapture]::SWP_NOSIZE -bor [WinCapture]::SWP_SHOWWINDOW)) | Out-Null
+      [WinCapture]::ShowWindowAsync($hwnd, 9) | Out-Null
+      [WinCapture]::SetWindowPos($hwnd, [WinCapture]::HWND_TOPMOST, 0, 0, 0, 0, ([WinCapture]::SWP_NOMOVE -bor [WinCapture]::SWP_NOSIZE -bor [WinCapture]::SWP_SHOWWINDOW -bor 0x4000)) | Out-Null
       [WinCapture]::SetForegroundWindow($hwnd) | Out-Null
       Start-Sleep -Milliseconds 900
     } catch {}
@@ -511,15 +515,9 @@ if (Test-Path 'C:\Games\GTA-SAMP\Patch-GTA-SAMP.ps1') {
 if (Test-Path 'C:\Games\GTA San Andreas\samp.exe') {
   $pSamp = Start-Process -FilePath 'C:\Games\GTA San Andreas\samp.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
   Start-Sleep -Seconds 3
-  try {
-    $pSamp.Refresh()
-    if ($pSamp.MainWindowHandle -ne [IntPtr]::Zero) {
-      [WinCapture]::SetWindowPos($pSamp.MainWindowHandle, [WinCapture]::HWND_TOPMOST, 18, 72, 680, 560, [WinCapture]::SWP_SHOWWINDOW) | Out-Null
-    }
-  } catch {}
   Save-QaWindowScreenshot -Proc $pSamp -OutName '03_SAMP_037R5_Verified_No_UnableToExecute.png' `
     -Title 'QA TEST #3 - GTA SA-MP 0.3.7-R5 Browser & Anti-Ban (gta_sa_exe Registry Verified OK)' `
-    -Sub "gta_sa_exe='$regGtaExe' (Exists=$regGtaExists) | Zero 'Unable to execute' Error" -WaitSec 2
+    -Sub "gta_sa_exe='$regGtaExe' (Exists=$regGtaExists) | Zero 'Unable to execute' Error" -WaitSec 2 -SkipWindowManip
   Stop-Process -Id $pSamp.Id -Force -ErrorAction SilentlyContinue
 }
 if ($pPatchGui) { Stop-Process -Id $pPatchGui.Id -Force -ErrorAction SilentlyContinue }
@@ -558,46 +556,38 @@ if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   } else {
     $pGta = $pWarm
   }
-  for ($w = 0; $w -lt 25; $w++) {
+  # Tunggu tanpa memanggil ShowWindow synchronous hingga Title Screen muncul (detik ke-18), lalu tekan SPACE/RETURN sekali untuk masuk Main Menu!
+  for ($w = 0; $w -lt 21; $w++) {
     Start-Sleep -Seconds 1
     $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pGta.Id)
-    if ($gtaHwnd -ne [IntPtr]::Zero) {
-      [WinCapture]::ShowWindow($gtaHwnd, 9) | Out-Null
-      [WinCapture]::SetForegroundWindow($gtaHwnd) | Out-Null
-      if ($w -in @(17, 20, 22, 24)) {
-        Send-KeyPress 0x0D
-        Send-KeyPress 0x20
-        Send-DirectInputLeftClick
-      }
+    if ($gtaHwnd -ne [IntPtr]::Zero -and $w -eq 17) {
+      Send-KeyPress 0x20
+      Send-KeyPress 0x0D
     }
   }
   $gtaProc = Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($gtaProc) { $pGta = $gtaProc }
   Save-QaWindowScreenshot -Proc $pGta -OutName '04_GTA_SanAndreas_MainMenu_Verified.png' `
     -Title 'QA TEST #4A - GTA San Andreas Main Menu (dgVoodoo2 D3D11 + VB-Cable Audio)' `
-    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | Main Menu Active -> Entering New Game 3D World' -WaitSec 2
+    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | Main Menu Active -> Entering New Game 3D World' -WaitSec 1 -SkipWindowManip
 
   # Masuk ke Start Game -> New Game -> Lewati Cutscene -> In-Game 3D Los Santos Gameplay!
   try {
-    $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pGta.Id)
-    if ($gtaHwnd -ne [IntPtr]::Zero) {
-      [WinCapture]::SetForegroundWindow($gtaHwnd) | Out-Null
-      Start-Sleep -Milliseconds 500
-      Send-KeyPress 0x0D # Klik Start Game
-      Start-Sleep -Seconds 2
-      Send-KeyPress 0x0D # Klik New Game
-      for ($s = 0; $s -lt 22; $s++) {
-        Start-Sleep -Seconds 1
-        if ($s -in @(12, 16, 19)) {
-          Send-KeyPress 0x0D # Skip cutscene
-          Send-KeyPress 0x20 # Space
-        }
+    Start-Sleep -Milliseconds 500
+    Send-KeyPress 0x0D # Klik Start Game
+    Start-Sleep -Seconds 2
+    Send-KeyPress 0x0D # Klik New Game
+    for ($s = 0; $s -lt 20; $s++) {
+      Start-Sleep -Seconds 1
+      if ($s -in @(12, 16, 18)) {
+        Send-KeyPress 0x0D # Skip cutscene
+        Send-KeyPress 0x20 # Space
       }
     }
   } catch {}
   Save-QaWindowScreenshot -Proc $pGta -OutName '05_GTA_SanAndreas_InGame_3D_Gameplay.png' `
     -Title 'QA TEST #4B - PLAY GTA San Andreas In-Game 3D Gameplay (Los Santos)' `
-    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | 3D World Rendering + Audio + Input Verified' -WaitSec 2
+    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | 3D World Rendering + Audio + Input Verified' -WaitSec 1 -SkipWindowManip
   Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
@@ -696,7 +686,7 @@ if (Test-Path 'C:\Games\Roblox\RobloxPlayerLauncher.exe') {
     -Sub 'Exe: RobloxPlayerBeta.exe (RobloxCrashHandler Intact) + RobloxStudioBeta.exe + Roblox App' -WaitSec 2
   Stop-Process -Id $pRbx.Id -Force -ErrorAction SilentlyContinue
   if ($pStudio) { Stop-Process -Id $pStudio.Id -Force -ErrorAction SilentlyContinue }
-  Get-Process -Name 'Roblox*', 'chrome', 'msedge' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  Get-Process -Name 'Roblox*', 'StudioMCP*', 'NativeDialog*', 'msedgewebview2*', 'chrome', 'msedge' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
 # ============================================================================

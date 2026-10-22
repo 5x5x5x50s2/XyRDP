@@ -1,5 +1,6 @@
 package id.xydesk.remote.ui
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.Canvas
@@ -15,8 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
@@ -33,6 +36,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import java.io.FileOutputStream
 
 @RunWith(RobolectricTestRunner::class)
 @Config(
@@ -46,8 +50,26 @@ class SessionControlsRealRenderTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    private fun saveRealComposeScreenshot(outDir: File, fileName: String) {
+        val outFile = File(outDir, fileName)
+        runCatching {
+            composeRule.onRoot().captureRoboImage(outFile)
+        }
+        if (!outFile.exists() || outFile.length() == 0L) {
+            val bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
+            FileOutputStream(outFile).use { fos ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
+            }
+        }
+        check(outFile.exists() && outFile.length() > 1000L) {
+            "Failed to save screenshot ${outFile.absolutePath}"
+        }
+    }
+
     @Test
     fun renderAllThreeApkUiStates() {
+        System.setProperty("roborazzi.test.record", "true")
+        System.setProperty("robolectric.pixelCopyRenderMode", "hardware")
         val outDirPath = System.getProperty("xyrdp.qa.outdir") ?: "/tmp/apk-ui-screenshots"
         val outDir = File(outDirPath).apply { mkdirs() }
         val bgPath = System.getProperty("xyrdp.qa.bg") ?: ""
@@ -169,22 +191,16 @@ class SessionControlsRealRenderTest {
         composeRule.waitForIdle()
 
         // STATE 1: HUD Utama + Rail Kanan Bawah (Panah + Keyboard) Terpisah dari Handle MENU Kanan Atas
-        composeRule.onRoot().captureRoboImage(
-            File(outDir, "11_APK_UI_State1_HUD_Dan_Rail_Terpisah.png")
-        )
+        saveRealComposeScreenshot(outDir, "11_APK_UI_State1_HUD_Dan_Rail_Terpisah.png")
 
         // STATE 2: Klik Tombol Panah di atas Keyboard ("Aksi cepat") -> Membuka Bubble Aksi Cepat (TANPA membuka Menu Popup Utama!)
         composeRule.onNodeWithContentDescription("Aksi cepat").performClick()
         composeRule.waitForIdle()
-        composeRule.onRoot().captureRoboImage(
-            File(outDir, "12_APK_UI_State2_BubblePanahKeyboard_AksiCepat.png")
-        )
+        saveRealComposeScreenshot(outDir, "12_APK_UI_State2_BubblePanahKeyboard_AksiCepat.png")
 
         // STATE 3: Klik Handle MENU di Kanan Atas ("Buka panel kontrol sesi") -> Membuka Menu Popup Utama (SessionPanel + Lively 60Hz) & Menutup Bubble Panah!
         composeRule.onNodeWithContentDescription("Buka panel kontrol sesi").performClick()
         composeRule.waitForIdle()
-        composeRule.onRoot().captureRoboImage(
-            File(outDir, "13_APK_UI_State3_MenuPopup_PanelUtama_Lively60Hz.png")
-        )
+        saveRealComposeScreenshot(outDir, "13_APK_UI_State3_MenuPopup_PanelUtama_Lively60Hz.png")
     }
 }

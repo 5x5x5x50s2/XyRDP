@@ -124,6 +124,7 @@ jobs:
                       all {
                           systemProperty 'robolectric.graphicsMode', 'NATIVE'
                           systemProperty 'robolectric.pixelCopyRenderMode', 'hardware'
+                          systemProperty 'roborazzi.test.record', 'true'
                           systemProperty 'xyrdp.qa.outdir', System.getProperty('xyrdp.qa.outdir', '/tmp/apk-ui-screenshots')
                           systemProperty 'xyrdp.qa.bg', System.getProperty('xyrdp.qa.bg', '')
                       }

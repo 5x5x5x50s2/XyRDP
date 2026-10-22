@@ -22,6 +22,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -68,6 +69,7 @@ class SessionControlsRealRenderTest {
 
     @Test
     fun renderAllThreeApkUiStates() {
+        java.util.Locale.setDefault(java.util.Locale("id", "ID"))
         System.setProperty("roborazzi.test.record", "true")
         System.setProperty("robolectric.pixelCopyRenderMode", "hardware")
         val outDirPath = System.getProperty("xyrdp.qa.outdir") ?: "/tmp/apk-ui-screenshots"
@@ -193,13 +195,13 @@ class SessionControlsRealRenderTest {
         // STATE 1: HUD Utama + Rail Kanan Bawah (Panah + Keyboard) Terpisah dari Handle MENU Kanan Atas
         saveRealComposeScreenshot(outDir, "11_APK_UI_State1_HUD_Dan_Rail_Terpisah.png")
 
-        // STATE 2: Klik Tombol Panah di atas Keyboard ("Aksi cepat") -> Membuka Bubble Aksi Cepat (TANPA membuka Menu Popup Utama!)
-        composeRule.onNodeWithContentDescription("Aksi cepat").performClick()
+        // STATE 2: Klik Tombol Panah di atas Keyboard -> Membuka Bubble Aksi Cepat (TANPA membuka Menu Popup Utama!)
+        composeRule.onNodeWithContentDescription("Buka aksi cepat di atas keyboard").performClick()
         composeRule.waitForIdle()
         saveRealComposeScreenshot(outDir, "12_APK_UI_State2_BubblePanahKeyboard_AksiCepat.png")
 
-        // STATE 3: Klik Handle MENU di Kanan Atas ("Buka panel kontrol sesi") -> Membuka Menu Popup Utama (SessionPanel + Lively 60Hz) & Menutup Bubble Panah!
-        composeRule.onNodeWithContentDescription("Buka panel kontrol sesi").performClick()
+        // STATE 3: Klik Handle MENU di Kanan Atas -> Membuka Menu Popup Utama (SessionPanel + Lively 60Hz) & Menutup Bubble Panah!
+        composeRule.onNodeWithText("MENU").performClick()
         composeRule.waitForIdle()
         saveRealComposeScreenshot(outDir, "13_APK_UI_State3_MenuPopup_PanelUtama_Lively60Hz.png")
     }

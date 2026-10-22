@@ -338,58 +338,25 @@ function Install-CompleteSampSuite {
             Copy-Item $srcDll -Destination (Join-Path $modsDir $dllName.ToLower()) -Force
           }
         }
+        $origConf = Join-Path $dgvExt 'dgVoodoo.conf'
+        if (Test-Path $origConf) {
+          $confTxt = Get-Content -Path $origConf -Raw
+          $confTxt = $confTxt -replace '(?m)^OutputAPI\s*=.*$', 'OutputAPI = d3d11warp'
+          $confTxt = $confTxt -replace '(?m)^FullScreenMode\s*=.*$', 'FullScreenMode = false'
+          $confTxt = $confTxt -replace '(?m)^ApplicationControlledScreenMode\s*=.*$', 'ApplicationControlledScreenMode = false'
+          $confTxt = $confTxt -replace '(?m)^dgVoodooWatermark\s*=.*$', 'dgVoodooWatermark = false'
+          $confTxt = $confTxt -replace '(?m)^VRAM\s*=.*$', 'VRAM = 512'
+          $confTxt = $confTxt -replace '(?m)^CaptureMouse\s*=.*$', 'CaptureMouse = false'
+          $confTxt = $confTxt -replace '(?m)^CenterAppWindow\s*=.*$', 'CenterAppWindow = true'
+          $confTxt = $confTxt -replace '(?m)^KeepWindowAspectRatio\s*=.*$', 'KeepWindowAspectRatio = false'
+          $confTxt = $confTxt -replace '(?m)^Resolution\s*=.*$', 'Resolution = h:1024, v:768'
+          Set-Content -Path (Join-Path $modsDir 'dgVoodoo.conf') -Value $confTxt -Encoding ASCII -Force
+        }
         Log 'dgVoodoo2 x86 LENGKAP (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll -> D3D11 WARP) berhasil dipasang (Anti-Crash 0x00746929)!'
         Remove-Item $dgvExt -Recurse -Force -ErrorAction SilentlyContinue
       }
     } catch { Log "Unduh dgVoodoo2 warning: $($_.Exception.Message)" }
   }
-
-  # Tulis dgVoodoo.conf khusus RDP (Windowed / Borderless Alt+Enter, No Watermark, 512MB Virtual VRAM, Anti-Crash 0x00746929)
-  @(
-    'Version                              = 0x287'
-    '[General]'
-    'OutputAPI                            = d3d11warp'
-    'Adapters                             = 0'
-    'FullScreenOutput                     = default'
-    'FullScreenMode                       = false'
-    'ScalingMode                          = stretched'
-    'ProgressiveScanlineOrder             = false'
-    'EnumerateRefreshRates                = true'
-    'Brightness                           = 100'
-    'Color                                = 100'
-    'Contrast                             = 100'
-    'InheritColorProfileInFullScreenMode  = false'
-    'KeepWindowAspectRatio                = false'
-    'CaptureMouse                         = false'
-    'CenterAppWindow                      = true'
-    'DisableScreenSaver                   = true'
-    '[GeneralExt]'
-    'DesktopResolution                    = 1024x768'
-    'FreeMouse                            = true'
-    'WindowedAttributes                   = borderless'
-    '[DirectX]'
-    'DisableAndPassThru                   = false'
-    'VideoCard                            = internal3D'
-    'VRAM                                 = 512'
-    'Filtering                            = appdriven'
-    'Mipmapping                           = appdriven'
-    'Resolution                           = h:920, v:620'
-    'Antialiasing                         = off'
-    'ApplicationControlledScreenMode      = false'
-    'AppControlledScreenMode              = false'
-    'DisableAltEnterToToggleScreenMode    = false'
-    'Bilinear2DOperations                 = false'
-    'PhongShadingWhenPossible             = false'
-    'ForceVerticalSync                    = false'
-    'dgVoodooWatermark                    = false'
-    'FastVideoMemoryAccess                = true'
-    'DisableD3DTnLDevice                  = false'
-    '[DirectXExt]'
-    'DefaultEnumeratedResolutions         = all'
-    'ExtraEnumeratedResolutions           = 800x600, 920x620, 1024x768, 1280x720, 1366x768, 1600x900, 1920x1080'
-    'EnumeratedResolutionBitdepths        = all'
-    'MSD3DDeviceNames                     = true'
-  ) | Set-Content -Path (Join-Path $modsDir 'dgVoodoo.conf') -Encoding ASCII -Force
 
   # 5b. Simpan DSOAL di folder cadangan DSOAL-Backup (tidak menimpa SysWOW64\dsound.dll saat VB-Audio Virtual Cable aktif)
   $dsoalBackupDir = Join-Path $kitRoot 'DSOAL-Backup'
@@ -652,11 +619,13 @@ function Apply-SilentPatchToDir([string]$Dir) {
     Copy-Item -Path "$sampCache\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
   }
 
-  # 3. SELALU salin paket lengkap dgVoodoo2 (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll + dgVoodoo.conf)
-  #    + scripts\ (SilentPatchSA.asi + GTASA.WidescreenFix.asi + III.VC.SA.WindowedMode.asi) + vorbisFile.dll
+  # 3. Salin paket lengkap dgVoodoo2 (d3d9.dll + ddraw.dll + d3dimm.dll + d3d8.dll + dgVoodoo.conf)
   try { & attrib.exe -R "$Dir\*.*" /S 2>&1 | Out-Null } catch {}
   Copy-Item -Path "$modsDir\*" -Destination $Dir -Recurse -Force -ErrorAction SilentlyContinue
-  # PENTING: Hapus semua file *.asi di root $Dir agar TIDAK dimuat 2 kali bersama $Dir\scripts\*.asi!
+  # PENTING: Gunakan vorbisHooked.dll murni Rockstar sebagai vorbisFile.dll agar gta_sa.exe & samp.exe langsung terbuka dalam 1 detik tanpa ASI Loader deadlock!
+  if (Test-Path (Join-Path $Dir 'vorbisHooked.dll')) {
+    Copy-Item -LiteralPath (Join-Path $Dir 'vorbisHooked.dll') -Destination (Join-Path $Dir 'vorbisFile.dll') -Force -ErrorAction SilentlyContinue
+  }
   Get-ChildItem -Path $Dir -File -Filter '*.asi' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
   Remove-Item (Join-Path $Dir 'SilentPatchSA.ini') -Force -ErrorAction SilentlyContinue
   # Nonaktifkan video intro MPEG-1 (Logo.mpg & GTAtitles.mpg) agar gta_sa.exe langsung lompat ke Title Screen tanpa DirectShow hang di Windows Server

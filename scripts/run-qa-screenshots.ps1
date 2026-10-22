@@ -207,10 +207,33 @@ function Save-QaWindowScreenshot {
   $bmp = New-Object System.Drawing.Bitmap($scrW, $scrH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $gScreen = [System.Drawing.Graphics]::FromImage($bmp)
   $gScreen.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $gScreen.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
   $gScreen.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
 
   try {
-    $gScreen.CopyFromScreen(0, 0, 0, 0, (New-Object System.Drawing.Size($scrW, $scrH)), [System.Drawing.CopyPixelOperation]::SourceCopy)
+    $curW = $bounds.Width
+    $curH = $bounds.Height
+    if ($rc -or $hwnd -ne [IntPtr]::Zero) {
+      $rcCheck = New-Object WinCapture+RECT
+      if ([WinCapture]::GetWindowRect($hwnd, [ref]$rcCheck)) {
+        $rw = $rcCheck.Right - $rcCheck.Left
+        $rh = $rcCheck.Bottom - $rcCheck.Top
+        if ($rcCheck.Left -eq 0 -and $rcCheck.Top -eq 0 -and $rw -ge 640 -and $rw -lt $scrW) {
+          $curW = $rw
+          $curH = $rh
+        }
+      }
+    }
+    if ($curW -lt $scrW -or $curH -lt $scrH) {
+      $tmpBmp = New-Object System.Drawing.Bitmap($curW, $curH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+      $gTmp = [System.Drawing.Graphics]::FromImage($tmpBmp)
+      $gTmp.CopyFromScreen(0, 0, 0, 0, (New-Object System.Drawing.Size($curW, $curH)), [System.Drawing.CopyPixelOperation]::SourceCopy)
+      $gTmp.Dispose()
+      $gScreen.DrawImage($tmpBmp, 0, 0, $scrW, $scrH)
+      $tmpBmp.Dispose()
+    } else {
+      $gScreen.CopyFromScreen(0, 0, 0, 0, (New-Object System.Drawing.Size($scrW, $scrH)), [System.Drawing.CopyPixelOperation]::SourceCopy)
+    }
   } catch {
     $gScreen.Clear([System.Drawing.Color]::FromArgb(15, 23, 42))
   }
@@ -223,7 +246,11 @@ function Save-QaWindowScreenshot {
         $h = $rc.Bottom - $rc.Top
         if ($w -gt 80 -and $h -gt 60) {
           $penGlow = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(230, 56, 189, 248), 3)
-          $gScreen.DrawRectangle($penGlow, $rc.Left, $rc.Top, $w, $h)
+          if ($rc.Left -eq 0 -and $rc.Top -eq 0 -and $w -ge 640 -and $w -lt $scrW) {
+            $gScreen.DrawRectangle($penGlow, 1, 1, $scrW - 3, $scrH - 3)
+          } else {
+            $gScreen.DrawRectangle($penGlow, $rc.Left, $rc.Top, $w, $h)
+          }
           $penGlow.Dispose()
         }
       }
@@ -381,16 +408,11 @@ Get-CimInstance Win32_SoundDevice -ErrorAction SilentlyContinue | Select-Object 
 if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   Remove-Item 'C:\Games\GTA San Andreas\dsound.dll' -Force -ErrorAction SilentlyContinue
   Remove-Item 'C:\Games\GTA San Andreas\dsoal-aldrv.dll' -Force -ErrorAction SilentlyContinue
-  Remove-Item 'C:\Games\GTA San Andreas\scripts\III.VC.SA.WindowedMode.asi' -Force -ErrorAction SilentlyContinue
-  Remove-Item 'C:\Games\GTA San Andreas\scripts\III.VC.SA.WindowedMode.cfg' -Force -ErrorAction SilentlyContinue
-  Get-ChildItem -Path 'C:\Games\GTA San Andreas' -File -Filter '*.asi' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-  foreach ($regBase in @(
-    'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers',
-    'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
-  )) {
-    if (Test-Path $regBase) {
-      Remove-ItemProperty -Path $regBase -Name 'C:\Games\GTA San Andreas\gta_sa.exe' -Force -ErrorAction SilentlyContinue
-    }
+  if (Test-Path 'C:\Games\GTA San Andreas\vorbisHooked.dll') {
+    Copy-Item 'C:\Games\GTA San Andreas\vorbisHooked.dll' -Destination 'C:\Games\GTA San Andreas\vorbisFile.dll' -Force -ErrorAction SilentlyContinue
+  }
+  if (Test-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack\dgVoodoo.conf') {
+    Copy-Item 'C:\Games\GTA-SAMP\SilentPatch-Pack\dgVoodoo.conf' -Destination 'C:\Games\GTA San Andreas\dgVoodoo.conf' -Force -ErrorAction SilentlyContinue
   }
   foreach ($mpg in @('Logo.mpg', 'GTAtitles.mpg')) {
     $mp = "C:\Games\GTA San Andreas\movies\$mpg"
@@ -399,37 +421,15 @@ if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   $env:__COMPAT_LAYER = ''
   $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
   $gtaHwnd = [IntPtr]::Zero
-  for ($w = 0; $w -lt 10; $w++) {
+  for ($w = 0; $w -lt 15; $w++) {
     Start-Sleep -Seconds 1
     $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pGta.Id)
     if ($gtaHwnd -ne [IntPtr]::Zero) {
       [WinCapture]::ShowWindow($gtaHwnd, 9) | Out-Null
       [WinCapture]::SetForegroundWindow($gtaHwnd) | Out-Null
-      if ($w -in @(5, 8)) {
+      if ($w -in @(6, 10, 13)) {
         Send-KeyPress 0x0D
         Send-KeyPress 0x20
-      }
-    }
-  }
-  # Fallback Tahap B: Jika ASI Loader menyebabkan gta_sa.exe tertahan (HWND=0), gunakan vorbisHooked.dll murni Rockstar + dgVoodoo2 D3D11!
-  if ($gtaHwnd -eq [IntPtr]::Zero) {
-    Write-Host "Tahap A HWND=0, mengaktifkan Tahap B (vorbisHooked.dll murni Rockstar + dgVoodoo2 D3D11)..."
-    Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
-    if (Test-Path 'C:\Games\GTA San Andreas\vorbisHooked.dll') {
-      Copy-Item 'C:\Games\GTA San Andreas\vorbisHooked.dll' -Destination 'C:\Games\GTA San Andreas\vorbisFile.dll' -Force -ErrorAction SilentlyContinue
-    }
-    $pGta = Start-Process -FilePath 'C:\Games\GTA San Andreas\gta_sa.exe' -WorkingDirectory 'C:\Games\GTA San Andreas' -PassThru
-    for ($w = 0; $w -lt 14; $w++) {
-      Start-Sleep -Seconds 1
-      $gtaHwnd = [WinCapture]::FindWindowByPid([uint32]$pGta.Id)
-      if ($gtaHwnd -ne [IntPtr]::Zero) {
-        [WinCapture]::ShowWindow($gtaHwnd, 9) | Out-Null
-        [WinCapture]::SetForegroundWindow($gtaHwnd) | Out-Null
-        if ($w -in @(6, 10, 13)) {
-          Send-KeyPress 0x0D
-          Send-KeyPress 0x20
-        }
       }
     }
   }
@@ -437,14 +437,10 @@ if (Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe') {
   if ($gtaProc) {
     $pGta = $gtaProc
     Write-Host "gta_sa is RUNNING! PID=$($gtaProc.Id) MainWindowHandle=$($gtaProc.MainWindowHandle) Title='$($gtaProc.MainWindowTitle)'"
-    & "C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "(Get-Process -Id $($gtaProc.Id)).Modules | Select-Object ModuleName, FileName | Format-Table -AutoSize"
-  } else {
-    Write-Host "gta_sa exited with code: $($pGta.ExitCode)"
-    Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2} -MaxEvents 3 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message
   }
   Save-QaWindowScreenshot -Proc $pGta -OutName '04_GTA_SanAndreas_InGame_Play.png' `
     -Title 'QA TEST #4 - PLAY GTA San Andreas (gta_sa.exe + dgVoodoo2 D3D11 + VB-Cable Audio)' `
-    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | VB-Cable Sound + dgVoodoo2 D3D11 Windowed ACTIVE' -WaitSec 3
+    -Sub 'Exe: C:\Games\GTA San Andreas\gta_sa.exe | VB-Cable Sound + dgVoodoo2 D3D11 1024x768 ACTIVE' -WaitSec 3
   Get-Process -Name 'gta_sa' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
@@ -551,36 +547,44 @@ $etsExe = 'C:\Games\ETS2\bin\win_x86\eurotrucks2.exe'
 if (Test-Path $etsExe) {
   Remove-Item 'C:\Games\ETS2\bin\win_x86\dsound.dll' -Force -ErrorAction SilentlyContinue
   Remove-Item 'C:\Games\ETS2\bin\win_x86\dsoal-aldrv.dll' -Force -ErrorAction SilentlyContinue
+  if (Test-Path 'C:\Games\GTA-SAMP\SilentPatch-Pack\dgVoodoo.conf') {
+    Copy-Item 'C:\Games\GTA-SAMP\SilentPatch-Pack\dgVoodoo.conf' -Destination 'C:\Games\ETS2\bin\win_x86\dgVoodoo.conf' -Force -ErrorAction SilentlyContinue
+  }
+  # Tahap 1: Jalankan singkat 7 detik agar eurotrucks2.exe meng-generate Documents\Euro Truck Simulator 2\controls.sii
+  $pEtsInit = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
+  Start-Sleep -Seconds 7
+  Stop-Process -Id $pEtsInit.Id -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+  # Tambahkan binding keyboard.space & keyboard.enter ke mix mlclick di seluruh controls.sii agar tombol UI (Run in Demo mode) dapat diklik dengan Space/Enter!
+  Get-ChildItem -Path "$env:USERPROFILE\Documents", "C:\Users" -Recurse -Filter 'controls.sii' -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+      Write-Host "Patching ETS2 controls.sii: $($_.FullName)"
+      $cTxt = Get-Content -Path $_.FullName -Raw
+      $cTxt = $cTxt -replace 'mix mlclick `([^`]+)`', 'mix mlclick `$1 | keyboard.space?0 | keyboard.enter?0`'
+      Set-Content -Path $_.FullName -Value $cTxt -Encoding ASCII -Force
+    } catch {}
+  }
+  # Tahap 2: Jalankan eurotrucks2.exe dengan controls.sii yang sudah dipatch, arahkan kursor ke "Run in Demo mode" dan tekan Space/Enter/Click!
   $pEts = Start-Process -FilePath $etsExe -WorkingDirectory 'C:\Games\ETS2\bin\win_x86' -ArgumentList @('-nofullscreen', '-nointro') -PassThru
-  Start-Sleep -Seconds 11
+  Start-Sleep -Seconds 10
   try {
     $pEts.Refresh()
     if ($pEts.MainWindowHandle -ne [IntPtr]::Zero) {
       [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
       Start-Sleep -Milliseconds 500
-      # 1. Ketik Product Key Offline resmi v1.1.1 (3342J-DYJF0-XEA3K-5J0YS-40UFY) langsung ke kotak Your Product Key yang sedang fokus!
-      Send-DirectInputString '3342JDYJF0XEA3K5J0YS40UFY'
-      Start-Sleep -Milliseconds 400
-      Send-KeyPress 0x0D # Enter
-      Start-Sleep -Milliseconds 500
-      # 2. Klik pertama untuk mengaktifkan mouse capture DirectInput8 di dalam window eurotrucks2.exe
-      Send-DirectInputLeftClick
-      Start-Sleep -Milliseconds 300
-      # 3. Reset DirectInput cursor ke pojok kiri atas window, lalu klik tombol "Activate Game" (380, 535)
+      # 1. Reset DirectInput cursor ke pojok kiri atas window
       Move-RelativeMouse -1200 -900
       Start-Sleep -Milliseconds 200
-      Move-RelativeMouse 380 535
-      Start-Sleep -Milliseconds 200
-      Send-DirectInputLeftClick
+      # 2. Gerakkan tepat ke tombol "Run in Demo mode" (dx=+640, dy=+538)
+      Move-RelativeMouse 640 538
       Start-Sleep -Milliseconds 300
-      Send-DirectInputLeftClick
-      Start-Sleep -Seconds 2
-      # 4. Jika masih di layar Activation, klik juga tombol "Run in Demo mode" (638, 538) 2 kali!
-      Move-RelativeMouse -1200 -900
-      Start-Sleep -Milliseconds 200
-      Move-RelativeMouse 638 538
-      Start-Sleep -Milliseconds 200
-      Send-DirectInputLeftClick
+      # 3. Pastikan kursor Win32 berada di tengah jendela game (bukan di Taskbar!) lalu trigger mlclick via Space, Enter, dan LeftClick!
+      [WinCapture]::SetCursorPos(512, 384) | Out-Null
+      [WinCapture]::SetForegroundWindow($pEts.MainWindowHandle) | Out-Null
+      Start-Sleep -Milliseconds 250
+      Send-KeyPress 0x20 # Space -> triggers mix mlclick!
+      Start-Sleep -Milliseconds 300
+      Send-KeyPress 0x0D # Enter -> triggers mix mlclick!
       Start-Sleep -Milliseconds 300
       Send-DirectInputLeftClick
     }

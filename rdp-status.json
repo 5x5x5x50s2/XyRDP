@@ -1,50 +1,50 @@
 {
   "active": true,
-  "hostname": "rdpfree-130",
+  "hostname": "rdpfree-131",
   "os": "Microsoft Windows Server 2022 Datacenter",
   "os_build": "10.0.20348",
   "os_style": "Native Windows",
   "hardware": {
+    "disk_free_gb": 81.2,
     "ram_gb": 16.0,
-    "disk_free_gb": 78.3,
     "cpu_threads": 4
   },
   "rdp_port": 3389,
   "rdp_user": "xyadmin",
   "rdp_listen": ":::3389 (svchost) | 0.0.0.0:3389 (svchost) + handshake ok via 127.0.0.1",
   "rdp_denyts": true,
-  "started_at": "2026-10-22T16:40:43Z",
-  "expires_at": "2026-10-22T22:22:43Z",
+  "started_at": "2026-10-23T04:43:28Z",
+  "expires_at": "2026-10-23T10:25:28Z",
   "duration_menit": 342,
-  "run_id": "39815825208",
+  "run_id": "39901758451",
   "run_attempt": "1",
-  "run_number": "130",
-  "run_url": "https://github.com/xykal/XyRDP/actions/runs/39815825208",
+  "run_number": "131",
+  "run_url": "https://github.com/xykal/XyRDP/actions/runs/39901758451",
   "mode": "bersih+win10",
   "persist": {
-    "profile": "C:\\Users\\xyadmin",
-    "files": 102,
     "source": "xyrdp-state.7z.enc",
-    "restored": true
+    "profile": "C:\\Users\\xyadmin",
+    "restored": true,
+    "files": 176
   },
   "storage": {
     "boost": "ok",
-    "before_gb": 78.31,
-    "after_gb": 102.48,
-    "gained_gb": 24.17,
+    "before_gb": 81.13,
+    "after_gb": 105.55,
+    "gained_gb": 24.42,
     "removed_targets": 19,
     "drives": [
       {
         "size_gb": 255.45,
-        "free_gb": 102.48,
-        "used_gb": 152.96,
-        "letter": "C"
+        "letter": "C",
+        "used_gb": 149.89,
+        "free_gb": 105.55
       },
       {
-        "size_gb": 219.98,
-        "free_gb": 219.85,
-        "used_gb": 0.13,
-        "letter": "D"
+        "size_gb": 150.0,
+        "letter": "D",
+        "used_gb": 3.0,
+        "free_gb": 146.99
       }
     ],
     "game_dir": "D:\\Games (disarankan untuk GTA)",
@@ -59,65 +59,61 @@
     "note": "Tampilan Windows 10 (UI Windows Server 2022 = kernel/UI Windows 10 21H2)"
   },
   "media": {
-    "verification": "Login ulang, aktifkan mic di XyDesk dan izinkan Android. Uji Windows Settings > Sound > Input; kebijakan aktif bukan bukti capture end-to-end.",
+    "microphone": "rdp_capture_enabled",
     "wallpaper": "xyverse_configured_for_user_logon",
-    "audio_output": "rdp_playback_enabled",
-    "microphone": "rdp_capture_enabled"
+    "verification": "Login ulang, aktifkan mic di XyDesk dan izinkan Android. Uji Windows Settings > Sound > Input; kebijakan aktif bukan bukti capture end-to-end.",
+    "audio_output": "rdp_playback_enabled"
   },
   "grafis": {
-    "mesa": "26.2.4",
-    "adapters": "Microsoft Hyper-V Video",
     "mode": "software",
     "opengl": "4.6 (Mesa llvmpipe system-wide x64/x86 + OpenGL ES 3.2)",
+    "adapters": "Microsoft Hyper-V Video",
     "path": "C:\\XyRDP\\grafis\\mesa-x64",
+    "mesa": "26.2.4",
     "vulkan": "lavapipe 1.3 (CPU)"
   },
   "samp": {
-    "webview2": true,
-    "dgvoodoo_d3d9": true,
-    "fullscreen": true,
-    "vc2015_x64": true,
     "dep_optin": true,
-    "vc2015_x86": true,
-    "directx9": true,
+    "webview2": true,
     "samp_client": true,
-    "silentpatch": false,
-    "vc2013_x64": true,
+    "dgvoodoo_d3d9": true,
     "vc2013_x86": true,
+    "silentpatch": false,
     "status": "runtimes-2026-ready",
-    "directplay": true
+    "directplay": true,
+    "vc2015_x86": true,
+    "fullscreen": true,
+    "directx9": true,
+    "vc2013_x64": true,
+    "vc2015_x64": true
   },
   "games": {
     "fivem": {
       "sound": true,
       "status": true
     },
-    "roblox": {
-      "launcher": "C:\\Games\\Roblox\\Launch-Roblox-AntiVM.ps1",
-      "status": "ready-antivm"
-    },
-    "minecraft_bedrock": {
-      "path": "C:\\XyRDP\\deps\\games\\MinecraftInstaller.msi",
-      "status": "installed"
-    },
-    "minecraft_java": {
-      "prismlauncher": true,
-      "status": "ready",
-      "opengl46": true,
-      "official_exe": true,
-      "tlauncher_jar": true
+    "ets2": {
+      "launcher": "C:\\Games\\ETS2\\Launch-ETS2-Free.ps1",
+      "status": "ready"
     },
     "blender": {
       "launcher": "C:\\Games\\Blender\\Launch-Blender.ps1",
       "status": "ready"
     },
-    "ets2": {
-      "launcher": "C:\\Games\\ETS2\\Launch-ETS2-Free.ps1",
-      "status": "ready"
-    },
     "memu": {
       "launcher": "C:\\Games\\MEmu\\Launch-MEmu.ps1",
       "status": "ready"
+    },
+    "minecraft_java": {
+      "official_exe": true,
+      "opengl46": true,
+      "status": "ready",
+      "prismlauncher": true,
+      "tlauncher_jar": true
+    },
+    "roblox": {
+      "launcher": "C:\\Games\\Roblox\\Launch-Roblox-AntiVM.ps1",
+      "status": "ready-antivm"
     }
   },
   "extras": {
@@ -129,9 +125,9 @@
     "admin": true
   },
   "tools_hub": {
-    "exe": "C:\\XyRDP\\tools\\XyDeskDashboard.exe",
+    "installed": true,
     "auto_start": true,
-    "installed": true
+    "exe": "C:\\XyRDP\\tools\\XyDeskDashboard.exe"
   },
   "xydesk": {
     "host": "ok",
@@ -151,21 +147,21 @@
     "note": "Host siap dipakai klien XyDesk Remote mode Koneksi RDP (Host+Port tunnel). Kunci WinStations\\RDP-Tcp sengaja TIDAK ditulis supaya listener 3389 tidak mati di runner GitHub."
   },
   "akses": {
+    "tailscale": {
+      "note": "HP/PC harus login Tailscale pada tailnet yang sama. TCP 3389 harus diizinkan ACL.",
+      "ip": "100.97.1.96",
+      "hostname": "rdpfree-131",
+      "status": "ok",
+      "magicdns": "rdpfree-131.tail01cd7c.ts.net."
+    },
     "mode": "tailscale",
     "tunnel": {
-      "address": "100.124.170.58:3389",
       "selftest": "ok",
-      "port": 3389,
-      "outside": "tailscale",
-      "host": "100.124.170.58",
-      "status": "ok"
-    },
-    "tailscale": {
-      "hostname": "rdpfree-130",
-      "note": "HP/PC harus login Tailscale pada tailnet yang sama. TCP 3389 harus diizinkan ACL.",
-      "ip": "100.124.170.58",
+      "host": "100.97.1.96",
+      "address": "100.97.1.96:3389",
       "status": "ok",
-      "magicdns": "rdpfree-130.tail01cd7c.ts.net."
+      "outside": "tailscale",
+      "port": 3389
     }
   }
 }

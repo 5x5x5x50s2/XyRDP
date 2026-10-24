@@ -36,16 +36,42 @@ try {
   $exePath = if ($srcExe) { Join-Path $srcExe.FullName 'Discord.exe' } else { $null }
   if (-not $exePath -or -not (Test-Path $exePath)) { throw 'Discord.exe tidak ditemukan setelah install' }
 
-  # Shortcut publik (semua user) -> target ke salinan per-user lewat launcher
-  # Update.exe milik Discord (membuat ikon tetap valid setelah auto-update).
-  $launcher = Join-Path $srcApp 'Update.exe'
+  # Launcher per-user: Discord terpasang per-pengguna, jadi shortcut TIDAK
+  # boleh menunjuk Update.exe milik akun setup (user RDP tidak bisa akses
+  # AppData akun lain -> Discord tidak terbuka sama sekali). Shortcut publik
+  # menunjuk launcher ini: bila Discord belum ada di profil user yang login,
+  # launcher memasangnya dulu dari installer lokal lalu membukanya.
+  $launcherPs1 = Join-Path $root 'Launch-Discord.ps1'
+  @'
+$ErrorActionPreference = 'Continue'
+$app = Join-Path $env:LocalAppData 'Discord'
+$update = Join-Path $app 'Update.exe'
+try {
+  $cfg = Join-Path (Join-Path $env:AppData 'discord') 'settings.json'
+  if (Test-Path $cfg) {
+    $j = Get-Content $cfg -Raw | ConvertFrom-Json
+    $j | Add-Member -NotePropertyName enableHardwareAcceleration -NotePropertyValue $false -Force
+    $j | ConvertTo-Json -Depth 10 | Set-Content $cfg -Encoding UTF8
+  }
+} catch {}
+if (-not (Test-Path $update)) {
+  $setup = 'C:\ProgramData\RdpFree\discord\DiscordSetup.exe'
+  if (Test-Path $setup) {
+    $p = Start-Process $setup -ArgumentList '/S' -PassThru -WindowStyle Hidden
+    $p.WaitForExit(240000) | Out-Null
+    for ($i = 0; $i -lt 30 -and -not (Test-Path $update); $i++) { Start-Sleep -Seconds 2 }
+  }
+}
+if (Test-Path $update) { Start-Process $update -ArgumentList '--processStart','Discord.exe' }
+'@ | Set-Content -Path $launcherPs1 -Encoding UTF8 -Force
+
   $publicDesktop = 'C:\Users\Public\Desktop'
   try {
     $wsh = New-Object -ComObject WScript.Shell
     $lnk = $wsh.CreateShortcut((Join-Path $publicDesktop 'Discord.lnk'))
-    $lnk.TargetPath = $launcher
-    $lnk.Arguments = '--processStart Discord.exe'
-    $lnk.WorkingDirectory = $srcApp
+    $lnk.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+    $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherPs1`""
+    $lnk.WorkingDirectory = $root
     $lnk.IconLocation = "$exePath,0"
     $lnk.Save()
   } catch { Log "shortcut publik gagal: $($_.Exception.Message)" }

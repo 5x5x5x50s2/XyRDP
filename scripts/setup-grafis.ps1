@@ -242,6 +242,17 @@ try {
   $env:MESA_GLSL_VERSION_OVERRIDE = '460'
   $env:MESA_GLES_VERSION_OVERRIDE = '3.2'
 
+  # Tuning performa render software (target game ringan tembus ~30 FPS di VM
+  # tanpa GPU): pakai semua core untuk llvmpipe + aktifkan GL thread Mesa.
+  $lpThreads = [string][Environment]::ProcessorCount
+  Set-Reg $envKey 'LP_NUM_THREADS' $lpThreads 'String' | Out-Null
+  Set-Reg $envKey 'MESA_GLTHREAD' 'true' 'String' | Out-Null
+  [Environment]::SetEnvironmentVariable('LP_NUM_THREADS', $lpThreads, 'Machine')
+  [Environment]::SetEnvironmentVariable('MESA_GLTHREAD', 'true', 'Machine')
+  $env:LP_NUM_THREADS = $lpThreads
+  $env:MESA_GLTHREAD = 'true'
+  Log "Tuning FPS: LP_NUM_THREADS=$lpThreads, MESA_GLTHREAD=true (render software multi-core).
+
   # Aktifkan kebijakan RDP WDDM / GPU Enumeration agar aplikasi DirectX/OpenGL/Emulator tidak menolak jalan di RDP
   $tsPol = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
   Set-Reg $tsPol 'bEnumerateHWBeforeSW' 1 'DWord' | Out-Null

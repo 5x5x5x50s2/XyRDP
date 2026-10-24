@@ -1133,8 +1133,17 @@ if ($env:SAMP -or $cfg.samp) {
   Install-CompleteSampSuite
 }
 
+$gtaPresent = Test-Path 'C:\Games\GTA San Andreas\gta_sa.exe'
+$sampPlayable = $gtaPresent -and (Test-Path 'C:\Games\GTA San Andreas\samp.exe')
+if ($sampPlayable) {
+  Log 'GTA SA + SA-MP client lengkap: siap dimainkan dari shortcut desktop.'
+} else {
+  Log 'SA-MP client & patch sudah otomatis terpasang. GTA SA (gta_sa.exe) belum ada: taruh salinan game milikmu ke C:\Games\GTA San Andreas (folder ini tersimpan antar-sesi), sesi berikutnya otomatis siap.'
+}
 Update-Status @{
   samp = @{
+    game_present  = $gtaPresent
+    playable      = $sampPlayable
     status        = 'runtimes-2026-ready'
     directx9      = (Test-DirectXFiles)
     vc2015_x86    = (Test-Vc2015Files $wow64)

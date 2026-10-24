@@ -139,9 +139,6 @@ publish_linux_status() {
 
   local connect_host="$ts_ref"
   local connect_port="$default_port"
-  if [ "${AKSES:-tailscale}" = "portmap" ]; then
-    connect_host="${PORTMAP_HOST:-$ts_ref}"
-    connect_port="${PORTMAP_PORT:-$default_port}"
   fi
 
   jq -n \

@@ -26,8 +26,6 @@ on:
         type: choice
         options:
           - tailscale
-          - portmap
-          - railway
       storage_boost:
         description: 'Bersihkan toolcache untuk ruang disk ekstra'
         required: false
@@ -153,26 +151,6 @@ on:
         options:
           - ya
           - tidak
-      railway_host:
-        description: 'Host publik Railway untuk RDP (akses=railway)'
-        required: false
-        default: ''
-        type: string
-      railway_port:
-        description: 'Port publik Railway untuk RDP (akses=railway)'
-        required: false
-        default: ''
-        type: string
-      portmap_host:
-        description: 'Host publik Portmap.io (opsional)'
-        required: false
-        default: ''
-        type: string
-      portmap_port:
-        description: 'Port publik Portmap.io (opsional)'
-        required: false
-        default: ''
-        type: string
 
 permissions:
   contents: write
@@ -194,9 +172,6 @@ jobs:
       RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
       AKSES: ${{ inputs.akses || 'tailscale' }}
       TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
-      PORTMAP_OVPN_CONFIG: ${{ secrets.PORTMAP_OVPN_CONFIG }}
-      PORTMAP_HOST: ${{ inputs.portmap_host || vars.PORTMAP_HOST }}
-      PORTMAP_PORT: ${{ inputs.portmap_port || vars.PORTMAP_PORT }}
       STORAGE_BOOST: ${{ inputs.storage_boost || 'ya' }}
       DEBLOAT: ${{ inputs.debloat || 'ringan' }}
       SAMP: ${{ inputs.samp || 'ya' }}
@@ -210,11 +185,6 @@ jobs:
       MINECRAFT_JAVA: ${{ inputs.minecraft_java || 'tidak' }}
       MINECRAFT_BEDROCK: ${{ inputs.minecraft_bedrock || 'tidak' }}
       DISCORD: ${{ inputs.discord || 'tidak' }}
-      RAILWAY_FRP_TOKEN: ${{ secrets.RAILWAY_FRP_TOKEN }}
-      RAILWAY_FRP_SERVER: ${{ vars.RAILWAY_FRP_SERVER }}
-      RAILWAY_REMOTE_PORT: ${{ vars.RAILWAY_REMOTE_PORT }}
-      RAILWAY_HOST: ${{ inputs.railway_host || vars.RAILWAY_HOST }}
-      RAILWAY_PORT: ${{ inputs.railway_port || vars.RAILWAY_PORT }}
       PERPANJANG_OTOMATIS: ${{ inputs.perpanjang_otomatis || 'ya' }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -335,15 +305,7 @@ jobs:
         continue-on-error: true
         run: ./scripts/setup-discord.ps1
 
-      - name: Setup akses Portmap OpenVPN (diaktifkan di akhir setelah semua siap)
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.akses == 'portmap' }}
-        shell: pwsh
-        run: ./scripts/setup-portmap.ps1
 
-      - name: Setup akses Railway frp (publik, tanpa Tailscale)
-        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.akses == 'railway' }}
-        shell: pwsh
-        run: ./scripts/setup-railway.ps1
 
       - name: Publish status siap pakai (setelah seluruh aplikasi & game siap)
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
@@ -410,11 +372,7 @@ jobs:
               minecraft_java      = "$($env:MINECRAFT_JAVA)"
               minecraft_bedrock   = "$($env:MINECRAFT_BEDROCK)"
               discord             = "$($env:DISCORD)"
-              railway_host        = "$($env:RAILWAY_HOST)"
-              railway_port        = "$($env:RAILWAY_PORT)"
               perpanjang_otomatis = "$($env:PERPANJANG_OTOMATIS)"
-              portmap_host        = "$($env:PORTMAP_HOST)"
-              portmap_port        = "$($env:PORTMAP_PORT)"
             }
           } | ConvertTo-Json -Depth 5
           try {

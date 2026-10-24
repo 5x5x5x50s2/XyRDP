@@ -104,6 +104,29 @@ Log "  Free C: sebelum : ${freeBefore} GB"
 $script:BoostStart = Get-Date
 function Test-BoostTimeout { return ((Get-Date) - $script:BoostStart).TotalMinutes -gt 8 }
 
+# Jalankan perintah eksternal dengan batas waktu + log detak tiap 15 detik.
+# Mencegah satu perintah sunyi (mis. docker prune) menggantung step belasan
+# menit tanpa output -> di GitHub App terlihat "loading" kosong.
+function Invoke-WithTimeout([scriptblock]$Block, [int]$TimeoutSec, [string]$Label) {
+  $job = Start-Job -ScriptBlock $Block
+  $elapsed = 0
+  try {
+    while ($elapsed -lt $TimeoutSec) {
+      if (Wait-Job $job -Timeout 15) { break }
+      $elapsed += 15
+      if ($job.State -eq 'Running') { Log "  $Label masih berjalan... ${elapsed}s (batas ${TimeoutSec}s)" }
+    }
+    if ($job.State -eq 'Running') {
+      Stop-Job $job -ErrorAction SilentlyContinue
+      Log "  $Label melebihi ${TimeoutSec}s -> dihentikan, lanjut (best-effort)"
+    } else {
+      Log "  $Label selesai dalam ~${elapsed}s"
+    }
+    Receive-Job $job -ErrorAction SilentlyContinue | Out-Null
+  } catch { Log "  $Label error: $($_.Exception.Message)" }
+  finally { Remove-Job $job -Force -ErrorAction SilentlyContinue }
+}
+
 try {
   $vd = Get-CimInstance Win32_LogicalDisk | ForEach-Object { "$($_.DeviceID) $([math]::Round($_.Size/1GB))GB total / $([math]::Round($_.FreeSpace/1GB))GB free" }
   Log "  Disk layout : $($vd -join ' | ')"
@@ -126,10 +149,11 @@ $totalFreed += Remove-Tree 'C:\Program Files\Unity' 'Unity Editor'
 $totalFreed += Remove-Tree 'C:\hostedtoolcache\windows\R' 'R language'
 $totalFreed += Remove-Tree 'C:\Program Files\R' 'R Program Files'
 $totalFreed += Remove-Tree 'C:\R' 'R root'
-try { & winget uninstall --id Unity.UnityHub --exact --silent --accept-source-agreements 2>&1 | Out-Null } catch {}
-try { & winget uninstall --id RProject.R --exact --silent 2>&1 | Out-Null } catch {}
-try { & choco uninstall unityhub -y --no-progress 2>&1 | Out-Null } catch {}
-try { & choco uninstall r.project -y --no-progress 2>&1 | Out-Null } catch {}
+Log '  uninstall Unity Hub / R (winget/choco, best-effort)...'
+Invoke-WithTimeout { winget uninstall --id Unity.UnityHub --exact --silent --accept-source-agreements 2>&1 | Out-Null } 60 'winget UnityHub'
+Invoke-WithTimeout { winget uninstall --id RProject.R --exact --silent 2>&1 | Out-Null } 60 'winget R'
+Invoke-WithTimeout { choco uninstall unityhub -y --no-progress 2>&1 | Out-Null } 60 'choco unityhub'
+Invoke-WithTimeout { choco uninstall r.project -y --no-progress 2>&1 | Out-Null } 60 'choco r.project'
 # Hapus versi Node/Python/Go lama kecuali yang sedang dipakai runner sekarang
 # Kita SIMPAN folder yang sedang aktif (cek PATH), hapus sisanya lebih aman
 # Strategi: hapus semua hostedtoolcache kecuali folder yang baru dipakai? Lebih simple: hapus Android & Haskell saja yang paling besar & tidak dibutuhkan buat SAMP.
@@ -155,14 +179,28 @@ if (Test-BoostTimeout) { Log '  boost timeout -> skip dotnet' } else { try {
 } catch { Log "  dotnet SDK cleanup gagal: $($_.Exception.Message)" } }
 
 # Docker
+# DULU: `docker system prune` bisa 12+ menit sunyi total (output dibuang,
+# demon lambat) -> step terlihat kosong/loading di GitHub App sampai user
+# cancel sesi. SEKARANG: cek demon dgn timeout, prune dibatasi 120 detik,
+# ada log detak tiap 15 detik, lewat batas -> dilewati (best-effort).
 try {
   $docker = Get-Command docker -ErrorAction SilentlyContinue
   if ($docker) {
-    Log '  Docker: prune images...'
-    & docker system prune -a -f 2>&1 | Out-Null
-    & docker builder prune -a -f 2>&1 | Out-Null
-  }
-} catch {}
+    $daemonJob = Start-Job -ScriptBlock { docker version --format '{{.Server.Version}}' 2>&1 }
+    $daemonOk = $false
+    if (Wait-Job $daemonJob -Timeout 20) {
+      $dOut = (Receive-Job $daemonJob -ErrorAction SilentlyContinue | Out-String).Trim()
+      $daemonOk = ($dOut -match '\d+\.\d+' -and $dOut -notmatch 'error|cannot|failed')
+      if (-not $daemonOk) { Log '  Docker: demon tidak siap -> prune dilewati' }
+    }
+    else { Stop-Job $daemonJob -ErrorAction SilentlyContinue; Log '  Docker: demon tidak merespons 20s -> prune dilewati' }
+    Remove-Job $daemonJob -Force -ErrorAction SilentlyContinue
+    if ($daemonOk) {
+      Log '  Docker: prune images (maks 120s)...'
+      Invoke-WithTimeout { docker system prune -a -f 2>&1 | Out-Null; docker builder prune -a -f 2>&1 | Out-Null } 120 'Docker prune'
+    }
+  } else { Log '  Docker: tidak terpasang -> skip' }
+} catch { Log "  Docker prune error: $($_.Exception.Message)" }
 
 # ---------- 3. Chocolatey cache ----------
 $totalFreed += Remove-Tree 'C:\ProgramData\chocolatey\lib' 'Choco lib cache'

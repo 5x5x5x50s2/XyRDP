@@ -264,6 +264,7 @@ jobs:
         run: ./scripts/restore-state.ps1
 
       - name: Optimasi storage runner
+        timeout-minutes: 15
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && ((inputs.storage_boost || 'ya') != 'tidak' || (inputs.debloat || 'ringan') != 'tidak') }}
         shell: pwsh
         continue-on-error: true

@@ -272,6 +272,16 @@ try {
   & reg.exe export "HKCU\Software\SAMP" $sampRegOut /y 2>&1 | Out-Null
 } catch {}
 
+# Taskbar (2026-10-24): aplikasi tersemat + preferensi taskbar ikut disimpan
+# supaya susunan taskbar tidak reset tiap sesi (Taskband = pinned apps,
+# Advanced = perilaku taskbar).
+try {
+  $tbDir = Join-Path $stageDir 'Persist'
+  New-Item -ItemType Directory -Path $tbDir -Force -ErrorAction SilentlyContinue | Out-Null
+  & reg.exe export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" (Join-Path $tbDir 'taskbar-pinned.reg') /y 2>&1 | Out-Null
+  & reg.exe export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" (Join-Path $tbDir 'taskbar-advanced.reg') /y 2>&1 | Out-Null
+} catch {}
+
 # 4. Hitung apakah ada file yang akan disimpan & cek perubahan (Anti-Spam API untuk Akun Baru)
 $allStagedFiles = @(Get-ChildItem -Path $stageDir -Recurse -File -Force -ErrorAction SilentlyContinue)
 $fileCount = $allStagedFiles.Count

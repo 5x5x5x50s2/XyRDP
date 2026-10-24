@@ -291,6 +291,21 @@ if (Test-Path (Join-Path $extDir 'PrismLauncher')) {
 }
 if (Test-Path 'C:\Persist\samp-settings.reg') {
   try { & reg.exe import 'C:\Persist\samp-settings.reg' 2>&1 | Out-Null } catch {}
+
+# Taskbar: pulihkan pinned apps + preferensi, lalu restart Explorer bila
+# sedang jalan supaya langsung terpakai di sesi ini.
+foreach ($tbReg in @('taskbar-pinned.reg', 'taskbar-advanced.reg')) {
+  $tbPath = Join-Path 'C:\Persist' $tbReg
+  if (Test-Path $tbPath) {
+    try { & reg.exe import $tbPath 2>&1 | Out-Null } catch {}
+  }
+}
+try {
+  if (Get-Process explorer -ErrorAction SilentlyContinue) {
+    Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+    Start-Process explorer.exe
+  }
+} catch {}
 }
 
 # Jika sesi sebelumnya menyimpan Gaming Boost, terapkan kembali secara otomatis

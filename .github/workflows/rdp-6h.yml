@@ -1,4 +1,4 @@
-# rdpfree-workflow-schema: 5
+# rdpfree-workflow-schema: 6
 name: RdpFree — RDP 6 Jam
 
 on:
@@ -27,6 +27,7 @@ on:
         options:
           - tailscale
           - portmap
+          - railway
       storage_boost:
         description: 'Bersihkan toolcache untuk ruang disk ekstra'
         required: false
@@ -144,6 +145,24 @@ on:
         options:
           - ya
           - tidak
+      discord:
+        description: 'Pasang aplikasi Discord desktop'
+        required: false
+        default: 'tidak'
+        type: choice
+        options:
+          - ya
+          - tidak
+      railway_host:
+        description: 'Host publik Railway untuk RDP (akses=railway)'
+        required: false
+        default: ''
+        type: string
+      railway_port:
+        description: 'Port publik Railway untuk RDP (akses=railway)'
+        required: false
+        default: ''
+        type: string
       portmap_host:
         description: 'Host publik Portmap.io (opsional)'
         required: false
@@ -190,6 +209,12 @@ jobs:
       ROBLOX: ${{ inputs.roblox || 'tidak' }}
       MINECRAFT_JAVA: ${{ inputs.minecraft_java || 'tidak' }}
       MINECRAFT_BEDROCK: ${{ inputs.minecraft_bedrock || 'tidak' }}
+      DISCORD: ${{ inputs.discord || 'tidak' }}
+      RAILWAY_FRP_TOKEN: ${{ secrets.RAILWAY_FRP_TOKEN }}
+      RAILWAY_FRP_SERVER: ${{ vars.RAILWAY_FRP_SERVER }}
+      RAILWAY_REMOTE_PORT: ${{ vars.RAILWAY_REMOTE_PORT }}
+      RAILWAY_HOST: ${{ inputs.railway_host || vars.RAILWAY_HOST }}
+      RAILWAY_PORT: ${{ inputs.railway_port || vars.RAILWAY_PORT }}
       PERPANJANG_OTOMATIS: ${{ inputs.perpanjang_otomatis || 'ya' }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -303,10 +328,21 @@ jobs:
         shell: pwsh
         run: ./scripts/setup-akses.ps1
 
+      - name: Pasang Discord desktop
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.discord || 'tidak') == 'ya' }}
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/setup-discord.ps1
+
       - name: Setup akses Portmap OpenVPN (diaktifkan di akhir setelah semua siap)
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.akses == 'portmap' }}
         shell: pwsh
         run: ./scripts/setup-portmap.ps1
+
+      - name: Setup akses Railway frp (publik, tanpa Tailscale)
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && inputs.akses == 'railway' }}
+        shell: pwsh
+        run: ./scripts/setup-railway.ps1
 
       - name: Publish status siap pakai (setelah seluruh aplikasi & game siap)
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
@@ -372,6 +408,9 @@ jobs:
               roblox              = "$($env:ROBLOX)"
               minecraft_java      = "$($env:MINECRAFT_JAVA)"
               minecraft_bedrock   = "$($env:MINECRAFT_BEDROCK)"
+              discord             = "$($env:DISCORD)"
+              railway_host        = "$($env:RAILWAY_HOST)"
+              railway_port        = "$($env:RAILWAY_PORT)"
               perpanjang_otomatis = "$($env:PERPANJANG_OTOMATIS)"
               portmap_host        = "$($env:PORTMAP_HOST)"
               portmap_port        = "$($env:PORTMAP_PORT)"

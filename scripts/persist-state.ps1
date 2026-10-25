@@ -291,6 +291,18 @@ try {
   & reg.exe export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" (Join-Path $tbDir 'taskbar-advanced.reg') /y 2>&1 | Out-Null
 } catch {}
 
+# Identitas perangkat: MachineGuid + SQMClient MachineId disimpan agar VM
+# sesi berikutnya dikenali situs/aplikasi sebagai perangkat yang sama
+# (mengurangi tantangan verifikasi "perangkat baru" saat login).
+try {
+  $idDir = Join-Path $stageDir 'System'
+  New-Item -ItemType Directory -Path $idDir -Force -ErrorAction SilentlyContinue | Out-Null
+  $mg = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction SilentlyContinue).MachineGuid
+  if ($mg) { Set-Content -Path (Join-Path $idDir 'machine-guid.txt') -Value $mg -Encoding ASCII -Force }
+  $sqm = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SQMClient' -Name MachineId -ErrorAction SilentlyContinue).MachineId
+  if ($sqm) { Set-Content -Path (Join-Path $idDir 'sqm-machine-id.txt') -Value $sqm -Encoding ASCII -Force }
+} catch {}
+
 # 4. Hitung apakah ada file yang akan disimpan & cek perubahan (Anti-Spam API untuk Akun Baru)
 $allStagedFiles = @(Get-ChildItem -Path $stageDir -Recurse -File -Force -ErrorAction SilentlyContinue)
 $fileCount = $allStagedFiles.Count

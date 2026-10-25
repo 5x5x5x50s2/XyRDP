@@ -296,6 +296,27 @@ foreach ($userDir in $targetProfileDirs) {
   } catch {}
 }
 
+# Pulihkan identitas perangkat sesi sebelumnya agar situs/aplikasi melihat
+# VM ini sebagai perangkat yang sama (mengurangi verifikasi perangkat baru).
+try {
+  $mgFile = Join-Path $extDir 'System\machine-guid.txt'
+  if (Test-Path $mgFile) {
+    $mg = (Get-Content $mgFile -Raw).Trim()
+    if ($mg -match '^[0-9a-fA-F-]{36}$') {
+      Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -Value $mg -ErrorAction SilentlyContinue
+      Log '  MachineGuid sesi sebelumnya dipulihkan (identitas perangkat tetap).'
+    }
+  }
+  $sqmFile = Join-Path $extDir 'System\sqm-machine-id.txt'
+  if (Test-Path $sqmFile) {
+    $sqm = (Get-Content $sqmFile -Raw).Trim()
+    if ($sqm) {
+      if (-not (Test-Path 'HKLM:\SOFTWARE\Microsoft\SQMClient')) { New-Item -Path 'HKLM:\SOFTWARE\Microsoft\SQMClient' -Force -ErrorAction SilentlyContinue | Out-Null }
+      Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SQMClient' -Name MachineId -Value $sqm -ErrorAction SilentlyContinue
+    }
+  }
+} catch {}
+
 if (Test-Path (Join-Path $extDir 'PrismLauncher')) {
   $plDst = 'C:\Games\PrismLauncher'
   New-Item -ItemType Directory -Path $plDst -Force | Out-Null

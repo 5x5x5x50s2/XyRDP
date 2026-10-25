@@ -76,6 +76,19 @@ if (Test-Path $update) { Start-Process $update -ArgumentList '--processStart','D
     $lnk.Save()
   } catch { Log "shortcut publik gagal: $($_.Exception.Message)" }
 
+  # Hangatkan profil Windows user RDP SEKARANG (jalankan proses singkat
+  # memakai kredensialnya): Windows membuat C:\Users\<user> saat setup,
+  # jadi login RDP pertama tidak lambat membuat profil dari nol dan folder
+  # Discord bisa langsung disalin ke profil yang benar.
+  if ($env:RDP_PASSWORD) {
+    try {
+      $secPw = ConvertTo-SecureString $env:RDP_PASSWORD -AsPlainText -Force
+      $cred = New-Object System.Management.Automation.PSCredential("$env:COMPUTERNAME\$u", $secPw)
+      Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'exit' -Credential $cred -WindowStyle Hidden -Wait -ErrorAction Stop
+      Log "Profil Windows $u dihangatkan saat setup."
+    } catch { Log "hangatkan profil ${u} dilewati: $($_.Exception.Message)" }
+  }
+
   # Salin ke profil user RDP bila profilnya sudah terbentuk.
   $dstApp = "C:\Users\$u\AppData\Local\Discord"
   if ((Test-Path "C:\Users\$u") -and -not (Test-Path $dstApp)) {

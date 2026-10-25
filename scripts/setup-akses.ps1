@@ -48,7 +48,7 @@ try {
   if (-not (Test-Path $exe)) { throw 'Tailscale CLI tidak ditemukan' }
   Start-Service Tailscale -ErrorAction Stop
   if ($InstallOnly) { $version=Run-Bounded $exe @('version') 30; if ($version.code -ne 0) { throw 'Verifikasi CLI Tailscale gagal' }; Log "Install-only validation OK: $($version.text.Trim())"; return }
-  $hostName=("$env:HOSTNAME-$env:GITHUB_RUN_NUMBER" -replace '[^a-zA-Z0-9-]','').Trim('-')
+  $hostName=("$env:HOSTNAME" -replace '[^a-zA-Z0-9-]','').Trim('-')
   if (-not $hostName) { $hostName='rdpfree' }; if ($hostName.Length -gt 60) { $hostName=$hostName.Substring(0,60) }
   $up=Run-Bounded $exe @('up',"--auth-key=$env:TAILSCALE_AUTH_KEY","--hostname=$hostName",'--accept-dns=false','--accept-routes=false','--timeout=90s') 120
   if ($up.code -ne 0) { throw 'Tailscale menolak koneksi. Periksa masa berlaku auth key dan persetujuan perangkat di tailnet.' }

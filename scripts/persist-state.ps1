@@ -221,7 +221,7 @@ function Copy-ChromiumSession([string]$BrowserName, [string]$UserDataDir) {
         Copy-FileUnlocked $fSrc $fDst | Out-Null
       }
     }
-    foreach ($subDir in @('Local Storage\leveldb', 'Session Storage', 'Extension State', 'Sync Data\LevelDB', 'Local Extension Settings', 'IndexedDB')) {
+    foreach ($subDir in @('Sessions', 'Local Storage\leveldb', 'Session Storage', 'Extension State', 'Sync Data\LevelDB', 'Local Extension Settings', 'IndexedDB')) {
       $dSrc = Join-Path $profSrc $subDir
       if ((Test-Path $dSrc) -and ((Get-DirSizeMB $dSrc) -le 120)) {
         $dDst = Join-Path $profDst $subDir
@@ -230,6 +230,15 @@ function Copy-ChromiumSession([string]$BrowserName, [string]$UserDataDir) {
     }
   }
   Log "  Sesi login browser $BrowserName (Cookies + WAL + Login Data + LevelDB) berhasil disalin."
+}
+
+# 3c. Discord: sesi login (Roaming) + folder aplikasi (Local) agar tidak
+#     unduh ulang & tidak login ulang di sesi berikutnya.
+foreach ($profDir in $profileDirs) {
+  $dcRoam = Join-Path $profDir 'AppData\Roaming\discord'
+  if (Test-Path $dcRoam) { Copy-SafeFolder $dcRoam (Join-Path $stageDir 'Apps\DiscordRoaming') 150 }
+  $dcLocal = Join-Path $profDir 'AppData\Local\Discord'
+  if (Test-Path $dcLocal) { Copy-SafeFolder $dcLocal (Join-Path $stageDir 'Apps\DiscordLocal') 600 }
 }
 
 foreach ($profDir in $profileDirs) {

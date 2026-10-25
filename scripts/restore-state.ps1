@@ -266,6 +266,18 @@ foreach ($userDir in $targetProfileDirs) {
     Copy-TreeUnlocked (Join-Path $extDir 'Browsers\Firefox') $ffDst
     Log "  Sesi login Mozilla Firefox berhasil dipulihkan ke $ffDst."
   }
+  if (Test-Path (Join-Path $extDir 'Apps\DiscordRoaming')) {
+    $dcDst = Join-Path $userDir 'AppData\Roaming\discord'
+    New-Item -ItemType Directory -Path $dcDst -Force -ErrorAction SilentlyContinue | Out-Null
+    Copy-TreeUnlocked (Join-Path $extDir 'Apps\DiscordRoaming') $dcDst
+    Log "  Sesi login Discord berhasil dipulihkan ke $dcDst."
+  }
+  if (Test-Path (Join-Path $extDir 'Apps\DiscordLocal')) {
+    $dcDst = Join-Path $userDir 'AppData\Local\Discord'
+    New-Item -ItemType Directory -Path $dcDst -Force -ErrorAction SilentlyContinue | Out-Null
+    Copy-TreeUnlocked (Join-Path $extDir 'Apps\DiscordLocal') $dcDst
+    Log "  Aplikasi Discord berhasil dipulihkan ke $dcDst (tanpa unduh ulang)."
+  }
   if (Test-Path (Join-Path $extDir 'DPAPI')) {
     Copy-TreeUnlocked (Join-Path $extDir 'DPAPI') $userDir
     Log "  Kunci enkripsi DPAPI pengguna berhasil dipulihkan ke $userDir."

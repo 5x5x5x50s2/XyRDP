@@ -89,17 +89,23 @@ $okMic   = ($polMic -eq 0) -or (($null -eq $polMic) -and ("$curMic" -ne '1'))
 $okWall  = ($polWall -eq 0) -or (($null -eq $polWall) -and ("$curWall" -ne '1'))
 $rdpAlive2 = Probe-Rdp 'setelah kebijakan audio+wallpaper + audit WinStation'
 
-# ---------- 2. Kebijakan grafis XyDesk (AVC444 / hardware encode / 120 FPS DWM) ----------
-$okAvc  = Set-Reg $tsPol 'AVC444ModePreferred'       1 'DWord'
-$okAvc2 = Set-Reg $tsPol 'AVCHardwareEncodePreferred' 1 'DWord'
+# ---------- 2. Kebijakan grafis XyDesk (stabil: tanpa WDDM/AVC444/HW-encode) ----------
+# Keluhan white/black screen ditelusuri ke kombinasi fEnableWddmDriver=1 +
+# AVC444ModePreferred=1 + AVCHardwareEncodePreferred=1 di VM TANPA GPU:
+# nego grafis jatuh ke jalur yang gagal dirender sebagian klien (layar putih/
+# hitam). Semua dimatikan agar RDP memakai H.264 software yang stabil.
+$okAvc  = Set-Reg $tsPol 'AVC444ModePreferred'       0 'DWord'
+$okAvc2 = Set-Reg $tsPol 'AVCHardwareEncodePreferred' 0 'DWord'
+Set-Reg $tsPol 'fEnableWddmDriver'    0 'DWord' | Out-Null
 Set-Reg $tsPol 'VGAdapter'            1 'DWord' | Out-Null
-Set-Reg $tsPol 'bEnumerateHWBeforeSW' 1 'DWord' | Out-Null
+Set-Reg $tsPol 'bEnumerateHWBeforeSW' 0 'DWord' | Out-Null
 Set-Reg $tsPol 'SelectTransport'      0 'DWord' | Out-Null
 Set-Reg $tsPol 'fAllowDesktopComposition' 1 'DWord' | Out-Null
 Set-Reg $tsPol 'fNoFontSmoothing'     0 'DWord' | Out-Null
-# DWMFRAMEINTERVAL = 8 (~125 FPS target DWM, bukan default Windows 30 FPS / 15 ms 66 FPS)
-$ok120  = Set-Reg $tsPol 'DWMFRAMEINTERVAL' 8 'DWord'
-Set-Reg $tsRoot 'DWMFRAMEINTERVAL'    8 'DWord' | Out-Null
+# DWMFRAMEINTERVAL = 15 (interval default yang stabil; nilai 8/~125 FPS di
+# render software rawan frame kosong/berkedip di klien mobile)
+$ok120  = Set-Reg $tsPol 'DWMFRAMEINTERVAL' 15 'DWord'
+Set-Reg $tsRoot 'DWMFRAMEINTERVAL'    15 'DWord' | Out-Null
 # Ultra-Low Latency TCP (matikan Nagle buffering di seluruh interface jaringan aktif)
 try {
   Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' -ErrorAction SilentlyContinue | ForEach-Object {
@@ -115,9 +121,9 @@ try {
   Set-Reg $mmcss 'Scheduling Category' 'High' 'String' | Out-Null
   Set-Reg $mmcss 'SFIO Priority'       'High' 'String' | Out-Null
 } catch {}
-$avcTxt = if ($okAvc -and $okAvc2) { 'ok (120FPS DWMFRAMEINTERVAL=8 + TCPNoDelay=1)' } else { 'gagal' }
-Log "  grafis: AVC444ModePreferred+AVCHardwareEncodePreferred+120FPS -> $avcTxt"
-$rdpAlive3 = Probe-Rdp 'setelah kebijakan grafis (AVC444 + 120FPS)'
+$avcTxt = if ($okAvc -and $okAvc2) { 'ok (WDDM off + AVC software + DWMFRAMEINTERVAL=15 + TCPNoDelay=1)' } else { 'gagal' }
+Log "  grafis: stabil (AVC444ModePreferred=0, AVCHardwareEncodePreferred=0, fEnableWddmDriver=0) -> $avcTxt"
+$rdpAlive3 = Probe-Rdp 'setelah kebijakan grafis stabil (tanpa WDDM/AVC444/HW-encode)'
 
 # ---------- 3. ClearType: lewat profil Default (per-user), bukan kunci WinStation ----------
 $fontTxt = 'gagal'

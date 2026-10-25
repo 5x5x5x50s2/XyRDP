@@ -251,12 +251,14 @@ try {
   [Environment]::SetEnvironmentVariable('MESA_GLTHREAD', 'true', 'Machine')
   $env:LP_NUM_THREADS = $lpThreads
   $env:MESA_GLTHREAD = 'true'
-  Log "Tuning FPS: LP_NUM_THREADS=$lpThreads, MESA_GLTHREAD=true (render software multi-core).
+  Log "Tuning FPS: LP_NUM_THREADS=$lpThreads, MESA_GLTHREAD=true (render software multi-core)."
 
-  # Aktifkan kebijakan RDP WDDM / GPU Enumeration agar aplikasi DirectX/OpenGL/Emulator tidak menolak jalan di RDP
+  # Kebijakan grafis RDP: render software yang stabil. fEnableWddmDriver=1 di
+  # VM tanpa GPU memicu black/white screen, jadi WDDM dimatikan (=0) dan
+  # enumerasi hardware tidak didahulukan.
   $tsPol = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
-  Set-Reg $tsPol 'bEnumerateHWBeforeSW' 1 'DWord' | Out-Null
-  Set-Reg $tsPol 'fEnableWddmDriver'    1 'DWord' | Out-Null
+  Set-Reg $tsPol 'bEnumerateHWBeforeSW' 0 'DWord' | Out-Null
+  Set-Reg $tsPol 'fEnableWddmDriver'    0 'DWord' | Out-Null
 
   # 4. Pastikan Java bawaan runner (Temurin JDK 21 / 17 / 8 di C:\hostedtoolcache) terdaftar di JAVA_HOME & PATH
   #    sehingga walaupun user lupa mencentang minecraft_java=ya, Minecraft / TLauncher tetap langsung bisa jalan!

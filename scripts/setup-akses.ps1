@@ -50,8 +50,27 @@ try {
   if ($InstallOnly) { $version=Run-Bounded $exe @('version') 30; if ($version.code -ne 0) { throw 'Verifikasi CLI Tailscale gagal' }; Log "Install-only validation OK: $($version.text.Trim())"; return }
   $hostName=("$env:HOSTNAME" -replace '[^a-zA-Z0-9-]','').Trim('-')
   if (-not $hostName) { $hostName='rdpfree' }; if ($hostName.Length -gt 60) { $hostName=$hostName.Substring(0,60) }
-  $up=Run-Bounded $exe @('up',"--auth-key=$env:TAILSCALE_AUTH_KEY","--hostname=$hostName",'--accept-dns=false','--accept-routes=false','--timeout=90s') 120
-  if ($up.code -ne 0) { throw 'Tailscale menolak koneksi. Periksa masa berlaku auth key dan persetujuan perangkat di tailnet.' }
+  # tailscale up dicoba sampai 3x (service direstart antar-percobaan). Alasan
+  # penolakan asli dari CLI (auth key kedaluwarsa / menunggu persetujuan
+  # perangkat) diteruskan ke log & status TANPA membocorkan auth key.
+  function Protect-Msg([string]$s) {
+    if (-not $s) { return '' }
+    $o = $s
+    if ($env:TAILSCALE_AUTH_KEY) { $o = $o.Replace($env:TAILSCALE_AUTH_KEY, '[redacted]') }
+    $o = $o -replace 'tskey-[A-Za-z0-9\-_]+', '[redacted]'
+    return $o.Trim()
+  }
+  $up = $null
+  for ($upTry = 1; $upTry -le 3; $upTry++) {
+    $up = Run-Bounded $exe @('up',"--auth-key=$env:TAILSCALE_AUTH_KEY","--hostname=$hostName",'--accept-dns=false','--accept-routes=false','--timeout=90s') 120
+    if ($up.code -eq 0) { break }
+    Log "tailscale up percobaan $upTry/3 gagal (exit $($up.code)): $(Protect-Msg $up.error)"
+    if ($upTry -lt 3) {
+      try { Restart-Service Tailscale -Force -ErrorAction SilentlyContinue } catch {}
+      Start-Sleep -Seconds 5
+    }
+  }
+  if ($up.code -ne 0) { throw "Tailscale menolak koneksi: $(Protect-Msg $up.error) - Periksa masa berlaku auth key dan persetujuan perangkat di tailnet." }
   $state=Run-Bounded $exe @('status','--json') 30
   $status=$state.text | ConvertFrom-Json
   $ip=@($status.Self.TailscaleIPs | Where-Object { $_ -match '^100\.' }) | Select-Object -First 1

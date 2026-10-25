@@ -313,8 +313,11 @@ try {
   #    serta aktifkan WDDM/GPU enumeration di Terminal Services & Host Compute Service (vmcompute).
   Set-Reg 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' 'EnableVirtualizationBasedSecurity' 0 'DWord' | Out-Null
   Set-Reg 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' 'Enabled' 0 'DWord' | Out-Null
-  Set-Reg $tsPol 'bEnumerateHWBeforeSW' 1 'DWord' | Out-Null
-  Set-Reg $tsPol 'fEnableWddmDriver'    1 'DWord' | Out-Null
+  # Grafis RDP: MATIKAN WDDM driver & enumerasi HW. VM runner tidak punya GPU;
+  # fEnableWddmDriver=1 terbukti memicu black/white screen di banyak klien RDP.
+  # Nilai 0 memaksa jalur render dasar/software yang stabil.
+  Set-Reg $tsPol 'bEnumerateHWBeforeSW' 0 'DWord' | Out-Null
+  Set-Reg $tsPol 'fEnableWddmDriver'    0 'DWord' | Out-Null
   try {
     $vmc = Get-Service -Name 'vmcompute' -ErrorAction SilentlyContinue
     if ($vmc) { Set-Service -Name 'vmcompute' -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name 'vmcompute' -ErrorAction SilentlyContinue }

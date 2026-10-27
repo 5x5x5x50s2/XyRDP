@@ -1,6 +1,6 @@
 {
   "active": true,
-  "hostname": "rdpfree-143",
+  "hostname": "rdpfree-144",
   "os": "Microsoft Windows Server 2022 Datacenter",
   "os_build": "10.0.20348",
   "os_style": "Native Windows",
@@ -13,37 +13,37 @@
   "rdp_user": "xyadmin",
   "rdp_listen": ":::3389 (svchost) | 0.0.0.0:3389 (svchost) + handshake ok via 127.0.0.1",
   "rdp_denyts": true,
-  "started_at": "2026-10-26T20:07:50Z",
-  "expires_at": "2026-10-27T01:49:50Z",
+  "started_at": "2026-10-27T06:04:40Z",
+  "expires_at": "2026-10-27T11:46:40Z",
   "duration_menit": 342,
-  "run_id": "40392737304",
+  "run_id": "40458870116",
   "run_attempt": "1",
-  "run_number": "143",
-  "run_url": "https://github.com/xykal/XyRDP/actions/runs/40392737304",
+  "run_number": "144",
+  "run_url": "https://github.com/xykal/XyRDP/actions/runs/40458870116",
   "mode": "bersih+win10",
   "persist": {
     "profile": "C:\\Users\\xyadmin",
+    "files": 2712,
     "source": "xyrdp-state.7z.enc",
-    "restored": true,
-    "files": 2712
+    "restored": true
   },
   "storage": {
     "boost": "ok",
-    "before_gb": 79.45,
+    "before_gb": 79.44,
     "after_gb": 104.09,
-    "gained_gb": 24.64,
+    "gained_gb": 24.65,
     "removed_targets": 22,
     "drives": [
       {
-        "letter": "C",
-        "used_gb": 151.36,
         "free_gb": 104.09,
+        "used_gb": 151.35,
+        "letter": "C",
         "size_gb": 255.45
       },
       {
-        "letter": "D",
-        "used_gb": 3.0,
         "free_gb": 147.0,
+        "used_gb": 3.0,
+        "letter": "D",
         "size_gb": 150.0
       }
     ],
@@ -60,67 +60,67 @@
   },
   "media": {
     "audio_output": "rdp_playback_enabled",
-    "verification": "Login ulang, aktifkan mic di XyDesk dan izinkan Android. Uji Windows Settings > Sound > Input; kebijakan aktif bukan bukti capture end-to-end.",
+    "wallpaper": "xyverse_configured_for_user_logon",
     "microphone": "rdp_capture_enabled",
-    "wallpaper": "xyverse_configured_for_user_logon"
+    "verification": "Login ulang, aktifkan mic di XyDesk dan izinkan Android. Uji Windows Settings > Sound > Input; kebijakan aktif bukan bukti capture end-to-end."
   },
   "grafis": {
-    "opengl": "4.6 (Mesa llvmpipe system-wide x64/x86 + OpenGL ES 3.2)",
+    "mode": "software",
     "vulkan": "lavapipe 1.3 (CPU)",
     "mesa": "26.2.4",
-    "mode": "software",
-    "adapters": "Microsoft Hyper-V Video",
-    "path": "C:\\XyRDP\\grafis\\mesa-x64"
+    "opengl": "4.6 (Mesa llvmpipe system-wide x64/x86 + OpenGL ES 3.2)",
+    "path": "C:\\XyRDP\\grafis\\mesa-x64",
+    "adapters": "Microsoft Hyper-V Video"
   },
   "samp": {
-    "directplay": true,
-    "dgvoodoo_d3d9": true,
-    "status": "runtimes-2026-ready",
-    "vc2015_x86": true,
-    "fullscreen": true,
-    "vc2015_x64": true,
-    "vc2013_x64": true,
-    "playable": true,
     "webview2": true,
-    "samp_client": true,
+    "directplay": true,
+    "vc2013_x64": true,
+    "vc2015_x64": true,
+    "vc2015_x86": true,
     "directx9": true,
     "dep_optin": true,
-    "silentpatch": false,
     "vc2013_x86": true,
-    "game_present": true
+    "playable": true,
+    "dgvoodoo_d3d9": true,
+    "samp_client": true,
+    "silentpatch": false,
+    "game_present": true,
+    "fullscreen": true,
+    "status": "runtimes-2026-ready"
   },
   "games": {
-    "blender": {
-      "status": "ready",
-      "launcher": "C:\\Games\\Blender\\Launch-Blender.ps1"
-    },
-    "fivem": {
-      "status": true,
-      "sound": true
-    },
-    "roblox": {
-      "status": "ready-antivm",
-      "launcher": "C:\\Games\\Roblox\\Launch-Roblox-AntiVM.ps1"
-    },
-    "ets2": {
-      "status": "ready",
-      "launcher": "C:\\Games\\ETS2\\Launch-ETS2-Free.ps1"
-    },
     "memu": {
-      "status": "ready",
-      "launcher": "C:\\Games\\MEmu\\Launch-MEmu.ps1"
+      "launcher": "C:\\Games\\MEmu\\Launch-MEmu.ps1",
+      "status": "ready"
     },
     "minecraft_java": {
-      "prismlauncher": true,
-      "tlauncher_jar": true,
       "status": "ready",
+      "tlauncher_jar": true,
+      "official_exe": true,
       "opengl46": true,
-      "official_exe": true
+      "prismlauncher": true
+    },
+    "fivem": {
+      "sound": true,
+      "status": true
+    },
+    "roblox": {
+      "launcher": "C:\\Games\\Roblox\\Launch-Roblox-AntiVM.ps1",
+      "status": "ready-antivm"
+    },
+    "ets2": {
+      "launcher": "C:\\Games\\ETS2\\Launch-ETS2-Free.ps1",
+      "status": "ready"
+    },
+    "blender": {
+      "launcher": "C:\\Games\\Blender\\Launch-Blender.ps1",
+      "status": "ready"
     }
   },
   "tools_hub": {
-    "auto_start": true,
     "installed": true,
+    "auto_start": true,
     "exe": "C:\\XyRDP\\tools\\XyDeskDashboard.exe"
   },
   "xydesk": {
@@ -141,22 +141,22 @@
     "note": "Host siap dipakai klien XyDesk Remote mode Koneksi RDP (Host+Port tunnel). Kunci WinStations\\RDP-Tcp sengaja TIDAK ditulis supaya listener 3389 tidak mati di runner GitHub."
   },
   "akses": {
-    "mode": "tailscale",
     "tailscale": {
+      "note": "HP/PC harus login Tailscale pada tailnet yang sama. TCP 3389 harus diizinkan ACL.",
       "status": "ok",
-      "hostname": "rdpfree",
       "magicdns": "rdpfree.tail01cd7c.ts.net.",
-      "ip": "100.106.22.106",
-      "note": "HP/PC harus login Tailscale pada tailnet yang sama. TCP 3389 harus diizinkan ACL."
+      "ip": "100.123.52.76",
+      "hostname": "rdpfree"
     },
     "tunnel": {
-      "address": "100.106.22.106:3389",
-      "selftest": "ok",
-      "status": "ok",
-      "host": "100.106.22.106",
+      "port": 3389,
+      "host": "100.123.52.76",
       "outside": "tailscale",
-      "port": 3389
-    }
+      "status": "ok",
+      "address": "100.123.52.76:3389",
+      "selftest": "ok"
+    },
+    "mode": "tailscale"
   },
   "extras": {
     "discord": "ok"

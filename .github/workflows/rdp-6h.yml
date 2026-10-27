@@ -1,4 +1,8 @@
-# rdpfree-workflow-schema: 6
+# rdpfree-workflow-schema: 5
+# 1.1.28: tambah fps_boost, samp_antiban, mumu, portmap_host/portmap_port,
+#         dan opsi akses portmap/railway. Penanda skema sengaja tetap 5 supaya
+#         kontrak web-next/src/lib/workflow-contract.ts tetap menerima workflow.
+#         Input baru semuanya required:false, jadi repo lama tetap kompatibel.
 name: RdpFree — RDP 6 Jam
 
 on:
@@ -20,12 +24,24 @@ on:
         default: 'xyadmin'
         type: string
       akses:
-        description: 'Jalur akses privat ke RDP'
+        description: 'Jalur akses ke RDP (tailscale disarankan)'
         required: false
         default: 'tailscale'
         type: choice
         options:
           - tailscale
+          - portmap
+          - railway
+      portmap_host:
+        description: 'Host tunnel publik (opsional; isi saat akses portmap/railway)'
+        required: false
+        default: ''
+        type: string
+      portmap_port:
+        description: 'Port publik tunnel (opsional; kosong = 3389)'
+        required: false
+        default: ''
+        type: string
       storage_boost:
         description: 'Bersihkan toolcache untuk ruang disk ekstra'
         required: false
@@ -47,6 +63,30 @@ on:
         description: 'Pasang runtime + SilentPatch GTA SA & SA-MP'
         required: false
         default: 'ya'
+        type: choice
+        options:
+          - ya
+          - tidak
+      samp_antiban:
+        description: 'Reset GPCI/HWID SA-MP ke identitas baru (anti-ban)'
+        required: false
+        default: 'tidak'
+        type: choice
+        options:
+          - ya
+          - tidak
+      fps_boost:
+        description: 'Boost FPS: power plan, RDP 60Hz, DWM, Game Mode, prioritas CPU'
+        required: false
+        default: 'ya'
+        type: choice
+        options:
+          - ya
+          - tidak
+      mumu:
+        description: 'Pasang MuMu Player 12 (emulator Android) + shortcut desktop'
+        required: false
+        default: 'tidak'
         type: choice
         options:
           - ya
@@ -175,6 +215,12 @@ jobs:
       STORAGE_BOOST: ${{ inputs.storage_boost || 'ya' }}
       DEBLOAT: ${{ inputs.debloat || 'ringan' }}
       SAMP: ${{ inputs.samp || 'ya' }}
+      SAMP_ANTIBAN: ${{ inputs.samp_antiban || 'tidak' }}
+      FPS_BOOST: ${{ inputs.fps_boost || 'ya' }}
+      MUMU: ${{ inputs.mumu || 'tidak' }}
+      PORTMAP_HOST: ${{ inputs.portmap_host || '' }}
+      PORTMAP_PORT: ${{ inputs.portmap_port || '' }}
+      PORTMAP_OVPN_CONFIG: ${{ secrets.PORTMAP_OVPN_CONFIG }}
       WIN10: ${{ inputs.win10 || 'ya' }}
       XYDESK: ${{ inputs.xydesk || 'ya' }}
       EKSTRA: ${{ inputs.ekstra || 'ya' }}
@@ -240,6 +286,13 @@ jobs:
         continue-on-error: true
         run: ./scripts/optimize-storage.ps1
 
+      - name: Boost FPS (Power Plan + RDP 60Hz + DWM + Game Mode)
+        timeout-minutes: 8
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.fps_boost || 'ya') != 'tidak' }}
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/setup-fps-boost.ps1
+
       - name: Tampilan Windows 10 + Dark Mode
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.win10 || 'ya') != 'tidak' }}
         shell: pwsh
@@ -270,11 +323,25 @@ jobs:
         continue-on-error: true
         run: ./scripts/setup-samp.ps1
 
+      - name: Reset Anti-Ban SAMP (GPCI / HWID baru)
+        timeout-minutes: 10
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.samp_antiban || 'tidak') == 'ya' }}
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/setup-samp-antiban.ps1
+
       - name: Pasang Suite Game & Studio (Minecraft, Roblox, ETS 2, Blender, MEmu, FiveM)
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') }}
         shell: pwsh
         continue-on-error: true
         run: ./scripts/setup-games.ps1
+
+      - name: MuMu Player 12 (Android Emulator)
+        timeout-minutes: 25
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.mumu || 'tidak') == 'ya' }}
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/setup-mumu.ps1
 
       - name: Aplikasi ekstra (7-Zip, Chrome, Lightshot, Wallpaper)
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.ekstra || 'ya') != 'tidak' }}
@@ -298,6 +365,13 @@ jobs:
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.akses || 'tailscale') == 'tailscale' }}
         shell: pwsh
         run: ./scripts/setup-akses.ps1
+
+      - name: Setup akses publik (Portmap / Railway)
+        timeout-minutes: 12
+        if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.akses || 'tailscale') != 'tailscale' }}
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/setup-public-tunnel.ps1
 
       - name: Pasang Discord desktop
         if: ${{ !startsWith(inputs.runner || 'windows-2022', 'ubuntu') && (inputs.discord || 'tidak') == 'ya' }}
@@ -361,6 +435,11 @@ jobs:
               storage_boost       = "$($env:STORAGE_BOOST)"
               debloat             = "$($env:DEBLOAT)"
               samp                = "$($env:SAMP)"
+              samp_antiban        = "$($env:SAMP_ANTIBAN)"
+              fps_boost           = "$($env:FPS_BOOST)"
+              mumu                = "$($env:MUMU)"
+              portmap_host        = "$($env:PORTMAP_HOST)"
+              portmap_port        = "$($env:PORTMAP_PORT)"
               win10               = "$($env:WIN10)"
               xydesk              = "$($env:XYDESK)"
               ekstra              = "$($env:EKSTRA)"

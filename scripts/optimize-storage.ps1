@@ -202,6 +202,38 @@ try {
   } else { Log '  Docker: tidak terpasang -> skip' }
 } catch { Log "  Docker prune error: $($_.Exception.Message)" }
 
+# ---------- 2b. Target tambahan (1.1.28) ----------
+# Dulu beberapa folder besar masih tersisa walau storage_boost=ya, jadi
+# angka "disk lega" di aplikasi sering jauh lebih kecil dari janji UI.
+# Semuanya best-effort dan tunduk pada batas waktu 8 menit yang sama.
+if (-not (Test-BoostTimeout)) {
+  $extraTargets = @(
+    @{ p = 'C:\hostedtoolcache\windows\Ruby'; n = 'Ruby toolcache' },
+    @{ p = 'C:\hostedtoolcache\windows\Python'; n = 'Python toolcache' },
+    @{ p = 'C:\hostedtoolcache\windows\node'; n = 'Node toolcache' },
+    @{ p = 'C:\Program Files (x86)\Microsoft SDKs'; n = 'Windows SDK lama' },
+    @{ p = 'C:\Program Files (x86)\Windows Kits\10\References'; n = 'Win10 SDK references' },
+    @{ p = 'C:\ProgramData\Microsoft\VisualStudio\Packages'; n = 'Visual Studio package cache' },
+    @{ p = 'C:\Windows\Installer\$PatchCache$'; n = 'MSI PatchCache' },
+    @{ p = 'C:\Windows\SoftwareDistribution\Download'; n = 'Windows Update cache' },
+    @{ p = 'C:\Program Files\PostgreSQL'; n = 'PostgreSQL bawaan runner' },
+    @{ p = 'C:\Program Files\MongoDB'; n = 'MongoDB bawaan runner' },
+    @{ p = 'C:\tools\php'; n = 'PHP toolcache' },
+    @{ p = 'C:\SeleniumWebDrivers'; n = 'Selenium web drivers' }
+  )
+  foreach ($t in $extraTargets) {
+    if (Test-BoostTimeout) { Log '  boost timeout -> sisa target dilewati'; break }
+    $totalFreed += Remove-Tree $t.p $t.n
+  }
+  # Compact sisa file log & crash dump (aman, tidak menyentuh RDP/WinSxS).
+  foreach ($junk in @('C:\Windows\LiveKernelReports', 'C:\Windows\Minidump', 'C:\ProgramData\Microsoft\Windows\WER\ReportArchive')) {
+    if (Test-BoostTimeout) { break }
+    $totalFreed += Remove-Tree $junk "junk $junk"
+  }
+} else {
+  Log '  boost timeout -> target tambahan dilewati'
+}
+
 # ---------- 3. Chocolatey cache ----------
 $totalFreed += Remove-Tree 'C:\ProgramData\chocolatey\lib' 'Choco lib cache'
 $totalFreed += Remove-Tree "$env:LOCALAPPDATA\..\chocolatey" 'Choco user cache'
@@ -405,12 +437,22 @@ try {
       if ($ld) { $drives += @{ letter=$letter; size_gb=[math]::Round($ld.Size/1GB,2); free_gb=[math]::Round($ld.FreeSpace/1GB,2); used_gb=[math]::Round(($ld.Size-$ld.FreeSpace)/1GB,2) } }
     } catch {}
   }
-  Update-Status @{ storage = [ordered]@{
-    boost='ok'; before_gb=$freeBefore; after_gb=$freeAfter; gained_gb=$freedNow; removed_targets=$totalFreed
+  $storageReport = [ordered]@{
+    status='ok'; mode="$(if ($env:STORAGE_BOOST -eq 'tidak') { 'off' } else { 'boost' })-$(if ($env:DEBLOAT) { $env:DEBLOAT } else { 'ringan' })"
+    before_gb=$freeBefore; after_gb=$freeAfter; gained_gb=$freedNow; removed_targets=$totalFreed
     drives=$drives
     game_dir= if (Test-Path 'D:\Games') { 'D:\Games (disarankan untuk GTA)' } else { 'C:\Games' }
     note='Cleanup selesai. gained_gb adalah perubahan ruang aktual, bukan kapasitas yang dijanjikan. Target terkunci bisa tersisa.'
-  } } | Out-Null
+    updated_at=(Get-Date).ToUniversalTime().ToString('o')
+  }
+  Update-Status @{ storage = $storageReport } | Out-Null
+  # Laporan mandiri supaya aplikasi / QA bisa baca tanpa mengurai seluruh
+  # rdp-status.json (yang bentuknya bisa berubah antar versi workflow).
+  try {
+    $outDir = Join-Path (Get-Workspace) 'out'
+    New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+    ($storageReport | ConvertTo-Json -Depth 6) | Set-Content -Path (Join-Path $outDir 'storage-boost.json') -Encoding utf8
+  } catch { Log "  tulis storage-boost.json gagal: $($_.Exception.Message)" }
 } catch { Log "  tulis status storage gagal: $($_.Exception.Message)" }
 
 Log "SELESAI - Storage boost: ${freeBefore}GB -> ${freeAfter}GB (+${freedNow}GB)"

@@ -16,11 +16,18 @@ jobs:
       - name: Parse scripts without running setup or deleting files
         shell: pwsh
         run: |
-          foreach($file in @('diagnose-desktop','keepalive','setup-media','optimize-storage','lib-common')) {
+          # Parse SEMUA script — termasuk yang baru ditambahkan 1.1.28
+          # (fps-boost, mumu, public-tunnel, samp-antiban). Kalau ada syntax
+          # error PowerShell, workflow rdp-6h.yml akan gagal diam-diam karena
+          # semua step-nya continue-on-error. Ini penjaga pintunya.
+          $failed = @()
+          Get-ChildItem "$pwd/scripts/*.ps1" | ForEach-Object {
             $tokens=$null; $errors=$null
-            [System.Management.Automation.Language.Parser]::ParseFile("$pwd/scripts/$file.ps1",[ref]$tokens,[ref]$errors) | Out-Null
-            if($errors.Count){throw ($errors | Out-String)}
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors) | Out-Null
+            if($errors.Count){ $failed += "$($_.Name): $($errors | Out-String)" }
           }
+          if($failed.Count){ throw ($failed -join "`n---`n") }
+          Write-Host "Semua script .ps1 ter-parsing tanpa error."
       - name: Verify protected paths with deletion mocked
         shell: pwsh
         run: |

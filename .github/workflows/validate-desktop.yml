@@ -24,7 +24,7 @@ jobs:
           Get-ChildItem "$pwd/scripts/*.ps1" | ForEach-Object {
             $tokens=$null; $errors=$null
             [System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors) | Out-Null
-            if($errors.Count){ $failed += "$($_.Name): $($errors | Out-String)" }
+            if($errors.Count){ $failed += "$($_.Name): $($errors.Message -join ' | ')" }
           }
           if($failed.Count){ throw ($failed -join "`n---`n") }
           Write-Host "Semua script .ps1 ter-parsing tanpa error."

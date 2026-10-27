@@ -148,5 +148,5 @@ try {
   Log "  status akses publik ditulis: $state $addr"
 } catch { Log "  tulis status akses gagal: $($_.Exception.Message)" }
 
-Log "SELESAI — akses $mode: $state ${addr}"
+Log "SELESAI — akses ${mode}: ${state} ${addr}"
 exit 0
